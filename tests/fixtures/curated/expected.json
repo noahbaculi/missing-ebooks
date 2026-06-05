@@ -21,6 +21,7 @@
   "covered": [
     { "path": "Adrian Tchaikovsky/Cage of Souls", "by": "ebook-in-folder", "detail": "Cage of Souls.epub beside the .m4b (the typical covered case)" },
     { "path": "Orson Scott Card/Space Boy", "by": "marker-in-folder", "detail": ".no_ebook" },
+    { "path": "Brandon Sanderson/The Mistborn Saga/4.5 - Allomancer Jak and the Pits of Eltania", "by": "marker-in-folder", "detail": ".ebook_elsewhere beside the audio; this is the in-folder shape the marker actually takes in the real snapshot" },
     { "path": "Ursula K. Le Guin/The Earthsea Trilogy/A Wizard of Earthsea", "by": "ancestor-marker", "detail": ".ebook_elsewhere one level up at The Earthsea Trilogy" },
     { "path": "Ursula K. Le Guin/The Earthsea Trilogy/The Tombs of Atuan", "by": "ancestor-marker", "detail": ".ebook_elsewhere one level up at The Earthsea Trilogy" },
     { "path": "Frank Herbert, Bill Ransom/The Jesus Incident", "by": "ebook-in-folder", "detail": "the comma in the author name is data, not a delimiter; .epub present" },

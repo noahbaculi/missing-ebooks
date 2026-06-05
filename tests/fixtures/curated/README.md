@@ -23,6 +23,7 @@ verify by hand.
 | `Adrian Tchaikovsky/Elder Race` | flagged | audio (`.mp3`), no ebook |
 | `Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire` | flagged | deep author / series / book nesting |
 | `Orson Scott Card/Space Boy` | covered | `.no_ebook` marker in the folder |
+| `Brandon Sanderson/The Mistborn Saga/4.5 - Allomancer Jak and the Pits of Eltania` | covered | `.ebook_elsewhere` marker beside the audio (in-folder coverage, the real shape this marker takes in the snapshot) |
 | `Ursula K. Le Guin/The Earthsea Trilogy/*` | covered | `.ebook_elsewhere` marker one level up (ancestor coverage) |
 | `Frank Herbert, Bill Ransom/The Jesus Incident` | covered | comma in the author name is data, not a delimiter |
 | `Dresden Files/01 - Storm Front` | flagged | series at the top level, no author above |
