@@ -34,7 +34,8 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let strings = |items: &[&str]| -> Vec<String> { items.iter().map(|s| s.to_string()).collect() };
+        let strings =
+            |items: &[&str]| -> Vec<String> { items.iter().map(|s| s.to_string()).collect() };
         Self {
             library_roots: Vec::new(),
             bind: "127.0.0.1".to_string(),
@@ -42,9 +43,9 @@ impl Default for Config {
             ttl_seconds: 60,
             // Audiobookshelf's full supported sets; see ADR-0006.
             audio_exts: strings(&[
-                ".m4b", ".mp3", ".m4a", ".flac", ".opus", ".ogg", ".oga", ".mp4",
-                ".aac", ".wma", ".aiff", ".aif", ".wav", ".webm", ".webma", ".mka",
-                ".awb", ".caf", ".mpg", ".mpeg",
+                ".m4b", ".mp3", ".m4a", ".flac", ".opus", ".ogg", ".oga", ".mp4", ".aac", ".wma",
+                ".aiff", ".aif", ".wav", ".webm", ".webma", ".mka", ".awb", ".caf", ".mpg",
+                ".mpeg",
             ]),
             ebook_exts: strings(&[".epub", ".pdf", ".mobi", ".azw3", ".cbr", ".cbz"]),
             excluded_dirs: Vec::new(),
@@ -67,9 +68,15 @@ impl Default for Config {
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("could not read config file {path}: {source}")]
-    Read { path: PathBuf, source: std::io::Error },
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("could not parse config file {path}: {source}")]
-    Parse { path: PathBuf, source: toml::de::Error },
+    Parse {
+        path: PathBuf,
+        source: toml::de::Error,
+    },
     #[error(
         "no library roots configured. Set MISSING_EBOOKS_LIBRARY_ROOTS or add \
          `library_roots` to config.toml (run with --print-config for a template)."
@@ -200,7 +207,10 @@ mod tests {
     use std::collections::HashMap;
 
     fn fake_env(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     #[test]
@@ -212,7 +222,10 @@ mod tests {
         assert_eq!(cfg.audio_exts.len(), 20); // ABS's full audio set; see ADR-0006
         assert!(cfg.audio_exts.contains(&".mp3".to_string()));
         assert!(cfg.audio_exts.contains(&".opus".to_string()));
-        assert_eq!(cfg.ebook_exts, vec![".epub", ".pdf", ".mobi", ".azw3", ".cbr", ".cbz"]);
+        assert_eq!(
+            cfg.ebook_exts,
+            vec![".epub", ".pdf", ".mobi", ".azw3", ".cbr", ".cbz"]
+        );
         assert!(cfg.library_roots.is_empty());
         assert!(cfg.excluded_dirs.is_empty());
         assert!(cfg.exclude_globs.is_empty());
@@ -230,7 +243,10 @@ mod tests {
         assert_eq!(cfg.port, 9000); // from the file
         assert_eq!(cfg.bind, "127.0.0.1"); // untouched field keeps the default
         assert_eq!(cfg.audio_exts.len(), 20); // default audio set is untouched
-        assert_eq!(cfg.library_roots, vec![std::path::PathBuf::from("/tmp/lib")]);
+        assert_eq!(
+            cfg.library_roots,
+            vec![std::path::PathBuf::from("/tmp/lib")]
+        );
     }
 
     #[test]
@@ -238,13 +254,19 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, "nonsense = true\n").unwrap();
-        assert!(matches!(Config::from_file(&path), Err(ConfigError::Parse { .. })));
+        assert!(matches!(
+            Config::from_file(&path),
+            Err(ConfigError::Parse { .. })
+        ));
     }
 
     #[test]
     fn env_overrides_scalar_fields() {
         let mut cfg = Config::default();
-        let env = fake_env(&[("MISSING_EBOOKS_PORT", "1234"), ("MISSING_EBOOKS_BIND", "0.0.0.0")]);
+        let env = fake_env(&[
+            ("MISSING_EBOOKS_PORT", "1234"),
+            ("MISSING_EBOOKS_BIND", "0.0.0.0"),
+        ]);
         apply_env_overrides(&mut cfg, &|k| env.get(k).cloned());
         assert_eq!(cfg.port, 1234);
         assert_eq!(cfg.bind, "0.0.0.0");
@@ -253,25 +275,29 @@ mod tests {
 
     #[test]
     fn env_library_roots_split_on_the_platform_separator() {
-        let joined = std::env::join_paths([
-            std::path::Path::new("/a/b"),
-            std::path::Path::new("/c/d"),
-        ])
-        .unwrap()
-        .into_string()
-        .unwrap();
+        let joined =
+            std::env::join_paths([std::path::Path::new("/a/b"), std::path::Path::new("/c/d")])
+                .unwrap()
+                .into_string()
+                .unwrap();
         let mut cfg = Config::default();
         let env = fake_env(&[("MISSING_EBOOKS_LIBRARY_ROOTS", &joined)]);
         apply_env_overrides(&mut cfg, &|k| env.get(k).cloned());
         assert_eq!(
             cfg.library_roots,
-            vec![std::path::PathBuf::from("/a/b"), std::path::PathBuf::from("/c/d")]
+            vec![
+                std::path::PathBuf::from("/a/b"),
+                std::path::PathBuf::from("/c/d")
+            ]
         );
     }
 
     #[test]
     fn missing_library_roots_is_an_error() {
-        assert!(matches!(Config::default().validate(), Err(ConfigError::MissingLibraryRoots)));
+        assert!(matches!(
+            Config::default().validate(),
+            Err(ConfigError::MissingLibraryRoots)
+        ));
         let mut cfg = Config::default();
         cfg.library_roots.push(std::path::PathBuf::from("/tmp/lib"));
         assert!(cfg.validate().is_ok());
@@ -284,7 +310,11 @@ mod tests {
         assert_eq!(parsed.bind, "127.0.0.1");
         assert_eq!(parsed.audio_exts.len(), 20);
         assert!(parsed.audio_exts.contains(&".opus".to_string()));
-        let labels: Vec<&str> = parsed.search_links.iter().map(|l| l.label.as_str()).collect();
+        let labels: Vec<&str> = parsed
+            .search_links
+            .iter()
+            .map(|l| l.label.as_str())
+            .collect();
         assert_eq!(labels, vec!["Goodreads", "OceanofPDF"]);
     }
 }

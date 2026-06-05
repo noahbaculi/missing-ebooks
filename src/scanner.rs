@@ -36,7 +36,10 @@ pub struct ScanInputs<'a> {
 #[derive(Debug, Error)]
 pub enum ScanSettingsError {
     #[error("invalid exclude glob {pattern:?}: {source}")]
-    InvalidGlob { pattern: String, source: globset::Error },
+    InvalidGlob {
+        pattern: String,
+        source: globset::Error,
+    },
     #[error("could not compile the exclude-glob set: {source}")]
     GlobSet { source: globset::Error },
 }
@@ -66,7 +69,11 @@ impl ScanSettings {
         Ok(Self {
             audio_exts: normalize_exts(inputs.audio_exts),
             ebook_exts: normalize_exts(inputs.ebook_exts),
-            excluded_dirs: inputs.excluded_dirs.iter().map(|d| d.to_lowercase()).collect(),
+            excluded_dirs: inputs
+                .excluded_dirs
+                .iter()
+                .map(|d| d.to_lowercase())
+                .collect(),
             exclude_globs: builder
                 .build()
                 .map_err(|source| ScanSettingsError::GlobSet { source })?,
@@ -75,7 +82,9 @@ impl ScanSettings {
 }
 
 fn normalize_exts(exts: &[String]) -> HashSet<String> {
-    exts.iter().map(|e| e.trim_start_matches('.').to_lowercase()).collect()
+    exts.iter()
+        .map(|e| e.trim_start_matches('.').to_lowercase())
+        .collect()
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -130,7 +139,9 @@ fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<PathBuf
     let mut covered = false;
 
     for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else { continue };
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
         if file_type.is_dir() {
             subdirs.push(entry.path());
         } else {
@@ -146,10 +157,8 @@ fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<PathBuf
     if covered {
         return;
     }
-    if has_audio {
-        if let Ok(rel) = dir.strip_prefix(root) {
-            out.push(rel.to_path_buf());
-        }
+    if has_audio && let Ok(rel) = dir.strip_prefix(root) {
+        out.push(rel.to_path_buf());
     }
     // A flag does not stop the descent: a child can be a separate gap.
     for sub in subdirs {
@@ -188,8 +197,14 @@ mod tests {
 
     // The defaults the scanner is normally run with.
     fn default_settings(exclude_globs: &[&str]) -> ScanSettings {
-        let audio: Vec<String> = [".mp3", ".m4a", ".m4b", ".flac"].iter().map(|s| s.to_string()).collect();
-        let ebook: Vec<String> = [".epub", ".pdf", ".mobi", ".azw3"].iter().map(|s| s.to_string()).collect();
+        let audio: Vec<String> = [".mp3", ".m4a", ".m4b", ".flac"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let ebook: Vec<String> = [".epub", ".pdf", ".mobi", ".azw3"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let globs: Vec<String> = exclude_globs.iter().map(|s| s.to_string()).collect();
         ScanSettings::compile(ScanInputs {
             audio_exts: &audio,
@@ -247,7 +262,10 @@ mod tests {
         touch(&dir.path().join("Series/Series.epub"));
         touch(&dir.path().join("Series/Book 1/01.mp3"));
         let got = flagged_set(dir.path(), &default_settings(&[]));
-        assert!(got.is_empty(), "the series ebook covers the book beneath it");
+        assert!(
+            got.is_empty(),
+            "the series ebook covers the book beneath it"
+        );
     }
 
     #[test]
@@ -337,6 +355,9 @@ mod tests {
         fs::create_dir_all(dir.path().join("Author")).unwrap();
         std::os::unix::fs::symlink(outside.path(), dir.path().join("Author/Linked")).unwrap();
         let got = flagged_set(dir.path(), &default_settings(&[]));
-        assert!(got.is_empty(), "a symlinked directory must not be descended into");
+        assert!(
+            got.is_empty(),
+            "a symlinked directory must not be descended into"
+        );
     }
 }
