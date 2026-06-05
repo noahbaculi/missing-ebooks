@@ -9,7 +9,8 @@
     { "path": "Andy Weir/Artemis", "audio": ["mp3"], "why": "AppleDouble ._ files are present but ignored; no real ebook, so it is flagged" },
     { "path": "Andy Weir/The Martian", "audio": ["m4b"], "why": "the only .epub here is an AppleDouble shadow (._The Martian.epub) and must not count as an ebook" },
     { "path": "Becky Chambers/A Psalm for the Wild-Built", "audio": ["m4a"], "why": "m4a counts as audio; no ebook or marker" },
-    { "path": "Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within", "audio": ["mp3"], "why": "a hidden .beets sidecar whose name embeds .mp3 is ignored; no ebook, so flagged" }
+    { "path": "Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within", "audio": ["mp3"], "why": "a hidden .beets sidecar whose name embeds .mp3 is ignored; no ebook, so flagged" },
+    { "path": "Robin Hobb/Farseer Trilogy/1 - Assassin’s Apprentice", "audio": ["m4b"], "why": "the only file with 'ebook' in its name is an image (… [ebook].jpg); the folder name uses a non-ASCII apostrophe; flagged" }
   ],
   "covered": [
     { "path": "Adrian Tchaikovsky/Cage of Souls", "by": "ebook-in-folder", "detail": "Cage of Souls.epub beside the .m4b (the typical covered case)" },
@@ -29,7 +30,9 @@
     { "path": "Andy Weir", "why": "holds two flagged books beneath it" },
     { "path": "Dresden Files", "why": "top-level series container above a flagged book" },
     { "path": "Becky Chambers", "why": "holds a flagged book beneath it" },
-    { "path": "Becky Chambers/Wayfarers", "why": "series container above a flagged book" }
+    { "path": "Becky Chambers/Wayfarers", "why": "series container above a flagged book" },
+    { "path": "Robin Hobb", "why": "holds a flagged book beneath it" },
+    { "path": "Robin Hobb/Farseer Trilogy", "why": "series container above a flagged book" }
   ],
   "absent": [
     { "path": "Neal Stephenson", "why": "every descendant is covered, so it is neither flagged nor a container and must not be reported" },
@@ -38,6 +41,7 @@
     { "path": "Frank Herbert, Bill Ransom", "why": "its only book is covered, so it is not reported" },
     { "path": "Orson Scott Card", "why": "its only book is covered by a marker, so it is not reported" },
     { "path": "Ursula K. Le Guin/The Earthsea Trilogy", "why": "covered by its own .ebook_elsewhere marker, so it is not reported" },
-    { "path": "Unsorted", "why": "contains no audio anywhere, so it is never flagged" }
+    { "path": "Unsorted", "why": "contains no audio anywhere, so it is never flagged" },
+    { "path": "Robin Hobb/_Extras", "why": "holds only map images (one named '… [ebook].jpg'); no audio, so never flagged, and 'ebook' text in an image name is not an ebook" }
   ]
 }
