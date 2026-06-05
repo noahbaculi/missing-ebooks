@@ -8,7 +8,8 @@
     { "path": "Dresden Files/Dead Beat", "audio": ["mp3"], "why": "a .cue sheet sits beside the audio; .cue is not an ebook, so the folder is still flagged" },
     { "path": "Andy Weir/Artemis", "audio": ["mp3"], "why": "AppleDouble ._ files are present but ignored; no real ebook, so it is flagged" },
     { "path": "Andy Weir/The Martian", "audio": ["m4b"], "why": "the only .epub here is an AppleDouble shadow (._The Martian.epub) and must not count as an ebook" },
-    { "path": "Becky Chambers/A Psalm for the Wild-Built", "audio": ["m4a"], "why": "m4a counts as audio; no ebook or marker" }
+    { "path": "Becky Chambers/A Psalm for the Wild-Built", "audio": ["m4a"], "why": "m4a counts as audio; no ebook or marker" },
+    { "path": "Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within", "audio": ["mp3"], "why": "a hidden .beets sidecar whose name embeds .mp3 is ignored; no ebook, so flagged" }
   ],
   "covered": [
     { "path": "Adrian Tchaikovsky/Cage of Souls", "by": "ebook-in-folder", "detail": "Cage of Souls.epub beside the .m4b (the typical covered case)" },
@@ -27,7 +28,8 @@
     { "path": "Brandon Sanderson/The Mistborn Saga", "why": "series container above a flagged book" },
     { "path": "Andy Weir", "why": "holds two flagged books beneath it" },
     { "path": "Dresden Files", "why": "top-level series container above a flagged book" },
-    { "path": "Becky Chambers", "why": "holds a flagged book beneath it" }
+    { "path": "Becky Chambers", "why": "holds a flagged book beneath it" },
+    { "path": "Becky Chambers/Wayfarers", "why": "series container above a flagged book" }
   ],
   "absent": [
     { "path": "Neal Stephenson", "why": "every descendant is covered, so it is neither flagged nor a container and must not be reported" },
