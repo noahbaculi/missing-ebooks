@@ -6,7 +6,7 @@
     "excluded_dirs": []
   },
   "flagged": [
-    { "path": "Adrian Tchaikovsky/Elder Race", "audio": ["mp3"], "why": "audio present; no ebook or marker in this folder or any ancestor" },
+    { "path": "Adrian Tchaikovsky/Elder Race", "audio": ["mp3"], "why": "audio present; no ebook or marker in this folder or any ancestor; a .png cover sits beside the audio but images are not ebooks" },
     { "path": "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire", "audio": ["m4b"], "why": "deep author/series/book nesting with no coverage anywhere above; a hidden .beets sidecar whose name embeds .m4b is ignored" },
     { "path": "Dresden Files/01 - Storm Front", "audio": ["mp3"], "why": "the series sits at the top level with no author folder above it, and is still flagged" },
     { "path": "Dresden Files/Dead Beat", "audio": ["mp3"], "why": "a .cue sheet sits beside the audio; .cue is not an ebook, so the folder is still flagged" },
@@ -52,7 +52,7 @@
     { "path": "Orson Scott Card", "why": "its only book is covered by a marker, so it is not reported" },
     { "path": "Ursula K. Le Guin/The Earthsea Trilogy", "why": "covered by its own .ebook_elsewhere marker, so it is not reported" },
     { "path": "Unsorted", "why": "contains no audio anywhere, so it is never flagged" },
-    { "path": "Robin Hobb/_Extras", "why": "holds only map images (one named '… [ebook].jpg'); no audio, so never flagged, and 'ebook' text in an image name is not an ebook" },
+    { "path": "Robin Hobb/_Extras", "why": "holds only map images (.jpg/.jpeg/.webp, one named '… [ebook].jpg'); no audio, so never flagged, and neither an image extension nor 'ebook' text in an image name makes it an ebook" },
     { "path": "Arthur C. Clarke/_more_ebooks", "why": "holds ebooks but no audio; a sibling ebook stash, not coverage for the audio folders" },
     { "path": "Michael J. Sullivan", "why": "an author folder whose subtree has no audio anywhere; not flagged and not a container" },
     { "path": "Michael J. Sullivan/Riyria Revelations", "why": "an empty series folder (only a .gitkeep placeholder, an ignored dotfile); no audio, so absent" },

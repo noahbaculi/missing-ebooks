@@ -20,7 +20,7 @@ verify by hand.
 | Folder | Verdict | Pattern it exercises |
 | --- | --- | --- |
 | `Adrian Tchaikovsky/Cage of Souls` | covered | ebook (`.epub`) beside the audio, the typical covered case |
-| `Adrian Tchaikovsky/Elder Race` | flagged | audio (`.mp3`), no ebook |
+| `Adrian Tchaikovsky/Elder Race` | flagged | audio (`.mp3`), no ebook; a `.png` cover is not an ebook |
 | `Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire` | flagged | deep author / series / book nesting; a hidden `.beets` sidecar (name embeds `.m4b`) is ignored |
 | `Orson Scott Card/Space Boy` | covered | `.no_ebook` marker in the folder |
 | `Brandon Sanderson/The Mistborn Saga/4.5 - Allomancer Jak and the Pits of Eltania` | covered | `.ebook_elsewhere` marker beside the audio (in-folder coverage, the real shape this marker takes in the snapshot) |
@@ -37,7 +37,7 @@ verify by hand.
 | `Dresden Files/Dead Beat` | flagged | a `.cue` sheet beside the audio is not an ebook |
 | `Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within` | flagged | three hidden `.beets` sidecars (names embed `.mp3`) are all ignored |
 | `Robin Hobb/Farseer Trilogy/1 - Assassin’s Apprentice` | flagged | `[ebook]` in a `.jpg` name is not an ebook; non-ASCII apostrophe (U+2019) |
-| `Robin Hobb/_Extras` | absent | maps-only folder, no audio |
+| `Robin Hobb/_Extras` | absent | maps-only folder (`.jpg`/`.jpeg`/`.webp`), no audio |
 | `Arthur C. Clarke/Rendezvous with Rama` | flagged | a sibling `_more_ebooks` stash does not cover it |
 | `Margaret Atwood/The Handmaid's Tale/1 - The Handmaid's Tale` | flagged | two audio formats (`.m4b` + `.mp3`) reported together |
 | `Michael J. Sullivan/Riyria Revelations` | absent | empty subtree (`.gitkeep` only), no audio |
