@@ -1,0 +1,40 @@
+{
+  "_about": "Expected scanner findings for the curated fixture. Hand-authored from the rules in CONTEXT.md; this is the contract the scanner must satisfy. Paths are relative to the library root 'Audiobooks'. Read this file alone to know every expected finding: you do not need to walk the tree or open the example-nas snapshot.",
+  "library_root": "Audiobooks",
+  "flagged": [
+    { "path": "Adrian Tchaikovsky/Elder Race", "audio": ["mp3"], "why": "audio present; no ebook or marker in this folder or any ancestor" },
+    { "path": "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire", "audio": ["m4b"], "why": "deep author/series/book nesting with no coverage anywhere above" },
+    { "path": "Dresden Files/01 - Storm Front", "audio": ["mp3"], "why": "the series sits at the top level with no author folder above it, and is still flagged" },
+    { "path": "Andy Weir/Artemis", "audio": ["mp3"], "why": "AppleDouble ._ files are present but ignored; no real ebook, so it is flagged" },
+    { "path": "Andy Weir/The Martian", "audio": ["m4b"], "why": "the only .epub here is an AppleDouble shadow (._The Martian.epub) and must not count as an ebook" },
+    { "path": "Becky Chambers/A Psalm for the Wild-Built", "audio": ["m4a"], "why": "m4a counts as audio; no ebook or marker" }
+  ],
+  "covered": [
+    { "path": "Adrian Tchaikovsky/Cage of Souls", "by": "ebook-in-folder", "detail": "Cage of Souls.epub beside the .m4b (the typical covered case)" },
+    { "path": "Orson Scott Card/Space Boy", "by": "marker-in-folder", "detail": ".no_ebook" },
+    { "path": "Ursula K. Le Guin/The Earthsea Trilogy/A Wizard of Earthsea", "by": "ancestor-marker", "detail": ".ebook_elsewhere one level up at The Earthsea Trilogy" },
+    { "path": "Ursula K. Le Guin/The Earthsea Trilogy/The Tombs of Atuan", "by": "ancestor-marker", "detail": ".ebook_elsewhere one level up at The Earthsea Trilogy" },
+    { "path": "Frank Herbert, Bill Ransom/The Jesus Incident", "by": "ebook-in-folder", "detail": "the comma in the author name is data, not a delimiter; .epub present" },
+    { "path": "Neal Stephenson/Cryptonomicon", "by": "ebook-in-folder", "detail": "Cryptonomicon.pdf; pdf counts as an ebook" },
+    { "path": "Neal Stephenson/Snow Crash", "by": "ebook-in-folder", "detail": "Snow Crash.mobi; mobi counts as an ebook" },
+    { "path": "Cixin Liu/Remembrance of Earth's Past/1 - The Three-Body Problem", "by": "ancestor-ebook", "detail": "Remembrance of Earth's Past.epub at the collection level covers everything beneath it" },
+    { "path": "Cixin Liu/Remembrance of Earth's Past/2 - The Dark Forest", "by": "ancestor-ebook", "detail": "Remembrance of Earth's Past.epub at the collection level covers everything beneath it" }
+  ],
+  "containers": [
+    { "path": "Adrian Tchaikovsky", "why": "holds the flagged Elder Race beneath it" },
+    { "path": "Brandon Sanderson", "why": "holds a flagged book beneath it" },
+    { "path": "Brandon Sanderson/The Mistborn Saga", "why": "series container above a flagged book" },
+    { "path": "Andy Weir", "why": "holds two flagged books beneath it" },
+    { "path": "Dresden Files", "why": "top-level series container above a flagged book" },
+    { "path": "Becky Chambers", "why": "holds a flagged book beneath it" }
+  ],
+  "absent": [
+    { "path": "Neal Stephenson", "why": "every descendant is covered, so it is neither flagged nor a container and must not be reported" },
+    { "path": "Cixin Liu", "why": "every descendant is covered by the ancestor ebook, so it is not reported" },
+    { "path": "Cixin Liu/Remembrance of Earth's Past", "why": "the collection ebook covers both books, so the collection itself is not reported" },
+    { "path": "Frank Herbert, Bill Ransom", "why": "its only book is covered, so it is not reported" },
+    { "path": "Orson Scott Card", "why": "its only book is covered by a marker, so it is not reported" },
+    { "path": "Ursula K. Le Guin/The Earthsea Trilogy", "why": "covered by its own .ebook_elsewhere marker, so it is not reported" },
+    { "path": "Unsorted", "why": "contains no audio anywhere, so it is never flagged" }
+  ]
+}
