@@ -48,6 +48,8 @@
     { "path": "Ursula K. Le Guin/The Earthsea Trilogy", "why": "covered by its own .ebook_elsewhere marker, so it is not reported" },
     { "path": "Unsorted", "why": "contains no audio anywhere, so it is never flagged" },
     { "path": "Robin Hobb/_Extras", "why": "holds only map images (one named '… [ebook].jpg'); no audio, so never flagged, and 'ebook' text in an image name is not an ebook" },
-    { "path": "Arthur C. Clarke/_more_ebooks", "why": "holds ebooks but no audio; a sibling ebook stash, not coverage for the audio folders" }
+    { "path": "Arthur C. Clarke/_more_ebooks", "why": "holds ebooks but no audio; a sibling ebook stash, not coverage for the audio folders" },
+    { "path": "Michael J. Sullivan", "why": "an author folder whose subtree has no audio anywhere; not flagged and not a container" },
+    { "path": "Michael J. Sullivan/Riyria Revelations", "why": "an empty series folder (only a .gitkeep placeholder, an ignored dotfile); no audio, so absent" }
   ]
 }
