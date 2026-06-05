@@ -7,13 +7,13 @@
   },
   "flagged": [
     { "path": "Adrian Tchaikovsky/Elder Race", "audio": ["mp3"], "why": "audio present; no ebook or marker in this folder or any ancestor" },
-    { "path": "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire", "audio": ["m4b"], "why": "deep author/series/book nesting with no coverage anywhere above" },
+    { "path": "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire", "audio": ["m4b"], "why": "deep author/series/book nesting with no coverage anywhere above; a hidden .beets sidecar whose name embeds .m4b is ignored" },
     { "path": "Dresden Files/01 - Storm Front", "audio": ["mp3"], "why": "the series sits at the top level with no author folder above it, and is still flagged" },
     { "path": "Dresden Files/Dead Beat", "audio": ["mp3"], "why": "a .cue sheet sits beside the audio; .cue is not an ebook, so the folder is still flagged" },
     { "path": "Andy Weir/Artemis", "audio": ["mp3"], "why": "AppleDouble ._ files are present but ignored; no real ebook, so it is flagged" },
     { "path": "Andy Weir/The Martian", "audio": ["m4b"], "why": "the only .epub here is an AppleDouble shadow (._The Martian.epub) and must not count as an ebook" },
     { "path": "Becky Chambers/A Psalm for the Wild-Built", "audio": ["m4a"], "why": "m4a counts as audio; no ebook or marker" },
-    { "path": "Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within", "audio": ["mp3"], "why": "a hidden .beets sidecar whose name embeds .mp3 is ignored; no ebook, so flagged" },
+    { "path": "Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within", "audio": ["mp3"], "why": "three hidden .beets sidecars whose names embed .mp3 are all ignored; no ebook, so flagged" },
     { "path": "Robin Hobb/Farseer Trilogy/1 - Assassin’s Apprentice", "audio": ["m4b"], "why": "the only file with 'ebook' in its name is an image (… [ebook].jpg); the folder name uses a non-ASCII apostrophe; flagged" },
     { "path": "Arthur C. Clarke/Rendezvous with Rama", "audio": ["m4b"], "why": "the sibling _more_ebooks folder holds ebooks but does not cover this folder; coverage is in-folder or ancestor only, never sibling" },
     { "path": "Margaret Atwood/The Handmaid's Tale/1 - The Handmaid's Tale", "audio": ["m4b", "mp3"], "why": "two audio formats in one folder; both are reported; no ebook, so flagged" }

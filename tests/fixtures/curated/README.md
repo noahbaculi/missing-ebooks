@@ -21,7 +21,7 @@ verify by hand.
 | --- | --- | --- |
 | `Adrian Tchaikovsky/Cage of Souls` | covered | ebook (`.epub`) beside the audio, the typical covered case |
 | `Adrian Tchaikovsky/Elder Race` | flagged | audio (`.mp3`), no ebook |
-| `Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire` | flagged | deep author / series / book nesting |
+| `Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire` | flagged | deep author / series / book nesting; a hidden `.beets` sidecar (name embeds `.m4b`) is ignored |
 | `Orson Scott Card/Space Boy` | covered | `.no_ebook` marker in the folder |
 | `Brandon Sanderson/The Mistborn Saga/4.5 - Allomancer Jak and the Pits of Eltania` | covered | `.ebook_elsewhere` marker beside the audio (in-folder coverage, the real shape this marker takes in the snapshot) |
 | `Ursula K. Le Guin/The Earthsea Trilogy/*` | covered | `.ebook_elsewhere` marker one level up (ancestor coverage) |
@@ -35,7 +35,7 @@ verify by hand.
 | `Becky Chambers/A Psalm for the Wild-Built` | flagged | `.m4a` counts as audio |
 | `Unsorted` | absent | no audio anywhere, never flagged |
 | `Dresden Files/Dead Beat` | flagged | a `.cue` sheet beside the audio is not an ebook |
-| `Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within` | flagged | a hidden `.beets` sidecar (its name embeds `.mp3`) is ignored |
+| `Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within` | flagged | three hidden `.beets` sidecars (names embed `.mp3`) are all ignored |
 | `Robin Hobb/Farseer Trilogy/1 - Assassin’s Apprentice` | flagged | `[ebook]` in a `.jpg` name is not an ebook; non-ASCII apostrophe (U+2019) |
 | `Robin Hobb/_Extras` | absent | maps-only folder, no audio |
 | `Arthur C. Clarke/Rendezvous with Rama` | flagged | a sibling `_more_ebooks` stash does not cover it |
