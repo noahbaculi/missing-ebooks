@@ -90,13 +90,57 @@ ABS builds books from the directory tree, described in the
 
 These never count as audio or ebook content:
 
-- Cover images (the `SupportedImageTypes` list)
+- Cover images (the `SupportedImageTypes` list: `png`, `jpg`, `jpeg`, `webp`,
+  verified in `globals.js` on `master`, 2026-06-05)
 - Text sidecars: `.txt`, `.nfo`
 - Metadata sidecars: `.opf`, `metadata.json`, `metadata.abs`, plus `.xml` and
   `.json`
 
 A `.opf` is metadata, not an ebook. A folder whose only book-like file is a `.opf`
 has no ebook as far as ABS is concerned.
+
+## Files and Directories Skipped Before Classification
+
+Classification by extension is the second stage. Before it, ABS drops some entries
+from the scan entirely, so they're never classified at all. The rule lives in
+`shouldIgnoreFile` in `server/utils/fileUtils.js`, verified on `master`
+(2026-06-05):
+
+```javascript
+if (Path.basename(path).startsWith(".")) {
+  return "dotfile";
+}
+if (path.split("/").find((p) => p.startsWith("."))) {
+  return "dotpath";
+}
+```
+
+The first check drops any file whose own name starts with a dot. The second drops
+any file sitting under a directory whose name starts with a dot. So a macOS
+AppleDouble shadow such as `._The Martian.epub` is skipped by the dotfile rule: it
+carries an `.epub` extension but never reaches classification. Everything inside a
+`.git`, `.@__thumb`, or `.stfolder` directory is skipped by the dotpath rule. ABS
+has no separate AppleDouble handling; the leading dot is what catches those files.
+
+One vendor name is hard-coded alongside the dot rules:
+
+```javascript
+const includeAnywhereIgnore = ["@eaDir"];
+```
+
+`@eaDir` is a Synology thumbnail directory. It doesn't start with a dot, so the
+dotpath rule misses it, and ABS names it explicitly. No other vendor name
+(`#recycle`, `Thumbs.db`) is hard-coded; anything starting with a dot is already
+covered.
+
+> This tool follows the same two-part rule. A file whose name starts with a dot is
+> never audio or an ebook (the marker names `.no_ebook` and `.ebook_elsewhere` are
+> matched first, so markers still count as coverage). A directory whose name starts
+> with a dot is skipped without descending, matching the dotpath rule, so
+> `.@__thumb` needs no manual exclude entry. Non-dot vendor names such as `@eaDir`
+> and `#recycle` stay in the configurable `excluded_dirs` list rather than being
+> hard-coded, since that list is the general-purpose version of the single name ABS
+> bakes in.
 
 ## Enrichment vs Classification
 
