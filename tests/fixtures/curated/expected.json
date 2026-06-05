@@ -10,7 +10,8 @@
     { "path": "Andy Weir/The Martian", "audio": ["m4b"], "why": "the only .epub here is an AppleDouble shadow (._The Martian.epub) and must not count as an ebook" },
     { "path": "Becky Chambers/A Psalm for the Wild-Built", "audio": ["m4a"], "why": "m4a counts as audio; no ebook or marker" },
     { "path": "Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within", "audio": ["mp3"], "why": "a hidden .beets sidecar whose name embeds .mp3 is ignored; no ebook, so flagged" },
-    { "path": "Robin Hobb/Farseer Trilogy/1 - Assassin’s Apprentice", "audio": ["m4b"], "why": "the only file with 'ebook' in its name is an image (… [ebook].jpg); the folder name uses a non-ASCII apostrophe; flagged" }
+    { "path": "Robin Hobb/Farseer Trilogy/1 - Assassin’s Apprentice", "audio": ["m4b"], "why": "the only file with 'ebook' in its name is an image (… [ebook].jpg); the folder name uses a non-ASCII apostrophe; flagged" },
+    { "path": "Arthur C. Clarke/Rendezvous with Rama", "audio": ["m4b"], "why": "the sibling _more_ebooks folder holds ebooks but does not cover this folder; coverage is in-folder or ancestor only, never sibling" }
   ],
   "covered": [
     { "path": "Adrian Tchaikovsky/Cage of Souls", "by": "ebook-in-folder", "detail": "Cage of Souls.epub beside the .m4b (the typical covered case)" },
@@ -32,7 +33,8 @@
     { "path": "Becky Chambers", "why": "holds a flagged book beneath it" },
     { "path": "Becky Chambers/Wayfarers", "why": "series container above a flagged book" },
     { "path": "Robin Hobb", "why": "holds a flagged book beneath it" },
-    { "path": "Robin Hobb/Farseer Trilogy", "why": "series container above a flagged book" }
+    { "path": "Robin Hobb/Farseer Trilogy", "why": "series container above a flagged book" },
+    { "path": "Arthur C. Clarke", "why": "holds a flagged book beneath it" }
   ],
   "absent": [
     { "path": "Neal Stephenson", "why": "every descendant is covered, so it is neither flagged nor a container and must not be reported" },
@@ -42,6 +44,7 @@
     { "path": "Orson Scott Card", "why": "its only book is covered by a marker, so it is not reported" },
     { "path": "Ursula K. Le Guin/The Earthsea Trilogy", "why": "covered by its own .ebook_elsewhere marker, so it is not reported" },
     { "path": "Unsorted", "why": "contains no audio anywhere, so it is never flagged" },
-    { "path": "Robin Hobb/_Extras", "why": "holds only map images (one named '… [ebook].jpg'); no audio, so never flagged, and 'ebook' text in an image name is not an ebook" }
+    { "path": "Robin Hobb/_Extras", "why": "holds only map images (one named '… [ebook].jpg'); no audio, so never flagged, and 'ebook' text in an image name is not an ebook" },
+    { "path": "Arthur C. Clarke/_more_ebooks", "why": "holds ebooks but no audio; a sibling ebook stash, not coverage for the audio folders" }
   ]
 }
