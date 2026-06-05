@@ -5,6 +5,7 @@
     { "path": "Adrian Tchaikovsky/Elder Race", "audio": ["mp3"], "why": "audio present; no ebook or marker in this folder or any ancestor" },
     { "path": "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire", "audio": ["m4b"], "why": "deep author/series/book nesting with no coverage anywhere above" },
     { "path": "Dresden Files/01 - Storm Front", "audio": ["mp3"], "why": "the series sits at the top level with no author folder above it, and is still flagged" },
+    { "path": "Dresden Files/Dead Beat", "audio": ["mp3"], "why": "a .cue sheet sits beside the audio; .cue is not an ebook, so the folder is still flagged" },
     { "path": "Andy Weir/Artemis", "audio": ["mp3"], "why": "AppleDouble ._ files are present but ignored; no real ebook, so it is flagged" },
     { "path": "Andy Weir/The Martian", "audio": ["m4b"], "why": "the only .epub here is an AppleDouble shadow (._The Martian.epub) and must not count as an ebook" },
     { "path": "Becky Chambers/A Psalm for the Wild-Built", "audio": ["m4a"], "why": "m4a counts as audio; no ebook or marker" }
