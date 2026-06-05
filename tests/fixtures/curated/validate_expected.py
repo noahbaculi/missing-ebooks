@@ -19,7 +19,7 @@ import json
 import os
 import sys
 
-AUDIO_EXTS = {".mp3", ".m4a", ".m4b"}
+AUDIO_EXTS = {".mp3", ".m4a", ".m4b", ".flac"}
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXPECTED = os.path.join(HERE, "expected.json")
 

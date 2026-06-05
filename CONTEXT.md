@@ -7,7 +7,10 @@ hold audio but no ebook, so the gaps can be found and filled.
 
 **Library root**:
 A top-level directory that gets scanned and rendered as its own tree. There can
-be more than one. Every folder the tool reports belongs to exactly one root.
+be more than one. Every folder the tool reports belongs to exactly one root. A
+root can itself be flagged: when it directly holds uncovered audio (loose files
+with no author or book folder beneath it), the root is surfaced as a flagged node
+at the top of its tree rather than skipped.
 _Avoid_: library, collection.
 
 **Node**:
@@ -17,13 +20,17 @@ search links. A UI exclude action is deferred to a later increment.
 
 **Flagged folder**:
 A folder that directly contains at least one audio file and is not covered by an
-ebook or marker. These are the gaps the tool exists to surface.
+ebook or marker. These are the gaps the tool exists to surface. A library root
+counts as such a folder: loose, uncovered audio sitting directly in a root flags
+the root itself.
 _Avoid_: missing folder, hit, match.
 
 **Container**:
-A node that appears only because it holds flagged folders beneath it (for example
-an author or series folder with no audio of its own). It is still actionable: in
-the reference data, the real exclude and marker targets are author/series
+A folder that directly holds no audio and appears in a tree only because flagged
+folders sit somewhere beneath it (for example an author or series folder). Holding
+no direct audio is the defining trait, and it is what separates a container from a
+flagged folder, so a node is never both at once. A container is still actionable:
+in the reference data, the real exclude and marker targets are author/series
 containers, not individual book folders.
 _Avoid_: parent, branch, intermediate node.
 
