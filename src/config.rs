@@ -13,7 +13,9 @@ use thiserror::Error;
 /// rendering is wired in a later increment.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SearchLink {
+    /// Text shown on the link button.
     pub label: String,
+    /// URL template; `{query}` is replaced with the encoded folder name.
     pub url: String,
 }
 
@@ -21,14 +23,23 @@ pub struct SearchLink {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    /// Library roots to scan. Each is rendered as its own tree.
     pub library_roots: Vec<PathBuf>,
+    /// Address the HTTP server binds to.
     pub bind: String,
+    /// HTTP listen port.
     pub port: u16,
+    /// Scan-cache staleness backstop, in seconds.
     pub ttl_seconds: u64,
+    /// Audio extensions counted as audio, compared case-insensitively.
     pub audio_exts: Vec<String>,
+    /// Ebook extensions counted as coverage, compared case-insensitively.
     pub ebook_exts: Vec<String>,
+    /// Exact directory names pruned anywhere in the tree (case-insensitive).
     pub excluded_dirs: Vec<String>,
+    /// Glob patterns matched against each folder's root-relative path.
     pub exclude_globs: Vec<String>,
+    /// Search-link templates rendered beside each flagged folder.
     pub search_links: Vec<SearchLink>,
 }
 
@@ -67,16 +78,23 @@ impl Default for Config {
 /// Failures while resolving config.
 #[derive(Debug, Error)]
 pub enum ConfigError {
+    /// The config file could not be read from disk.
     #[error("could not read config file {path}: {source}")]
     Read {
+        /// Path that could not be read.
         path: PathBuf,
+        /// Underlying IO error.
         source: std::io::Error,
     },
+    /// The config file is not valid TOML, or it carries an unknown key.
     #[error("could not parse config file {path}: {source}")]
     Parse {
+        /// Path that failed to parse.
         path: PathBuf,
+        /// Underlying TOML parse error.
         source: toml::de::Error,
     },
+    /// No library roots were set in any layer.
     #[error(
         "no library roots configured. Set MISSING_EBOOKS_LIBRARY_ROOTS or add \
          `library_roots` to config.toml (run with --print-config for a template)."

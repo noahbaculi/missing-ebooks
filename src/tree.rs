@@ -27,6 +27,11 @@ pub struct Node {
 
 /// Build the forest of top-level nodes for one root. `root_name` names the node
 /// emitted when the root itself is flagged by loose root audio (see ADR-0005).
+///
+/// Each path in `flagged` is expected to be root-relative, as the scanner
+/// produces it. Non-normal components (a leading `/` or `..`) are dropped, so an
+/// absolute path would lose its prefix.
+#[must_use]
 pub fn build(root_name: &str, flagged: &[PathBuf]) -> Vec<Node> {
     let mut roots: Vec<Node> = Vec::new();
     let mut root_flagged = false;

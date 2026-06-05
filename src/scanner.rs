@@ -24,9 +24,13 @@ pub const MARKERS: [&str; 2] = [".no_ebook", ".ebook_elsewhere"];
 /// string lists cannot be passed in the wrong order. The caller builds this from
 /// a `Config`; the scanner stays config-agnostic so its tests stay light.
 pub struct ScanInputs<'a> {
+    /// Audio extensions; the leading dot is optional and case is ignored.
     pub audio_exts: &'a [String],
+    /// Ebook extensions that count as coverage.
     pub ebook_exts: &'a [String],
+    /// Exact directory names to prune (case-insensitive).
     pub excluded_dirs: &'a [String],
+    /// Glob patterns that prune a matching folder and its whole subtree.
     pub exclude_globs: &'a [String],
 }
 
@@ -35,13 +39,20 @@ pub struct ScanInputs<'a> {
 /// `ScanSettingsError` rather than a `globset::Error`.
 #[derive(Debug, Error)]
 pub enum ScanSettingsError {
+    /// One exclude-glob pattern is not a valid glob.
     #[error("invalid exclude glob {pattern:?}: {source}")]
     InvalidGlob {
+        /// The offending glob pattern.
         pattern: String,
+        /// Underlying glob-compile error.
         source: globset::Error,
     },
+    /// The validated patterns could not be assembled into a match set.
     #[error("could not compile the exclude-glob set: {source}")]
-    GlobSet { source: globset::Error },
+    GlobSet {
+        /// Underlying glob-set build error.
+        source: globset::Error,
+    },
 }
 
 /// Prepared, normalized inputs for one scan.
@@ -120,6 +131,7 @@ fn classify_file(name: &OsStr, settings: &ScanSettings) -> FileKind {
 
 /// Walk `root` and return flagged folders as paths relative to `root`. Order is
 /// unspecified; the tree builder sorts.
+#[must_use]
 pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<PathBuf> {
     let mut flagged = Vec::new();
     visit(root, root, settings, &mut flagged);
