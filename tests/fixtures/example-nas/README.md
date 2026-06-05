@@ -1,6 +1,6 @@
-# jane-nas library snapshot
+# example-nas library snapshot
 
-A frozen, machine-readable listing of the real audiobook tree on the NAS, so the
+A frozen, machine-readable listing of a real audiobook tree on a NAS, so the
 scanner can be developed and tested on a machine that has no access to the mount.
 
 ## What is here
@@ -15,16 +15,22 @@ The snapshot holds names and extensions only, no file contents. Coverage logic
 keys off which files exist and what their extensions are (see
 [`CONTEXT.md`](../../../CONTEXT.md)), so empty files are enough to exercise it.
 
+For a limited-context reader: this README, with the counts under "Structure and
+quirks" below, is enough to understand the tree's shape. You do not need to load
+`audiobooks.snapshot` (700 KB+) to reason about it. For small, hand-checkable
+cases with known expected verdicts, use [`../curated/`](../curated/) instead.
+
 ## Where it came from
 
-- Source mount: CIFS share `//192.168.0.210/pool` at `/mnt/jane-nas`.
-- Library root: `/mnt/jane-nas/Entertainment/Audiobooks`.
+- Source mount: a CIFS/SMB share mounted at `/mnt/example-nas` (host and share
+  name scrubbed).
+- Library root: `/mnt/example-nas/Entertainment/Audiobooks`.
 - Captured: 2026-06-04. 126 top-level entries, 900 directories, 7,902 files.
 
 To regenerate from the NAS:
 
 ```bash
-cd /mnt/jane-nas/Entertainment/Audiobooks
+cd /mnt/example-nas/Entertainment/Audiobooks
 find . -mindepth 1 -printf '%y\t%P\n' | LC_ALL=C sort -t$'\t' -k2 > audiobooks.snapshot
 ```
 
