@@ -16,7 +16,8 @@
     { "path": "Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within", "audio": ["mp3"], "why": "three hidden .beets sidecars whose names embed .mp3 are all ignored; no ebook, so flagged" },
     { "path": "Robin Hobb/Farseer Trilogy/1 - Assassin’s Apprentice", "audio": ["m4b"], "why": "the only file with 'ebook' in its name is an image (… [ebook].jpg); the folder name uses a non-ASCII apostrophe; flagged" },
     { "path": "Arthur C. Clarke/Rendezvous with Rama", "audio": ["m4b"], "why": "the sibling _more_ebooks folder holds ebooks but does not cover this folder; coverage is in-folder or ancestor only, never sibling" },
-    { "path": "Margaret Atwood/The Handmaid's Tale/1 - The Handmaid's Tale", "audio": ["m4b", "mp3"], "why": "two audio formats in one folder; both are reported; no ebook, so flagged" }
+    { "path": "Margaret Atwood/The Handmaid's Tale/1 - The Handmaid's Tale", "audio": ["m4b", "mp3"], "why": "two audio formats in one folder; both are reported; no ebook, so flagged" },
+    { "path": "James Clear/Atomic Habits (Unabridged)", "audio": ["m4b"], "why": "the abridged exclude glob **/*(abridged)* must NOT match '(Unabridged)' even though 'abridged' is a substring of it; the folder is scanned normally and flagged, not pruned. Synthetic: the snapshot has '(Unabridged)' only in file names, never folder names." }
   ],
   "covered": [
     { "path": "Adrian Tchaikovsky/Cage of Souls", "by": "ebook-in-folder", "detail": "Cage of Souls.epub beside the .m4b (the typical covered case)" },
@@ -42,7 +43,8 @@
     { "path": "Robin Hobb/Farseer Trilogy", "why": "series container above a flagged book" },
     { "path": "Arthur C. Clarke", "why": "holds a flagged book beneath it" },
     { "path": "Margaret Atwood", "why": "holds a flagged book beneath it" },
-    { "path": "Margaret Atwood/The Handmaid's Tale", "why": "series container above a flagged book" }
+    { "path": "Margaret Atwood/The Handmaid's Tale", "why": "series container above a flagged book" },
+    { "path": "James Clear", "why": "holds a flagged book beneath it" }
   ],
   "absent": [
     { "path": "Neal Stephenson", "why": "every descendant is covered, so it is neither flagged nor a container and must not be reported" },
@@ -63,6 +65,7 @@
   ],
   "notes": [
     "missing_ebooks.txt at the library root is the reference tool's own output and must be ignored.",
-    "The ancestor-coverage cases (Cixin Liu, Earthsea) and the AppleDouble-only-ebook case (The Martian) are synthetic: the real snapshot has no such instance, so these defend the spec rule rather than reproduce observed data."
+    "The ancestor-coverage cases (Cixin Liu, Earthsea) and the AppleDouble-only-ebook case (The Martian) are synthetic: the real snapshot has no such instance, so these defend the spec rule rather than reproduce observed data.",
+    "James Clear/Atomic Habits (Unabridged) is synthetic: the snapshot has '(Unabridged)' only in file names, never folder names. It guards that the abridged exclude glob **/*(abridged)* does not over-match the substring 'abridged' inside 'unabridged'; the folder must be flagged, not excluded."
   ]
 }

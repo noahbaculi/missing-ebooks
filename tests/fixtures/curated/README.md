@@ -42,6 +42,7 @@ verify by hand.
 | `Margaret Atwood/The Handmaid's Tale/1 - The Handmaid's Tale` | flagged | two audio formats (`.m4b` + `.mp3`) reported together |
 | `Michael J. Sullivan/Riyria Revelations` | absent | empty subtree (`.gitkeep` only), no audio |
 | `Christopher Paolini/Inheritance Cycle (Abridged)` | excluded | `**/*(abridged)*` glob prunes the subtree (ADR-0001) |
+| `James Clear/Atomic Habits (Unabridged)` | flagged | the `**/*(abridged)*` glob must not match `(Unabridged)`; the folder is scanned, not pruned (synthetic) |
 | `missing_ebooks.txt` (root) | ignored | the reference tool's own output file |
 
 The verdicts follow the rules in [`CONTEXT.md`](../../../CONTEXT.md) and are the
@@ -52,8 +53,9 @@ contract the scanner must satisfy. When the scanner changes a rule, update
 `config` is the configuration the whole expected output assumes (the abridged
 exclude glob). `excluded` lists folders an exclusion rule drops, pruning their
 subtree. `notes` holds assertions that are not tied to a single folder, such as
-the root output file being ignored, and a record that the ancestor-coverage and
-AppleDouble-only-ebook cases are synthetic: the real snapshot has no such
-instance, so they defend a spec rule rather than reproduce observed data. A
+the root output file being ignored, and a record that the ancestor-coverage,
+AppleDouble-only-ebook, and `(Unabridged)`-glob-guard cases are synthetic: the
+real snapshot has no such instance, so they defend a spec rule rather than
+reproduce observed data. A
 helper, `validate_expected.py`, checks that `expected.json` and the tree stay
 consistent.
