@@ -33,7 +33,26 @@ verify by hand.
 | `Cixin Liu/Remembrance of Earth's Past/*` | covered | one ebook at the collection level covers everything beneath |
 | `Becky Chambers/A Psalm for the Wild-Built` | flagged | `.m4a` counts as audio |
 | `Unsorted` | absent | no audio anywhere, never flagged |
+| `Dresden Files/Dead Beat` | flagged | a `.cue` sheet beside the audio is not an ebook |
+| `Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within` | flagged | a hidden `.beets` sidecar (its name embeds `.mp3`) is ignored |
+| `Robin Hobb/Farseer Trilogy/1 - Assassin’s Apprentice` | flagged | `[ebook]` in a `.jpg` name is not an ebook; non-ASCII apostrophe (U+2019) |
+| `Robin Hobb/_Extras` | absent | maps-only folder, no audio |
+| `Arthur C. Clarke/Rendezvous with Rama` | flagged | a sibling `_more_ebooks` stash does not cover it |
+| `Margaret Atwood/The Handmaid's Tale/1 - The Handmaid's Tale` | flagged | two audio formats (`.m4b` + `.mp3`) reported together |
+| `Michael J. Sullivan/Riyria Revelations` | absent | empty subtree (`.gitkeep` only), no audio |
+| `Christopher Paolini/Inheritance Cycle (Abridged)` | excluded | `**/*(abridged)*` glob prunes the subtree (ADR-0001) |
+| `missing_ebooks.txt` (root) | ignored | the reference tool's own output file |
 
 The verdicts follow the rules in [`CONTEXT.md`](../../../CONTEXT.md) and are the
 contract the scanner must satisfy. When the scanner changes a rule, update
 `expected.json` in the same change.
+
+`expected.json` also carries three fields beyond the per-folder verdicts.
+`config` is the configuration the whole expected output assumes (the abridged
+exclude glob). `excluded` lists folders an exclusion rule drops, pruning their
+subtree. `notes` holds assertions that are not tied to a single folder, such as
+the root output file being ignored, and a record that the ancestor-coverage and
+AppleDouble-only-ebook cases are synthetic: the real snapshot has no such
+instance, so they defend a spec rule rather than reproduce observed data. A
+helper, `validate_expected.py`, checks that `expected.json` and the tree stay
+consistent.
