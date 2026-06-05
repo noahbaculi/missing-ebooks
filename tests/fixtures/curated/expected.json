@@ -1,6 +1,10 @@
 {
   "_about": "Expected scanner findings for the curated fixture. Hand-authored from the rules in CONTEXT.md; this is the contract the scanner must satisfy. Paths are relative to the library root 'Audiobooks'. Read this file alone to know every expected finding: you do not need to walk the tree or open the example-nas snapshot.",
   "library_root": "Audiobooks",
+  "config": {
+    "exclude_globs": ["**/*(abridged)*"],
+    "excluded_dirs": []
+  },
   "flagged": [
     { "path": "Adrian Tchaikovsky/Elder Race", "audio": ["mp3"], "why": "audio present; no ebook or marker in this folder or any ancestor" },
     { "path": "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire", "audio": ["m4b"], "why": "deep author/series/book nesting with no coverage anywhere above" },
@@ -50,6 +54,10 @@
     { "path": "Robin Hobb/_Extras", "why": "holds only map images (one named '… [ebook].jpg'); no audio, so never flagged, and 'ebook' text in an image name is not an ebook" },
     { "path": "Arthur C. Clarke/_more_ebooks", "why": "holds ebooks but no audio; a sibling ebook stash, not coverage for the audio folders" },
     { "path": "Michael J. Sullivan", "why": "an author folder whose subtree has no audio anywhere; not flagged and not a container" },
-    { "path": "Michael J. Sullivan/Riyria Revelations", "why": "an empty series folder (only a .gitkeep placeholder, an ignored dotfile); no audio, so absent" }
+    { "path": "Michael J. Sullivan/Riyria Revelations", "why": "an empty series folder (only a .gitkeep placeholder, an ignored dotfile); no audio, so absent" },
+    { "path": "Christopher Paolini", "why": "its only series is excluded by the abridged glob, so nothing beneath it is reported" }
+  ],
+  "excluded": [
+    { "path": "Christopher Paolini/Inheritance Cycle (Abridged)", "by": "exclude_glob", "pattern": "**/*(abridged)*", "why": "matches the case-insensitive abridged glob; folder and entire subtree pruned (ADR-0001). Without the glob both books would be flagged." }
   ]
 }
