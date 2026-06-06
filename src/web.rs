@@ -13,7 +13,9 @@ use axum::routing::{get, post};
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use serde::Deserialize;
 
+use crate::config::SearchLink;
 use crate::marker::Marker;
+use crate::query::clean_query;
 use crate::service::{self, FlaggedView, RootSection, RootState};
 use crate::state::AppState;
 use crate::tree::Node;
@@ -33,6 +35,8 @@ summary { cursor: pointer; }
 .error { color: #b00000; }
 form.mark { display: inline; margin-left: 0.5rem; }
 form.mark button { font-size: 0.75em; margin-left: 0.25rem; cursor: pointer; }
+span.links { margin-left: 0.5rem; }
+span.links a { font-size: 0.75em; margin-left: 0.25rem; }
 ";
 
 /// The body of a marker write: which root, which folder, and which marker.
@@ -55,17 +59,18 @@ pub fn router(state: Arc<AppState>) -> Router {
 
 async fn index(State(state): State<Arc<AppState>>) -> Html<String> {
     let view = service::current_view(&state).await;
-    Html(page(&view).into_string())
+    Html(page(&view, &state.config.search_links).into_string())
 }
 
 async fn mark(State(state): State<Arc<AppState>>, Form(req): Form<MarkRequest>) -> Html<String> {
+    let links = &state.config.search_links;
     match service::mark(&state, req.root, &req.rel, req.kind).await {
-        Ok(view) => Html(render_section(&view[req.root], req.root, None).into_string()),
+        Ok(view) => Html(render_section(&view[req.root], req.root, None, links).into_string()),
         Err(err) => {
             let message = format!("Could not mark {}: {err}", req.rel);
             let view = service::current_view(&state).await;
             let markup = match view.get(req.root) {
-                Some(section) => render_section(section, req.root, Some(&message)),
+                Some(section) => render_section(section, req.root, Some(&message), links),
                 None => html! { section.root { p.error { (message) } } },
             };
             Html(markup.into_string())
@@ -86,7 +91,7 @@ async fn htmx_script() -> impl IntoResponse {
     )
 }
 
-fn page(view: &FlaggedView) -> Markup {
+fn page(view: &FlaggedView, links: &[SearchLink]) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -102,7 +107,7 @@ fn page(view: &FlaggedView) -> Markup {
                     button type="submit" { "Rescan" }
                 }
                 @for (root, section) in view.iter().enumerate() {
-                    (render_section(section, root, None))
+                    (render_section(section, root, None, links))
                 }
                 script src="/static/htmx.min.js" {}
             }
@@ -110,7 +115,12 @@ fn page(view: &FlaggedView) -> Markup {
     }
 }
 
-fn render_section(section: &RootSection, root: usize, error: Option<&str>) -> Markup {
+fn render_section(
+    section: &RootSection,
+    root: usize,
+    error: Option<&str>,
+    links: &[SearchLink],
+) -> Markup {
     html! {
         section.root {
             h2 { (section.path) }
@@ -120,7 +130,7 @@ fn render_section(section: &RootSection, root: usize, error: Option<&str>) -> Ma
             @match &section.state {
                 RootState::Forest(nodes) => {
                     ul.tree {
-                        @for node in nodes { (render_node(node, root)) }
+                        @for node in nodes { (render_node(node, root, links)) }
                     }
                 }
                 RootState::Clean => {
@@ -134,13 +144,14 @@ fn render_section(section: &RootSection, root: usize, error: Option<&str>) -> Ma
     }
 }
 
-fn render_node(node: &Node, root: usize) -> Markup {
+fn render_node(node: &Node, root: usize, links: &[SearchLink]) -> Markup {
     html! {
         @if node.children.is_empty() {
             li.node.flagged[node.flagged] {
                 span.name { (node.name) }
                 span.rel { (node.rel_path) }
                 (marker_buttons(root, &node.rel_path))
+                (search_links(links, &node.name))
             }
         } @else {
             li.node {
@@ -149,9 +160,10 @@ fn render_node(node: &Node, root: usize) -> Markup {
                         span.name { (node.name) }
                         span.rel { (node.rel_path) }
                         (marker_buttons(root, &node.rel_path))
+                        (search_links(links, &node.name))
                     }
                     ul.tree {
-                        @for child in &node.children { (render_node(child, root)) }
+                        @for child in &node.children { (render_node(child, root, links)) }
                     }
                 }
             }
@@ -174,6 +186,20 @@ fn marker_buttons(root: usize, rel: &str) -> Markup {
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"ebook_elsewhere"}"#)
                 onclick="event.stopPropagation()" { "Ebook elsewhere" }
+        }
+    }
+}
+
+fn search_links(links: &[SearchLink], name: &str) -> Markup {
+    html! {
+        @if !links.is_empty() {
+            @let query = urlencoding::encode(&clean_query(name)).into_owned();
+            span.links {
+                @for link in links {
+                    a href=(link.url.replace("{query}", &query))
+                        target="_blank" rel="noopener noreferrer" { (link.label) }
+                }
+            }
         }
     }
 }
@@ -259,6 +285,22 @@ mod tests {
         assert!(body.contains(r#"hx-post="/mark""#));
         assert!(body.contains(r#"src="/static/htmx.min.js""#));
         assert!(body.contains("No ebook"));
+    }
+
+    #[tokio::test]
+    async fn index_renders_the_search_links() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book (Unabridged)/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // Goodreads ships as a default link. The (Unabridged) suffix is stripped from
+        // the query, so the href ends in `q=Book`, and the links open in a new tab.
+        assert!(body.contains(r#"target="_blank""#));
+        assert!(body.contains("https://www.goodreads.com/search?q=Book"));
+        assert!(body.contains("Goodreads"));
     }
 
     #[tokio::test]
