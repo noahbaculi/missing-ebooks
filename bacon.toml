@@ -1,0 +1,29 @@
+# Dev-only bacon jobs for iterating on the UI. Not part of the build or tests.
+#
+# `bacon explore` rebuilds and reruns the seeded UI exploration harness
+# (examples/explore.rs) whenever src/, examples/, or the vendored assets/
+# change, serving it on a fixed port so a browser tab and the Playwright MCP
+# keep a stable URL across restarts. CSS lives in assets/ and is baked in with
+# include_str!, so a style edit is a full rebuild; watching assets/ covers it.
+#
+# Switch scenarios by editing the command below (mixed-forest, clean-error,
+# root-flagged, pre-marked), or copy the job to a second name on another port
+# (13381, 13382, ...) to serve several scenarios at once for side-by-side review.
+# 13380 sits one above the app's default 13379 (ADR-0011), so this dev job never
+# fights a real instance running on the default port.
+
+[jobs.explore]
+command = [
+    "cargo", "run", "--example", "explore", "--",
+    "mixed-forest", "--port", "13380",
+]
+need_stdout = true
+allow_warnings = true
+# A web server never exits on its own, so run it in the foreground and restart
+# it on change rather than waiting for it to finish.
+background = false
+on_change_strategy = "kill_then_restart"
+# SIGINT, not the default kill, so the example's Ctrl-C handler runs its
+# graceful shutdown and drops the TempDir instead of leaking it each restart.
+kill = ["kill", "-s", "INT"]
+watch = ["src", "examples", "assets"]
