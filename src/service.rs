@@ -4,11 +4,13 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Instant;
 
 use serde::Serialize;
 
 use crate::config::Config;
 use crate::scanner::{self, ScanSettings};
+use crate::state::{AppState, CacheEntry};
 use crate::tree::{self, Node};
 
 /// The whole read view: one section per configured library root, in config order.
@@ -33,6 +35,37 @@ pub enum RootState {
     Clean,
     /// The root could not be scanned (missing, not a directory, or unreadable).
     Error(String),
+}
+
+/// Return the cached view if it is still fresh, otherwise scan and cache it.
+/// Single-flight: the mutex is held across the scan, so concurrent stale readers
+/// block, then re-check and return the view the first scan stored.
+pub async fn current_view(state: &AppState) -> Arc<FlaggedView> {
+    let mut guard = state.cache.entry.lock().await;
+    if let Some(entry) = guard.as_ref()
+        && let Some(ttl) = state.cache.ttl
+        && entry.stored_at.elapsed() < ttl
+    {
+        return Arc::clone(&entry.view);
+    }
+    let view = Arc::new(build_view(state.config.as_ref(), &state.settings).await);
+    *guard = Some(CacheEntry {
+        stored_at: Instant::now(),
+        view: Arc::clone(&view),
+    });
+    view
+}
+
+/// Force a fresh scan, store it, and return it, ignoring the TTL. Shares the
+/// cache mutex with `current_view`, so a rescan and a stale read cannot both scan.
+pub async fn rescan(state: &AppState) -> Arc<FlaggedView> {
+    let mut guard = state.cache.entry.lock().await;
+    let view = Arc::new(build_view(state.config.as_ref(), &state.settings).await);
+    *guard = Some(CacheEntry {
+        stored_at: Instant::now(),
+        view: Arc::clone(&view),
+    });
+    view
 }
 
 /// Build the read view for every configured root, in config order. Each root is
@@ -163,6 +196,62 @@ mod tests {
         let view = build_view(&cfg, &test_settings()).await;
         assert!(matches!(view[0].state, RootState::Error(_)));
         assert!(matches!(view[1].state, RootState::Forest(_)));
+    }
+
+    fn state_for(root: &Path, ttl_seconds: u64) -> AppState {
+        let cfg = test_config(vec![root.to_path_buf()], ttl_seconds);
+        let defaults = Config::default();
+        let settings = ScanSettings::compile(crate::scanner::ScanInputs {
+            audio_exts: &defaults.audio_exts,
+            ebook_exts: &defaults.ebook_exts,
+            excluded_dirs: &[],
+            exclude_globs: &[],
+        })
+        .unwrap();
+        AppState::new(cfg, settings)
+    }
+
+    #[tokio::test]
+    async fn cache_hit_within_ttl_returns_the_same_view() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = state_for(dir.path(), 600);
+
+        let first = current_view(&state).await;
+        // Cover the gap on disk after the first scan.
+        touch(&dir.path().join("Book/Book.epub"));
+        let second = current_view(&state).await;
+
+        assert!(Arc::ptr_eq(&first, &second), "a fresh cache must not rescan");
+    }
+
+    #[tokio::test]
+    async fn ttl_zero_rescans_every_call() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = state_for(dir.path(), 0);
+
+        let first = current_view(&state).await;
+        assert!(matches!(first[0].state, RootState::Forest(_)));
+
+        touch(&dir.path().join("Book/Book.epub"));
+        let second = current_view(&state).await;
+        assert!(!Arc::ptr_eq(&first, &second));
+        assert!(matches!(second[0].state, RootState::Clean));
+    }
+
+    #[tokio::test]
+    async fn rescan_refreshes_even_within_a_live_ttl() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = state_for(dir.path(), 600);
+
+        let first = current_view(&state).await;
+        assert!(matches!(first[0].state, RootState::Forest(_)));
+
+        touch(&dir.path().join("Book/Book.epub"));
+        let refreshed = rescan(&state).await;
+        assert!(matches!(refreshed[0].state, RootState::Clean));
     }
 
     #[test]
