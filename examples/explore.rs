@@ -189,8 +189,16 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     vec![root]
 }
 
-fn build_clean_error(_base: &Path) -> Vec<PathBuf> {
-    Vec::new()
+fn build_clean_error(base: &Path) -> Vec<PathBuf> {
+    // Root 1: every audio folder has an ebook beside it, so the root is Clean.
+    let covered = base.join("Covered Library");
+    touch(&covered.join("Author/Book/01 - Book.mp3"));
+    touch(&covered.join("Author/Book/Book.epub"));
+    // Root 2: a path we hand to library_roots but never create on disk. It cannot
+    // canonicalize, so the section renders "Could not scan this root" and the
+    // server logs the skip warning.
+    let missing = base.join("Missing Library");
+    vec![covered, missing]
 }
 
 fn build_root_flagged(_base: &Path) -> Vec<PathBuf> {
@@ -330,6 +338,19 @@ mod tests {
         .map(|s| s.to_string())
         .collect();
         assert_eq!(flagged(&roots[0]), want);
+    }
+
+    #[test]
+    fn clean_error_has_a_covered_root_and_an_uncreated_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let roots = build_clean_error(dir.path());
+        assert_eq!(roots.len(), 2);
+        // Root 1 exists and is fully covered, so the scanner reports no gaps.
+        assert!(flagged(&roots[0]).is_empty());
+        assert!(roots[0].is_dir());
+        // Root 2 is intentionally never created: it cannot canonicalize, which is
+        // what drives the Error state in the UI.
+        assert!(!roots[1].exists());
     }
 
     #[test]
