@@ -16,9 +16,7 @@ use std::path::{Path, PathBuf};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use thiserror::Error;
 
-/// The two fixed marker file names. Not configurable: the same names drive
-/// detection here and the write buttons later, so they cannot drift apart.
-pub const MARKERS: [&str; 2] = [".no_ebook", ".ebook_elsewhere"];
+use crate::marker::Marker;
 
 /// The raw, un-normalized lists one scan needs, as named fields so the four
 /// string lists cannot be passed in the wrong order. The caller builds this from
@@ -107,7 +105,7 @@ enum FileKind {
 
 fn classify_file(name: &OsStr, settings: &ScanSettings) -> FileKind {
     let name = name.to_string_lossy();
-    if MARKERS.contains(&name.as_ref()) {
+    if Marker::from_filename(name.as_ref()).is_some() {
         return FileKind::Cover;
     }
     if name.starts_with('.') {
@@ -291,12 +289,12 @@ mod tests {
 
     #[test]
     fn marker_files_suppress_the_flag() {
-        for marker in MARKERS {
+        for marker in Marker::ALL {
             let dir = tempfile::tempdir().unwrap();
             touch(&dir.path().join("Book/01.mp3"));
-            touch(&dir.path().join("Book").join(marker));
+            touch(&dir.path().join("Book").join(marker.filename()));
             let got = flagged_set(dir.path(), &default_settings(&[]));
-            assert!(got.is_empty(), "{marker} should cover the folder");
+            assert!(got.is_empty(), "{} should cover the folder", marker.filename());
         }
     }
 
