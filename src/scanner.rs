@@ -141,9 +141,11 @@ pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<PathBuf> {
 fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<PathBuf>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
-        // Unreadable directory (for example permission denied): skip it.
-        // Structured logging arrives with the web layer.
-        Err(_) => return,
+        // Unreadable directory (for example permission denied): log and skip it.
+        Err(err) => {
+            tracing::warn!(dir = %dir.display(), error = %err, "skipping unreadable directory");
+            return;
+        }
     };
 
     let mut subdirs: Vec<PathBuf> = Vec::new();
@@ -167,6 +169,13 @@ fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<PathBuf
 
     // A covering ebook or marker stops the descent and suppresses any flag.
     if covered {
+        if dir == root {
+            tracing::warn!(
+                root = %root.display(),
+                "a covering ebook or marker sits directly in the library root; \
+                 this blanks the entire tree (see ADR-0005)"
+            );
+        }
         return;
     }
     if has_audio && let Ok(rel) = dir.strip_prefix(root) {
