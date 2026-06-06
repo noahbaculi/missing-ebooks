@@ -35,11 +35,11 @@ MISSING_EBOOKS_LIBRARY_ROOTS="/mnt/nas/Audiobooks" cargo run --release
 It binds to `127.0.0.1:8080` by default. Open http://127.0.0.1:8080.
 
 > [!NOTE]
-> The server has no authentication. It binds to loopback by default (ADR-0003); binding to a non-loopback address logs a warning at startup.
+> The server has no authentication. It binds to loopback by default; binding to a non-loopback address logs a warning at startup.
 
 ## Configuration
 
-Configuration resolves in three layers: built-in defaults, an optional `config.toml`, then environment variables on top (env over file over default, ADR-0004).
+Configuration resolves in three layers: built-in defaults, an optional `config.toml`, then environment variables on top (env over file over default).
 
 Print the annotated template:
 
@@ -62,27 +62,29 @@ exclude_globs = ["**/*(abridged)*"]
 
 These environment variables override the file when set:
 
-| Variable | Sets |
-| --- | --- |
+| Variable                       | Sets                                     |
+| ------------------------------ | ---------------------------------------- |
 | `MISSING_EBOOKS_LIBRARY_ROOTS` | `library_roots` (OS path-separated list) |
-| `MISSING_EBOOKS_BIND` | `bind` |
-| `MISSING_EBOOKS_PORT` | `port` |
-| `MISSING_EBOOKS_TTL_SECONDS` | `ttl_seconds` |
+| `MISSING_EBOOKS_BIND`          | `bind`                                   |
+| `MISSING_EBOOKS_PORT`          | `port`                                   |
+| `MISSING_EBOOKS_TTL_SECONDS`   | `ttl_seconds`                            |
 
 Extension lists, exclude rules, and search links are file-only. The printed template documents every key.
 
 ## Markers
 
-Two fixed marker files mark a folder as covered on purpose. The names are not configurable, so detection and the write buttons can never drift apart.
+Two fixed marker files mark a folder as covered on purpose. The names are not configurable.
 
-| Marker | Meaning |
-| --- | --- |
-| `.no_ebook` | No ebook exists or could be sourced |
-| `.ebook_elsewhere` | The ebook lives in another folder |
+| Marker             | Meaning                             |
+| ------------------ | ----------------------------------- |
+| `.no_ebook`        | No ebook exists or could be sourced |
+| `.ebook_elsewhere` | The ebook lives in another folder   |
 
 A marker covers the folder it sits in and everything below it, the same as an ebook. Writing one into a container (an author or series folder) covers every folder under it.
 
 ## Future Work
 
-- [ ] Tag-based search query built from path structure, not just the leaf folder name (ADR-0010)
-- [ ] Runtime button to append an exclude name and persist it to config (ADR-0002)
+- [ ] Repeatable UI test harness with the same possible seeded states to test multiple scenarios
+- [ ] Prettier UI
+- [ ] Tag-based search query built from path structure, not just the leaf folder name
+- [ ] Runtime button to append an exclude name and persist it to config
