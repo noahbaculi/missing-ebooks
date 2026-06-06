@@ -1,0 +1,32 @@
+# cargo-deny policy.
+#
+# The license allow-list below lists every license present in the dependency
+# tree. If a new dependency introduces a license that is not here, the licenses
+# check fails; regenerate the set with `cargo-deny list` and add the new license
+# only after confirming it is compatible with this crate's GPL-3.0-only terms.
+
+[advisories]
+# RUSTSEC advisories and unmaintained crates fail by default in cargo-deny 0.19.
+# Add an advisory ID here only with a written reason and, ideally, a tracking link.
+ignore = []
+
+[licenses]
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "GPL-3.0-only",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Unlicense",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

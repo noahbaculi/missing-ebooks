@@ -6,3 +6,4 @@
 
 [tools]
 "cargo:bacon" = "3"
+"aqua:EmbarkStudios/cargo-deny" = "0.19"
