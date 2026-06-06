@@ -1,0 +1,8 @@
+# Project-local tool pins. The Rust compiler and its components (clippy,
+# rustfmt) are owned by rust-toolchain.toml, which rustup, CI, and
+# rust-analyzer all read directly. This file pins the cargo-based dev tools
+# layered on top, so the bacon-driven UI loop (bacon.toml) runs the same
+# version for anyone who clones the repo instead of leaning on a global install.
+
+[tools]
+"cargo:bacon" = "3"

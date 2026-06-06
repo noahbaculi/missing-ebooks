@@ -118,6 +118,8 @@ Flags:
 > [!NOTE]
 > Marker buttons write real `.no_ebook` / `.ebook_elsewhere` files into the seeded tree. Pass `--keep` to inspect them after exit; otherwise the temp directory is removed on shutdown.
 
+For a live-reload loop while iterating on the UI, run `bacon explore` instead. It rebuilds and reruns the harness on a fixed port whenever `src/`, `examples/`, or `assets/` change. The repo pins bacon in `mise.toml`, so `mise install` provisions it.
+
 ## Future Work
 
 - [x] Repeatable UI test harness with the same possible seeded states to test multiple scenarios
