@@ -1,18 +1,25 @@
-//! axum router, request handlers, and Maud markup for the read-only UI. Handlers
-//! are thin: they call a `service` operation and render. Handlers return
-//! `Html<String>` so Maud stays decoupled from the axum version.
+//! axum router, request handlers, and Maud markup. Handlers are thin: they call a
+//! `service` operation and render. Handlers return `Html<String>` so Maud stays
+//! decoupled from the axum version. Marker writes use htmx to swap just the
+//! affected root's section; the script is vendored and served from `/static`.
 
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::State;
-use axum::response::{Html, Redirect};
+use axum::extract::{Form, State};
+use axum::http::header;
+use axum::response::{Html, IntoResponse, Redirect};
 use axum::routing::{get, post};
 use maud::{DOCTYPE, Markup, PreEscaped, html};
+use serde::Deserialize;
 
+use crate::marker::Marker;
 use crate::service::{self, FlaggedView, RootSection, RootState};
 use crate::state::AppState;
 use crate::tree::Node;
+
+/// The vendored htmx runtime, embedded at compile time and served from /static.
+const HTMX_JS: &str = include_str!("../assets/htmx.min.js");
 
 const PAGE_CSS: &str = "\
 body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 60rem; }
@@ -24,13 +31,25 @@ summary { cursor: pointer; }
 .rel { color: #777; margin-left: 0.5rem; font-size: 0.85em; }
 .clean { color: #555; font-style: italic; }
 .error { color: #b00000; }
+form.mark { display: inline; margin-left: 0.5rem; }
+form.mark button { font-size: 0.75em; margin-left: 0.25rem; cursor: pointer; }
 ";
+
+/// The body of a marker write: which root, which folder, and which marker.
+#[derive(Deserialize)]
+struct MarkRequest {
+    root: usize,
+    rel: String,
+    kind: Marker,
+}
 
 /// Build the application router with the shared state attached.
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(index))
+        .route("/mark", post(mark))
         .route("/rescan", post(rescan))
+        .route("/static/htmx.min.js", get(htmx_script))
         .with_state(state)
 }
 
@@ -39,10 +58,32 @@ async fn index(State(state): State<Arc<AppState>>) -> Html<String> {
     Html(page(&view).into_string())
 }
 
+async fn mark(State(state): State<Arc<AppState>>, Form(req): Form<MarkRequest>) -> Html<String> {
+    match service::mark(&state, req.root, &req.rel, req.kind).await {
+        Ok(view) => Html(render_section(&view[req.root], req.root, None).into_string()),
+        Err(err) => {
+            let message = format!("Could not mark {}: {err}", req.rel);
+            let view = service::current_view(&state).await;
+            let markup = match view.get(req.root) {
+                Some(section) => render_section(section, req.root, Some(&message)),
+                None => html! { section.root { p.error { (message) } } },
+            };
+            Html(markup.into_string())
+        }
+    }
+}
+
 async fn rescan(State(state): State<Arc<AppState>>) -> Redirect {
     service::rescan(&state).await;
     // 303 See Other: Post/Redirect/Get, so a refresh does not re-trigger a scan.
     Redirect::to("/")
+}
+
+async fn htmx_script() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/javascript;charset=utf-8")],
+        HTMX_JS,
+    )
 }
 
 fn page(view: &FlaggedView) -> Markup {
@@ -60,22 +101,26 @@ fn page(view: &FlaggedView) -> Markup {
                 form method="post" action="/rescan" {
                     button type="submit" { "Rescan" }
                 }
-                @for section in view {
-                    (render_section(section))
+                @for (root, section) in view.iter().enumerate() {
+                    (render_section(section, root, None))
                 }
+                script src="/static/htmx.min.js" {}
             }
         }
     }
 }
 
-fn render_section(section: &RootSection) -> Markup {
+fn render_section(section: &RootSection, root: usize, error: Option<&str>) -> Markup {
     html! {
         section.root {
             h2 { (section.path) }
+            @if let Some(message) = error {
+                p.error { (message) }
+            }
             @match &section.state {
                 RootState::Forest(nodes) => {
                     ul.tree {
-                        @for node in nodes { (render_node(node)) }
+                        @for node in nodes { (render_node(node, root)) }
                     }
                 }
                 RootState::Clean => {
@@ -89,12 +134,13 @@ fn render_section(section: &RootSection) -> Markup {
     }
 }
 
-fn render_node(node: &Node) -> Markup {
+fn render_node(node: &Node, root: usize) -> Markup {
     html! {
         @if node.children.is_empty() {
             li.node.flagged[node.flagged] {
                 span.name { (node.name) }
                 span.rel { (node.rel_path) }
+                (marker_buttons(root, &node.rel_path))
             }
         } @else {
             li.node {
@@ -102,12 +148,32 @@ fn render_node(node: &Node) -> Markup {
                     summary.flagged[node.flagged] {
                         span.name { (node.name) }
                         span.rel { (node.rel_path) }
+                        (marker_buttons(root, &node.rel_path))
                     }
                     ul.tree {
-                        @for child in &node.children { (render_node(child)) }
+                        @for child in &node.children { (render_node(child, root)) }
                     }
                 }
             }
+        }
+    }
+}
+
+fn marker_buttons(root: usize, rel: &str) -> Markup {
+    html! {
+        form.mark hx-target="closest section.root" hx-swap="outerHTML" {
+            input type="hidden" name="root" value=(root);
+            input type="hidden" name="rel" value=(rel);
+            button type="button"
+                hx-post="/mark"
+                hx-include="closest form"
+                hx-vals=(r#"{"kind":"no_ebook"}"#)
+                onclick="event.stopPropagation()" { "No ebook" }
+            button type="button"
+                hx-post="/mark"
+                hx-include="closest form"
+                hx-vals=(r#"{"kind":"ebook_elsewhere"}"#)
+                onclick="event.stopPropagation()" { "Ebook elsewhere" }
         }
     }
 }
@@ -182,6 +248,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn index_renders_the_marker_buttons_and_script() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        assert!(body.contains(r#"hx-post="/mark""#));
+        assert!(body.contains(r#"src="/static/htmx.min.js""#));
+        assert!(body.contains("No ebook"));
+    }
+
+    #[tokio::test]
+    async fn static_route_serves_the_htmx_script() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/htmx.min.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let content_type = response.headers().get("content-type").unwrap();
+        assert!(content_type.to_str().unwrap().contains("javascript"));
+    }
+
+    #[tokio::test]
     async fn rescan_redirects_to_root() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
@@ -197,5 +294,64 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         assert_eq!(response.headers().get("location").unwrap(), "/");
+    }
+
+    #[tokio::test]
+    async fn mark_writes_the_file_and_swaps_the_section() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let app = app_for(dir.path());
+        // Warm the cache so the mark exercises the in-place update.
+        app.clone()
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("HX-Request", "true")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Book&kind=no_ebook"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_string(response).await;
+        assert!(body.contains("No missing ebooks in this root"));
+        assert!(dir.path().join("Book/.no_ebook").exists());
+    }
+
+    #[tokio::test]
+    async fn mark_outside_a_root_shows_an_inline_error() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let app = app_for(dir.path());
+        app.clone()
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=..&kind=no_ebook"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_string(response).await;
+        assert!(body.contains("Could not mark"));
+        // The failed write leaves the tree intact.
+        assert!(body.contains("Book"));
     }
 }
