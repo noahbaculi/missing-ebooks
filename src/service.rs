@@ -114,7 +114,10 @@ fn scan_root(root: &Path, settings: &ScanSettings) -> RootSection {
         };
     }
     let flagged = scanner::scan(&canonical, settings);
-    let root_name = canonical.file_name().and_then(|n| n.to_str()).unwrap_or(".");
+    let root_name = canonical
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(".");
     let forest = tree::build(root_name, &flagged);
     let state = if forest.is_empty() {
         RootState::Clean
@@ -141,10 +144,11 @@ mod tests {
     }
 
     fn test_config(roots: Vec<PathBuf>, ttl_seconds: u64) -> Config {
-        let mut cfg = Config::default();
-        cfg.library_roots = roots;
-        cfg.ttl_seconds = ttl_seconds;
-        cfg
+        Config {
+            library_roots: roots,
+            ttl_seconds,
+            ..Default::default()
+        }
     }
 
     fn test_settings() -> Arc<ScanSettings> {
@@ -190,7 +194,10 @@ mod tests {
         let good = tempfile::tempdir().unwrap();
         touch(&good.path().join("Book/01.mp3"));
         let cfg = test_config(
-            vec![PathBuf::from("/no/such/root/xyz123"), good.path().to_path_buf()],
+            vec![
+                PathBuf::from("/no/such/root/xyz123"),
+                good.path().to_path_buf(),
+            ],
             60,
         );
         let view = build_view(&cfg, &test_settings()).await;
@@ -222,7 +229,10 @@ mod tests {
         touch(&dir.path().join("Book/Book.epub"));
         let second = current_view(&state).await;
 
-        assert!(Arc::ptr_eq(&first, &second), "a fresh cache must not rescan");
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "a fresh cache must not rescan"
+        );
     }
 
     #[tokio::test]
@@ -267,6 +277,9 @@ mod tests {
             state: RootState::Clean,
         };
         let value = serde_json::to_value(&section).unwrap();
-        assert_eq!(value, serde_json::json!({ "path": "/lib", "state": "clean" }));
+        assert_eq!(
+            value,
+            serde_json::json!({ "path": "/lib", "state": "clean" })
+        );
     }
 }

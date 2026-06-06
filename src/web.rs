@@ -134,9 +134,11 @@ mod tests {
     }
 
     fn app_for(root: &Path) -> Router {
-        let mut cfg = Config::default();
-        cfg.library_roots = vec![root.to_path_buf()];
-        cfg.ttl_seconds = 60;
+        let cfg = Config {
+            library_roots: vec![root.to_path_buf()],
+            ttl_seconds: 60,
+            ..Default::default()
+        };
         let defaults = Config::default();
         let settings = ScanSettings::compile(ScanInputs {
             audio_exts: &defaults.audio_exts,

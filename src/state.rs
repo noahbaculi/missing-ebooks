@@ -69,16 +69,20 @@ mod tests {
 
     #[test]
     fn ttl_zero_disables_the_cache() {
-        let mut cfg = Config::default();
-        cfg.ttl_seconds = 0;
+        let cfg = Config {
+            ttl_seconds: 0,
+            ..Default::default()
+        };
         let state = AppState::new(cfg, settings());
         assert_eq!(state.cache.ttl, None);
     }
 
     #[test]
     fn nonzero_ttl_sets_the_window() {
-        let mut cfg = Config::default();
-        cfg.ttl_seconds = 90;
+        let cfg = Config {
+            ttl_seconds: 90,
+            ..Default::default()
+        };
         let state = AppState::new(cfg, settings());
         assert_eq!(state.cache.ttl, Some(Duration::from_secs(90)));
     }
