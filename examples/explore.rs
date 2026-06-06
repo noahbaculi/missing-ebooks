@@ -201,8 +201,13 @@ fn build_clean_error(base: &Path) -> Vec<PathBuf> {
     vec![covered, missing]
 }
 
-fn build_root_flagged(_base: &Path) -> Vec<PathBuf> {
-    Vec::new()
+fn build_root_flagged(base: &Path) -> Vec<PathBuf> {
+    // Audio loose in the root with no author/book folder: the root itself is the
+    // gap, surfaced as a single flagged node with rel_path "." (see ADR-0005).
+    let root = base.join("Loose Audio");
+    touch(&root.join("01 - Some Lecture.mp3"));
+    touch(&root.join("02 - Some Lecture.mp3"));
+    vec![root]
 }
 
 fn build_pre_marked(_base: &Path) -> Vec<PathBuf> {
@@ -351,6 +356,15 @@ mod tests {
         // Root 2 is intentionally never created: it cannot canonicalize, which is
         // what drives the Error state in the UI.
         assert!(!roots[1].exists());
+    }
+
+    #[test]
+    fn root_flagged_surfaces_the_root_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let roots = build_root_flagged(dir.path());
+        assert_eq!(roots.len(), 1);
+        // Loose audio in the root is reported as the empty relative path (ADR-0005).
+        assert_eq!(flagged(&roots[0]), BTreeSet::from(["".to_string()]));
     }
 
     #[test]
