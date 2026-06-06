@@ -48,6 +48,15 @@ into that folder, so marking a container covers every folder beneath it through
 ancestor coverage.
 _Avoid_: flag file, exception file, sentinel.
 
+**Search link**:
+A configured template whose `{query}` placeholder is filled with the folder name,
+cleaned and percent-encoded, shown on every node row. Following one opens a
+prefilled book search in a new tab, so the operator can go find the missing ebook
+without losing the page. The cleaning drops bracketed segments and normalizes
+separators; v1 builds the query from the folder name only, with a tag-based query
+deferred.
+_Avoid_: lookup, external link.
+
 **Exclude name**:
 An exact directory name (case-insensitive) that drops any matching folder and its
 descendants from results, anywhere in the tree. In v1 it is hand-edited in config
