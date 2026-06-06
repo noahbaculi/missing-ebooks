@@ -84,7 +84,7 @@ A marker covers the folder it sits in and everything below it, the same as an eb
 
 ## Future Work
 
-- [ ] Repeatable UI test harness with the same possible seeded states to test multiple scenarios
+- [x] Repeatable UI test harness with the same possible seeded states to test multiple scenarios
 - [ ] Prettier UI
 - [ ] Tag-based search query built from path structure, not just the leaf folder name
 - [ ] Runtime button to append an exclude name and persist it to config
