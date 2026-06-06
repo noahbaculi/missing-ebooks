@@ -139,11 +139,54 @@ fn catalog_listing() -> String {
     out
 }
 
+/// Create `dir` and every parent. Panics on failure: this is a dev tool seeding a
+/// fresh temp directory, so a failure here is a bug, not a runtime condition.
+fn mkdirs(dir: &Path) {
+    std::fs::create_dir_all(dir).expect("create scenario directory");
+}
+
+/// Create an empty file at `path`, creating its parents first. Mirrors the
+/// `touch` helper duplicated across the unit-test modules.
+fn touch(path: &Path) {
+    if let Some(parent) = path.parent() {
+        mkdirs(parent);
+    }
+    std::fs::write(path, b"").expect("write scenario file");
+}
+
 // --- Scenario builders. Each one seeds a synthetic library and returns its
 // roots. They start as empty stubs and are filled in one per task. ---
 
-fn build_mixed_forest(_base: &Path) -> Vec<PathBuf> {
-    Vec::new()
+fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
+    let root = base.join("Library");
+    // Andy Weir: a flagged leaf whose "(Unabridged)" suffix is stripped from the
+    // search query, plus a sibling covered by its own epub so it drops out.
+    touch(&root.join("Andy Weir/Artemis (Unabridged)/01 - Artemis.mp3"));
+    touch(&root.join("Andy Weir/The Martian/01 - The Martian.m4b"));
+    touch(&root.join("Andy Weir/The Martian/The Martian.epub"));
+    // Cixin Liu: a series-level epub covers the whole subtree, so the author is
+    // absent entirely.
+    touch(&root.join("Cixin Liu/Remembrance of Earth's Past/Remembrance of Earth's Past.epub"));
+    touch(&root.join(
+        "Cixin Liu/Remembrance of Earth's Past/1 - The Three-Body Problem/01 - The Three-Body Problem.mp3",
+    ));
+    touch(&root.join(
+        "Cixin Liu/Remembrance of Earth's Past/2 - The Dark Forest/01 - The Dark Forest.mp3",
+    ));
+    // Brandon Sanderson: two flagged leaves under a nested series container; the
+    // "[2007]" segment is stripped from the second one's search query.
+    touch(&root.join(
+        "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire/01 - The Final Empire.m4b",
+    ));
+    touch(&root.join(
+        "Brandon Sanderson/The Mistborn Saga/Mistborn 02 - The Well of Ascension [2007]/01 - The Well of Ascension.m4b",
+    ));
+    // Robin Hobb: the U+2019 right single quotation mark in the folder name
+    // survives cleaning and is percent-encoded in the search href.
+    touch(&root.join(
+        "Robin Hobb/Farseer Trilogy/1 - Assassin\u{2019}s Apprentice/01 - Assassin\u{2019}s Apprentice.m4b",
+    ));
+    vec![root]
 }
 
 fn build_clean_error(_base: &Path) -> Vec<PathBuf> {
@@ -252,8 +295,41 @@ async fn main() -> ExitCode {
 mod tests {
     use super::*;
 
+    use std::collections::BTreeSet;
+
+    use missing_ebooks::scanner;
+
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// The set of flagged folders the production scanner reports for a seeded
+    /// root, as `/`-joined relative paths. This pins each scenario's intended
+    /// state against the real scan logic, so a folder-name edit that quietly
+    /// changes coverage fails a test instead of silently changing the UI.
+    fn flagged(root: &Path) -> BTreeSet<String> {
+        let settings = ScanSettings::compile(Config::default().scan_inputs()).unwrap();
+        scanner::scan(root, &settings)
+            .iter()
+            .map(|path| path.to_string_lossy().replace('\\', "/"))
+            .collect()
+    }
+
+    #[test]
+    fn mixed_forest_flags_the_expected_leaves() {
+        let dir = tempfile::tempdir().unwrap();
+        let roots = build_mixed_forest(dir.path());
+        assert_eq!(roots.len(), 1);
+        let want: BTreeSet<String> = [
+            "Andy Weir/Artemis (Unabridged)",
+            "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire",
+            "Brandon Sanderson/The Mistborn Saga/Mistborn 02 - The Well of Ascension [2007]",
+            "Robin Hobb/Farseer Trilogy/1 - Assassin\u{2019}s Apprentice",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(flagged(&roots[0]), want);
     }
 
     #[test]
