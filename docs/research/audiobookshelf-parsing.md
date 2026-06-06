@@ -133,15 +133,6 @@ dotpath rule misses it, and ABS names it explicitly. No other vendor name
 (`#recycle`, `Thumbs.db`) is hard-coded; anything starting with a dot is already
 covered.
 
-> This tool follows the same two-part rule. A file whose name starts with a dot is
-> never audio or an ebook (the marker names `.no_ebook` and `.ebook_elsewhere` are
-> matched first, so markers still count as coverage). A directory whose name starts
-> with a dot is skipped without descending, matching the dotpath rule, so
-> `.@__thumb` needs no manual exclude entry. Non-dot vendor names such as `@eaDir`
-> and `#recycle` stay in the configurable `excluded_dirs` list rather than being
-> hard-coded, since that list is the general-purpose version of the single name ABS
-> bakes in.
-
 ## Enrichment vs Classification
 
 ABS separates two stages, and only the first decides file type:
@@ -180,9 +171,15 @@ the first audio file and matches a list of candidate tag keys, taking the first
 non-empty value (verified on `master`, 2026-06-06):
 
 ```javascript
-file_tag_series:     tryGrabTags(format, 'series', 'show', 'mvnm')
-file_tag_seriespart: tryGrabTags(format, 'series-part', 'episode_id', 'mvin', 'part')
-file_tag_grouping:   tryGrabTags(format, 'grouping', 'grp1')
+file_tag_series: tryGrabTags(format, "series", "show", "mvnm");
+file_tag_seriespart: tryGrabTags(
+  format,
+  "series-part",
+  "episode_id",
+  "mvin",
+  "part",
+);
+file_tag_grouping: tryGrabTags(format, "grouping", "grp1");
 ```
 
 `tryGrabTags` compares on the lowercased key name
@@ -209,10 +206,6 @@ containers." Since the switch from the `tone` tool to ffmpeg for embedding (PR
 #3111, v2.11.0, July 2024), ABS writes series into the cross-container `grouping`
 tag, and an October 2024 fix stores series and sequence there as a
 semicolon-delimited list to handle multiple series.
-
-> This tool keys on extensions and folder structure, so series and sequence play
-> no part in the missing-ebook decision. The detail is recorded here to keep the
-> ABS reference complete and to correct the `mvnm`/`mvin` container label.
 
 ## Source of Truth and Version Notes
 
