@@ -6,6 +6,10 @@
 /// Clean a raw folder name into a search query. Drops bracketed segments,
 /// normalizes `_` and `.` to spaces, collapses whitespace, and trims dangling
 /// separator punctuation. Returns the raw name when cleaning empties the string.
+///
+/// Bracket handling is lenient: a single depth counter spans `()`, `[]`, and
+/// `{}`, so a stray closer is ignored and an unclosed opener drops the rest of
+/// the name. Folder names are rarely malformed, so this is good enough.
 #[must_use]
 pub fn clean_query(name: &str) -> String {
     // 1. Drop (...), [...], and {...} segments. One depth counter spans all three
@@ -23,11 +27,14 @@ pub fn clean_query(name: &str) -> String {
     }
 
     // 2. Normalize `_` and `.` to spaces; folder names are usually space-separated
-    //    but not always.
-    let spaced: String = without_brackets
-        .chars()
-        .map(|c| if c == '_' || c == '.' { ' ' } else { c })
-        .collect();
+    //    but not always. The swap is byte-length-preserving, so the input length
+    //    pre-sizes the output exactly.
+    let mut spaced = String::with_capacity(without_brackets.len());
+    spaced.extend(
+        without_brackets
+            .chars()
+            .map(|c| if c == '_' || c == '.' { ' ' } else { c }),
+    );
 
     // 3. Collapse whitespace runs to single spaces, then 4. trim the ends and any
     //    dangling separator punctuation. After step 2 only `-` can still dangle;
@@ -46,6 +53,8 @@ pub fn clean_query(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
 
     #[test]
@@ -81,5 +90,46 @@ mod tests {
     #[test]
     fn falls_back_to_the_raw_name_when_cleaning_empties_it() {
         assert_eq!(clean_query("(Unabridged)"), "(Unabridged)");
+    }
+
+    #[test]
+    fn handles_unbalanced_brackets_leniently() {
+        // A stray closer is a no-op (the depth counter saturates at zero), so the
+        // text around it survives. An unclosed opener drops everything after it.
+        assert_eq!(clean_query("Book )extra("), "Book extra");
+        assert_eq!(clean_query("Book ("), "Book");
+    }
+
+    proptest! {
+        /// Cleaning is idempotent: re-cleaning a cleaned query changes nothing.
+        #[test]
+        fn cleaning_is_idempotent(name in ".*") {
+            let once = clean_query(&name);
+            let twice = clean_query(&once);
+            prop_assert_eq!(twice, once);
+        }
+
+        /// A non-empty name yields a non-empty query and an empty name yields an
+        /// empty one. The raw-name fallback preserves this in both directions.
+        #[test]
+        fn cleaning_preserves_emptiness(name in ".*") {
+            prop_assert_eq!(clean_query(&name).is_empty(), name.is_empty());
+        }
+
+        /// Outside the fallback, the query carries no bracket characters and no
+        /// leading or trailing separator. The fallback returns the name verbatim,
+        /// so it is the one case allowed to keep them.
+        #[test]
+        fn cleaning_drops_brackets_and_edge_separators(name in ".*") {
+            let cleaned = clean_query(&name);
+            prop_assume!(cleaned != name);
+            // Pull the check into a local: a `{`/`}` char literal inside
+            // `prop_assert!` would be read as a format placeholder.
+            let has_bracket = cleaned.contains(['(', ')', '[', ']', '{', '}']);
+            prop_assert!(!has_bracket, "kept a bracket: {cleaned:?}");
+            let separator = |c: char| c.is_whitespace() || matches!(c, '-' | '_' | '.');
+            prop_assert!(!cleaned.starts_with(separator));
+            prop_assert!(!cleaned.ends_with(separator));
+        }
     }
 }
