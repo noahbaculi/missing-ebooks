@@ -172,6 +172,48 @@ primary ebook with priority given to `epub` and marks the rest as supplementary
 ignore in-folder ebooks in an audiobook-only library, and it doesn't automatically
 demote an in-folder ebook to supplementary.
 
+## Series and Sequence from Embedded Tags
+
+Enrichment reads series name and series sequence directly from embedded audio
+tags, not only from folder names. `server/utils/prober.js` runs ffprobe against
+the first audio file and matches a list of candidate tag keys, taking the first
+non-empty value (verified on `master`, 2026-06-06):
+
+```javascript
+file_tag_series:     tryGrabTags(format, 'series', 'show', 'mvnm')
+file_tag_seriespart: tryGrabTags(format, 'series-part', 'episode_id', 'mvin', 'part')
+file_tag_grouping:   tryGrabTags(format, 'grouping', 'grp1')
+```
+
+`tryGrabTags` compares on the lowercased key name
+(`t.toLowerCase() === tags[i].toLowerCase()`), so one candidate list serves every
+container. `server/scanner/AudioFileScanner.js` maps the result onto the series
+record with `{ tag: 'tagSeries', altTag: 'tagGrouping', key: 'series' }`, then
+builds `series = [{ name, sequence: tagSeriesPart || null }]`. Sequence is `null`
+when no part tag is present.
+
+> `mvnm` and `mvin` are the ID3v2 iTunes movement-name and movement-number frames
+> (MP3 and AIFF), not MP4 atoms. The MP4/M4B movement-name atom is `©mvn`. ABS
+> matches the string key regardless of container, so the label only matters when
+> reasoning about where a tag can actually live. The ABS docs themselves call
+> these "MP4" tags, which names the wrong container.
+
+The candidate list is format-agnostic, but what ffprobe surfaces is not. ffprobe
+exposes arbitrary ID3 tags from MP3, while for MP4/M4B it returns only a small
+fixed set, so `series` and `series-part` read reliably from MP3 yet often not from
+M4B unless embedded a specific way. ABS owner advplyr describes the gap on issue
+[#3547](https://github.com/advplyr/audiobookshelf/issues/3547): "for mp4
+containers unless they are embedded in that way ffprobe won't pull a `series` and
+`series-part` tag ... Ffprobe only supports a small number of tags for mp4
+containers." Since the switch from the `tone` tool to ffmpeg for embedding (PR
+#3111, v2.11.0, July 2024), ABS writes series into the cross-container `grouping`
+tag, and an October 2024 fix stores series and sequence there as a
+semicolon-delimited list to handle multiple series.
+
+> This tool keys on extensions and folder structure, so series and sequence play
+> no part in the missing-ebook decision. The detail is recorded here to keep the
+> ABS reference complete and to correct the `mvnm`/`mvin` container label.
+
 ## Source of Truth and Version Notes
 
 - Authoritative lists: `server/utils/globals.js` on the branch or tag you run
@@ -180,6 +222,8 @@ demote an in-folder ebook to supplementary.
   `server/scanner/LibraryItemScanData.js`
 - Ebook primary/supplementary logic: `server/scanner/BookScanner.js`
 - Metadata precedence default: `server/models/Library.js`
+- Embedded series/sequence tags: `server/utils/prober.js`,
+  `server/scanner/AudioFileScanner.js`
 - Docs: [book scanner](https://www.audiobookshelf.org/guides/book-scanner/),
   [ebooks](https://www.audiobookshelf.org/guides/ebooks/),
   [server FAQ](https://www.audiobookshelf.org/faq/server/)
