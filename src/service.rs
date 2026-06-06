@@ -4,7 +4,6 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Instant;
 
 use serde::Serialize;
 use thiserror::Error;
@@ -12,7 +11,7 @@ use thiserror::Error;
 use crate::config::Config;
 use crate::marker::Marker;
 use crate::scanner::{self, ScanSettings};
-use crate::state::{AppState, CacheEntry};
+use crate::state::AppState;
 use crate::tree::{self, Node};
 
 /// The whole read view: one section per configured library root, in config order.
@@ -61,34 +60,20 @@ pub enum DomainError {
 }
 
 /// Return the cached view if it is still fresh, otherwise scan and cache it.
-/// Single-flight: the mutex is held across the scan, so concurrent stale readers
-/// block, then re-check and return the view the first scan stored.
+/// Single-flight is enforced by `Cache::get_or_build`.
 pub async fn current_view(state: &AppState) -> Arc<FlaggedView> {
-    let mut guard = state.cache.entry.lock().await;
-    if let Some(entry) = guard.as_ref()
-        && let Some(ttl) = state.cache.ttl
-        && entry.stored_at.elapsed() < ttl
-    {
-        return Arc::clone(&entry.view);
-    }
-    let view = Arc::new(build_view(state.config.as_ref(), &state.settings).await);
-    *guard = Some(CacheEntry {
-        stored_at: Instant::now(),
-        view: Arc::clone(&view),
-    });
-    view
+    state
+        .cache
+        .get_or_build(|| build_view(state.config.as_ref(), &state.settings))
+        .await
 }
 
-/// Force a fresh scan, store it, and return it, ignoring the TTL. Shares the
-/// cache mutex with `current_view`, so a rescan and a stale read cannot both scan.
+/// Force a fresh scan, store it, and return it, ignoring the TTL.
 pub async fn rescan(state: &AppState) -> Arc<FlaggedView> {
-    let mut guard = state.cache.entry.lock().await;
-    let view = Arc::new(build_view(state.config.as_ref(), &state.settings).await);
-    *guard = Some(CacheEntry {
-        stored_at: Instant::now(),
-        view: Arc::clone(&view),
-    });
-    view
+    state
+        .cache
+        .rebuild(|| build_view(state.config.as_ref(), &state.settings))
+        .await
 }
 
 /// Write a marker into a folder and update the cached view in place, without a
@@ -113,23 +98,13 @@ pub async fn mark(
             DomainError::WriteFailed(std::io::Error::other("marker write task failed"))
         })??;
 
-    let mut guard = state.cache.entry.lock().await;
-    match guard.as_mut() {
-        Some(entry) => {
-            let mut view = (*entry.view).clone();
-            apply_mark(&mut view[root], rel);
-            entry.view = Arc::new(view);
-            Ok(Arc::clone(&entry.view))
-        }
-        None => {
-            let view = Arc::new(build_view(state.config.as_ref(), &state.settings).await);
-            *guard = Some(CacheEntry {
-                stored_at: Instant::now(),
-                view: Arc::clone(&view),
-            });
-            Ok(view)
-        }
-    }
+    Ok(state
+        .cache
+        .edit_or_build(
+            |view| apply_mark(&mut view[root], rel),
+            || build_view(state.config.as_ref(), &state.settings),
+        )
+        .await)
 }
 
 /// Guard the target and write the marker file. Runs on a blocking task: the
