@@ -82,6 +82,42 @@ Two fixed marker files mark a folder as covered on purpose. The names are not co
 
 A marker covers the folder it sits in and everything below it, the same as an ebook. Writing one into a container (an author or series folder) covers every folder under it.
 
+## Exploring the UI
+
+`examples/explore.rs` seeds a synthetic library into a temp directory, serves it through the real UI on an ephemeral loopback port, and tears the directory down on Ctrl-C. Use it to eyeball the rendered output across a catalog of known library states without pointing the server at a real library.
+
+Run a scenario:
+
+```shell
+cargo run --example explore -- mixed-forest
+```
+
+It prints the URL (an OS-assigned port, not 8080) and serves until Ctrl-C. Run with no scenario, or `--help`, to print the catalog:
+
+```shell
+cargo run --example explore
+```
+
+Scenarios:
+
+| Scenario       | Shows                                                                      |
+| -------------- | -------------------------------------------------------------------------- |
+| `mixed-forest` | Nested tree: containers, flagged leaves, query cleaning, ancestor coverage |
+| `clean-error`  | Two roots side by side: one fully covered (Clean), one uncreated (Error)   |
+| `root-flagged` | Loose audio in the root, so the root itself is flagged                     |
+| `pre-marked`   | Pre-existing markers hide covered folders; siblings stay click targets     |
+
+Flags:
+
+| Flag         | Effect                                                     |
+| ------------ | ---------------------------------------------------------- |
+| `--port N`   | Pin a fixed port instead of an OS-assigned ephemeral one   |
+| `--ttl SECS` | Set the scan-cache staleness window (default 0, cache off) |
+| `--keep`     | Keep the seeded files on exit and print where they landed  |
+
+> [!NOTE]
+> Marker buttons write real `.no_ebook` / `.ebook_elsewhere` files into the seeded tree. Pass `--keep` to inspect them after exit; otherwise the temp directory is removed on shutdown.
+
 ## Future Work
 
 - [x] Repeatable UI test harness with the same possible seeded states to test multiple scenarios
