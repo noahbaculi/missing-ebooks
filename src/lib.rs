@@ -1,6 +1,7 @@
 //! missing-ebooks: surface audiobook folders that hold audio but no ebook.
 
 pub mod config;
+pub mod marker;
 pub mod scanner;
 pub mod service;
 pub mod state;
