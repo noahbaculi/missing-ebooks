@@ -2,6 +2,7 @@
 
 pub mod config;
 pub mod marker;
+pub mod query;
 pub mod scanner;
 pub mod service;
 pub mod state;
