@@ -195,14 +195,7 @@ mod tests {
     }
 
     fn settings() -> ScanSettings {
-        let defaults = Config::default();
-        ScanSettings::compile(crate::scanner::ScanInputs {
-            audio_exts: &defaults.audio_exts,
-            ebook_exts: &defaults.ebook_exts,
-            excluded_dirs: &[],
-            exclude_globs: &[],
-        })
-        .unwrap()
+        ScanSettings::compile(Config::default().scan_inputs()).unwrap()
     }
 
     #[test]

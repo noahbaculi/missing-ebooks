@@ -231,16 +231,7 @@ mod tests {
     }
 
     fn test_settings() -> Arc<ScanSettings> {
-        let defaults = Config::default();
-        Arc::new(
-            ScanSettings::compile(crate::scanner::ScanInputs {
-                audio_exts: &defaults.audio_exts,
-                ebook_exts: &defaults.ebook_exts,
-                excluded_dirs: &[],
-                exclude_globs: &[],
-            })
-            .unwrap(),
-        )
+        Arc::new(ScanSettings::compile(Config::default().scan_inputs()).unwrap())
     }
 
     #[tokio::test]
@@ -286,14 +277,7 @@ mod tests {
 
     fn state_for(root: &Path, ttl_seconds: u64) -> AppState {
         let cfg = test_config(vec![root.to_path_buf()], ttl_seconds);
-        let defaults = Config::default();
-        let settings = ScanSettings::compile(crate::scanner::ScanInputs {
-            audio_exts: &defaults.audio_exts,
-            ebook_exts: &defaults.ebook_exts,
-            excluded_dirs: &[],
-            exclude_globs: &[],
-        })
-        .unwrap();
+        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
         AppState::new(cfg, settings)
     }
 
