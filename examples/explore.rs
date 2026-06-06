@@ -210,8 +210,20 @@ fn build_root_flagged(base: &Path) -> Vec<PathBuf> {
     vec![root]
 }
 
-fn build_pre_marked(_base: &Path) -> Vec<PathBuf> {
-    Vec::new()
+fn build_pre_marked(base: &Path) -> Vec<PathBuf> {
+    let root = base.join("Marked Library");
+    // Covered Book carries its own .no_ebook, so it is absent; Uncovered Book has
+    // no marker and stays as a click target.
+    touch(&root.join("Marked Author/Covered Book/01 - Covered Book.m4b"));
+    touch(&root.join("Marked Author/Covered Book/.no_ebook"));
+    touch(&root.join("Marked Author/Uncovered Book/01 - Uncovered Book.m4b"));
+    // A series-level .ebook_elsewhere covers everything below it, so the whole
+    // Elsewhere Series subtree is absent.
+    touch(&root.join("Elsewhere Series/.ebook_elsewhere"));
+    touch(&root.join("Elsewhere Series/Book A/01 - Book A.mp3"));
+    // Plain Author has no markers, so Plain Book stays flagged.
+    touch(&root.join("Plain Author/Plain Book/01 - Plain Book.m4b"));
+    vec![root]
 }
 
 #[tokio::main]
@@ -365,6 +377,18 @@ mod tests {
         assert_eq!(roots.len(), 1);
         // Loose audio in the root is reported as the empty relative path (ADR-0005).
         assert_eq!(flagged(&roots[0]), BTreeSet::from(["".to_string()]));
+    }
+
+    #[test]
+    fn pre_marked_drops_covered_folders_and_keeps_click_targets() {
+        let dir = tempfile::tempdir().unwrap();
+        let roots = build_pre_marked(dir.path());
+        assert_eq!(roots.len(), 1);
+        let want: BTreeSet<String> = ["Marked Author/Uncovered Book", "Plain Author/Plain Book"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(flagged(&roots[0]), want);
     }
 
     #[test]
