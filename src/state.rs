@@ -145,7 +145,10 @@ mod tests {
         let first = cache.get_or_build(|| async { sample_view("first") }).await;
         // A second call within the TTL must not build again.
         let second = cache.get_or_build(|| async { sample_view("second") }).await;
-        assert!(Arc::ptr_eq(&first, &second), "a fresh cache must not rebuild");
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "a fresh cache must not rebuild"
+        );
         assert_eq!(second[0].path, "first");
     }
 

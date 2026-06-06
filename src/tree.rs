@@ -215,7 +215,10 @@ mod tests {
             children: vec![flagged_leaf("Book", "Author/Book")],
         }];
         remove_subtree(&mut forest, "Author/Book");
-        assert!(forest.is_empty(), "removing the only child prunes the container");
+        assert!(
+            forest.is_empty(),
+            "removing the only child prunes the container"
+        );
     }
 
     #[test]

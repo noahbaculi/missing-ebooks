@@ -49,12 +49,16 @@ fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
         } else if arg == "--keep" {
             keep = true;
         } else if arg == "--port" {
-            let value = iter.next().ok_or_else(|| "--port needs a value".to_string())?;
+            let value = iter
+                .next()
+                .ok_or_else(|| "--port needs a value".to_string())?;
             port = Some(parse_port(value)?);
         } else if let Some(value) = arg.strip_prefix("--port=") {
             port = Some(parse_port(value)?);
         } else if arg == "--ttl" {
-            let value = iter.next().ok_or_else(|| "--ttl needs a value".to_string())?;
+            let value = iter
+                .next()
+                .ok_or_else(|| "--ttl needs a value".to_string())?;
             ttl_seconds = parse_ttl(value)?;
         } else if let Some(value) = arg.strip_prefix("--ttl=") {
             ttl_seconds = parse_ttl(value)?;
@@ -134,7 +138,10 @@ fn catalog_listing() -> String {
     out.push_str(USAGE);
     out.push_str("\n\nscenarios:\n");
     for scenario in catalog() {
-        out.push_str(&format!("  {:<14}{}\n", scenario.name, scenario.description));
+        out.push_str(&format!(
+            "  {:<14}{}\n",
+            scenario.name, scenario.description
+        ));
     }
     out
 }
@@ -316,7 +323,9 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let addr = listener.local_addr().expect("a bound listener has a local address");
+    let addr = listener
+        .local_addr()
+        .expect("a bound listener has a local address");
     println!("scenario: {}", scenario.name);
     println!("listening on http://{addr}");
     println!("Press Ctrl-C to stop.");
