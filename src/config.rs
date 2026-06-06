@@ -173,8 +173,9 @@ bind = "127.0.0.1"
 port = 8080
 
 # Scan-cache staleness backstop in seconds. When a request arrives on a cache
-# older than this, the server rescans before responding. /rescan is the primary
-# freshness control. Also settable as MISSING_EBOOKS_TTL_SECONDS.
+# older than this, the server rescans before responding. Set to 0 to disable the
+# cache and rescan on every request. /rescan is the primary freshness control.
+# Also settable as MISSING_EBOOKS_TTL_SECONDS.
 ttl_seconds = 60
 
 # File extensions, compared case-insensitively. Leading dot required. The
