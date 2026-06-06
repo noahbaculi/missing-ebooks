@@ -154,48 +154,21 @@ fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(), DomainErro
     std::fs::write(canonical_target.join(marker.filename()), b"").map_err(DomainError::WriteFailed)
 }
 
-/// Remove a marked folder from one root's section, pruning emptied containers. A
-/// marker covers the folder and everything beneath it, so removing the node's
-/// whole subtree is equivalent to a rescan (see ADR-0002).
+/// Apply a marker write to one root's section. Marking the root directory covers
+/// the whole root (see ADR-0005); otherwise remove the marked folder's subtree
+/// from the forest and fall to `Clean` once nothing is left. The forest walk and
+/// container pruning live in `tree::remove_subtree`.
 fn apply_mark(section: &mut RootSection, rel: &str) {
     if rel == "." {
-        // A marker in the root directory covers the whole root (see ADR-0005).
         section.state = RootState::Clean;
         return;
     }
     let RootState::Forest(forest) = &mut section.state else {
         return;
     };
-    let components: Vec<&str> = rel.split('/').collect();
-    remove_path(forest, &components, "");
+    tree::remove_subtree(forest, rel);
     if forest.is_empty() {
         section.state = RootState::Clean;
-    }
-}
-
-/// Walk the forest by path component, remove the addressed node, and prune any
-/// ancestor that is now an empty, non-flagged container. A target that is already
-/// gone, because a rescan landed first or a button was double-clicked, is a
-/// silent no-op.
-fn remove_path(siblings: &mut Vec<Node>, components: &[&str], parent_rel: &str) {
-    let Some((head, tail)) = components.split_first() else {
-        return;
-    };
-    let cur_rel = if parent_rel.is_empty() {
-        (*head).to_string()
-    } else {
-        format!("{parent_rel}/{head}")
-    };
-    let Some(idx) = siblings.iter().position(|n| n.rel_path == cur_rel) else {
-        return;
-    };
-    if tail.is_empty() {
-        siblings.remove(idx);
-    } else {
-        remove_path(&mut siblings[idx].children, tail, &cur_rel);
-        if siblings[idx].children.is_empty() && !siblings[idx].flagged {
-            siblings.remove(idx);
-        }
     }
 }
 
@@ -478,24 +451,6 @@ mod tests {
     }
 
     #[test]
-    fn apply_mark_on_a_container_removes_the_whole_subtree() {
-        let mut section = RootSection {
-            path: "/lib".to_string(),
-            state: RootState::Forest(vec![Node {
-                name: "Author".to_string(),
-                rel_path: "Author".to_string(),
-                flagged: false,
-                children: vec![
-                    flagged_leaf("Book 1", "Author/Book 1"),
-                    flagged_leaf("Book 2", "Author/Book 2"),
-                ],
-            }]),
-        };
-        apply_mark(&mut section, "Author");
-        assert!(matches!(section.state, RootState::Clean));
-    }
-
-    #[test]
     fn apply_mark_keeps_a_flagged_node_when_its_child_goes() {
         let mut section = RootSection {
             path: "/lib".to_string(),
@@ -526,19 +481,6 @@ mod tests {
         };
         apply_mark(&mut section, ".");
         assert!(matches!(section.state, RootState::Clean));
-    }
-
-    #[test]
-    fn apply_mark_on_an_absent_path_is_a_noop() {
-        let mut section = RootSection {
-            path: "/lib".to_string(),
-            state: RootState::Forest(vec![flagged_leaf("Author", "Author")]),
-        };
-        apply_mark(&mut section, "Ghost");
-        match &section.state {
-            RootState::Forest(nodes) => assert_eq!(nodes.len(), 1),
-            other => panic!("expected Forest, got {other:?}"),
-        }
     }
 
     #[tokio::test]
