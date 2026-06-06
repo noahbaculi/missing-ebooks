@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::scanner::ScanInputs;
+
 /// A search-link template. `{query}` is replaced with the cleaned, encoded
 /// folder name when a row renders. Parsed now so the schema is stable; the
 /// rendering is wired in a later increment.
@@ -131,6 +133,18 @@ impl Config {
             return Err(ConfigError::MissingLibraryRoots);
         }
         Ok(())
+    }
+
+    /// The four list fields a scan reads, borrowed as `ScanInputs`. The mapping
+    /// lives here so the scanner stays config-agnostic: the dependency points
+    /// from config to scanner, never the other way.
+    pub fn scan_inputs(&self) -> ScanInputs<'_> {
+        ScanInputs {
+            audio_exts: &self.audio_exts,
+            ebook_exts: &self.ebook_exts,
+            excluded_dirs: &self.excluded_dirs,
+            exclude_globs: &self.exclude_globs,
+        }
     }
 }
 
@@ -320,6 +334,16 @@ mod tests {
         let mut cfg = Config::default();
         cfg.library_roots.push(std::path::PathBuf::from("/tmp/lib"));
         assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn scan_inputs_borrows_the_four_scan_fields() {
+        let cfg = Config::default();
+        let inputs = cfg.scan_inputs();
+        assert_eq!(inputs.audio_exts, cfg.audio_exts.as_slice());
+        assert_eq!(inputs.ebook_exts, cfg.ebook_exts.as_slice());
+        assert_eq!(inputs.excluded_dirs, cfg.excluded_dirs.as_slice());
+        assert_eq!(inputs.exclude_globs, cfg.exclude_globs.as_slice());
     }
 
     #[test]

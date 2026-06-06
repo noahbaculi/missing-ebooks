@@ -7,7 +7,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use missing_ebooks::config::{Config, ConfigError, print_config_template};
-use missing_ebooks::scanner::{ScanInputs, ScanSettings};
+use missing_ebooks::scanner::ScanSettings;
 use missing_ebooks::state::AppState;
 use missing_ebooks::web;
 
@@ -33,12 +33,7 @@ async fn main() -> ExitCode {
         }
     };
 
-    let settings = match ScanSettings::compile(ScanInputs {
-        audio_exts: &config.audio_exts,
-        ebook_exts: &config.ebook_exts,
-        excluded_dirs: &config.excluded_dirs,
-        exclude_globs: &config.exclude_globs,
-    }) {
+    let settings = match ScanSettings::compile(config.scan_inputs()) {
         Ok(settings) => settings,
         Err(err) => {
             tracing::error!(error = %err, "invalid scan settings");

@@ -53,3 +53,12 @@ emptied containers, and store the new view, leaving `stored_at` untouched so the
 TTL still fires on schedule. One case the body did not spell out: when the cache
 is cold (nothing has been scanned yet) a write builds and stores a fresh view
 instead of editing, because there is no cached view to edit.
+
+Update (2026-06-06, refactor): the in-place edit moved out of `service`. The
+subtree removal and container pruning now live in `tree::remove_subtree`;
+`service::apply_mark` calls it and keeps only the root `.` and the
+forest-empties-to-`Clean` handling. The cache lock protocol moved into `Cache`
+itself: `get_or_build`, `rebuild`, and `edit_or_build` hold the mutex and carry
+the `stored_at` policy (bumped on a build, left untouched on an edit), so
+`service` no longer touches the lock and the `entry` field is private. The
+behavior described above is unchanged; only its home moved.

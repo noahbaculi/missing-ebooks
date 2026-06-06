@@ -216,7 +216,7 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::config::Config;
-    use crate::scanner::{ScanInputs, ScanSettings};
+    use crate::scanner::ScanSettings;
 
     fn touch(path: &Path) {
         if let Some(parent) = path.parent() {
@@ -236,14 +236,7 @@ mod tests {
             search_links,
             ..Default::default()
         };
-        let defaults = Config::default();
-        let settings = ScanSettings::compile(ScanInputs {
-            audio_exts: &defaults.audio_exts,
-            ebook_exts: &defaults.ebook_exts,
-            excluded_dirs: &[],
-            exclude_globs: &[],
-        })
-        .unwrap();
+        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
         router(Arc::new(AppState::new(cfg, settings)))
     }
 
