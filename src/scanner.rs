@@ -294,7 +294,11 @@ mod tests {
             touch(&dir.path().join("Book/01.mp3"));
             touch(&dir.path().join("Book").join(marker.filename()));
             let got = flagged_set(dir.path(), &default_settings(&[]));
-            assert!(got.is_empty(), "{} should cover the folder", marker.filename());
+            assert!(
+                got.is_empty(),
+                "{} should cover the folder",
+                marker.filename()
+            );
         }
     }
 

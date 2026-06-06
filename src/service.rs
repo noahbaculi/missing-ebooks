@@ -109,7 +109,9 @@ pub async fn mark(
     let rel_owned = rel.to_string();
     tokio::task::spawn_blocking(move || write_marker(&root_path, &rel_owned, marker))
         .await
-        .map_err(|_| DomainError::WriteFailed(std::io::Error::other("marker write task failed")))??;
+        .map_err(|_| {
+            DomainError::WriteFailed(std::io::Error::other("marker write task failed"))
+        })??;
 
     let mut guard = state.cache.entry.lock().await;
     match guard.as_mut() {
@@ -565,7 +567,9 @@ mod tests {
         touch(&dir.path().join("Book/01.mp3"));
         let state = state_for(dir.path(), 600);
 
-        let view = mark(&state, 0, "Book", Marker::EbookElsewhere).await.unwrap();
+        let view = mark(&state, 0, "Book", Marker::EbookElsewhere)
+            .await
+            .unwrap();
         assert!(matches!(view[0].state, RootState::Clean));
         assert!(dir.path().join("Book/.ebook_elsewhere").exists());
     }
