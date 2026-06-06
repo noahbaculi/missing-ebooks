@@ -226,9 +226,14 @@ mod tests {
     }
 
     fn app_for(root: &Path) -> Router {
+        app_for_with_links(root, Config::default().search_links)
+    }
+
+    fn app_for_with_links(root: &Path, search_links: Vec<SearchLink>) -> Router {
         let cfg = Config {
             library_roots: vec![root.to_path_buf()],
             ttl_seconds: 60,
+            search_links,
             ..Default::default()
         };
         let defaults = Config::default();
@@ -301,6 +306,48 @@ mod tests {
         assert!(body.contains(r#"target="_blank""#));
         assert!(body.contains("https://www.goodreads.com/search?q=Book"));
         assert!(body.contains("Goodreads"));
+    }
+
+    #[tokio::test]
+    async fn index_renders_every_configured_link() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        // The defaults ship two links; both must render, not just the first.
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        assert!(body.contains("https://www.goodreads.com/search?q=Book"));
+        assert!(body.contains("https://oceanofpdf.com/?s=Book"));
+        assert!(body.contains("OceanofPDF"));
+    }
+
+    #[tokio::test]
+    async fn index_omits_the_links_span_when_none_are_configured() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for_with_links(dir.path(), Vec::new())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // No links means no `span.links` is emitted. The CSS rule in <style> names
+        // `span.links`, so match the rendered attribute, which appears only on a row.
+        assert!(!body.contains(r#"class="links""#));
+    }
+
+    #[tokio::test]
+    async fn search_link_query_percent_encodes_spaces() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author Name/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // Spaces in the cleaned query are percent-encoded, so the href carries `%20`.
+        assert!(body.contains("q=Author%20Name"));
     }
 
     #[tokio::test]
