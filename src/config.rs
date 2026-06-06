@@ -52,7 +52,7 @@ impl Default for Config {
         Self {
             library_roots: Vec::new(),
             bind: "127.0.0.1".to_string(),
-            port: 8080,
+            port: 13379,
             ttl_seconds: 60,
             // Audiobookshelf's full supported sets; see ADR-0006.
             audio_exts: strings(&[
@@ -183,8 +183,9 @@ library_roots = []
 # when bound to a non-loopback address. Also settable as MISSING_EBOOKS_BIND.
 bind = "127.0.0.1"
 
-# HTTP listen port. Also settable as MISSING_EBOOKS_PORT.
-port = 8080
+# HTTP listen port. An uncommon high port, away from 8080 (see ADR-0011). Also
+# settable as MISSING_EBOOKS_PORT.
+port = 13379
 
 # Scan-cache staleness backstop in seconds. When a request arrives on a cache
 # older than this, the server rescans before responding. Set to 0 to disable the
@@ -250,7 +251,7 @@ mod tests {
     fn defaults_match_the_documented_schema() {
         let cfg = Config::default();
         assert_eq!(cfg.bind, "127.0.0.1");
-        assert_eq!(cfg.port, 8080);
+        assert_eq!(cfg.port, 13379);
         assert_eq!(cfg.ttl_seconds, 60);
         assert_eq!(cfg.audio_exts.len(), 20); // ABS's full audio set; see ADR-0006
         assert!(cfg.audio_exts.contains(&".mp3".to_string()));
@@ -349,7 +350,7 @@ mod tests {
     #[test]
     fn print_config_template_round_trips() {
         let parsed: Config = toml::from_str(CONFIG_TEMPLATE).expect("template must parse");
-        assert_eq!(parsed.port, 8080);
+        assert_eq!(parsed.port, 13379);
         assert_eq!(parsed.bind, "127.0.0.1");
         assert_eq!(parsed.audio_exts.len(), 20);
         assert!(parsed.audio_exts.contains(&".opus".to_string()));

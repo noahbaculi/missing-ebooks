@@ -32,7 +32,7 @@ Set at least one library root and run the server. It exits if no root is configu
 MISSING_EBOOKS_LIBRARY_ROOTS="/mnt/nas/Audiobooks" cargo run --release
 ```
 
-It binds to `127.0.0.1:8080` by default. Open http://127.0.0.1:8080.
+It binds to `127.0.0.1:13379` by default. Open http://127.0.0.1:13379.
 
 > [!NOTE]
 > The server has no authentication. It binds to loopback by default; binding to a non-loopback address logs a warning at startup.
@@ -84,7 +84,7 @@ A marker covers the folder it sits in and everything below it, the same as an eb
 
 ## Exploring the UI
 
-`examples/explore.rs` seeds a synthetic library into a temp directory, serves it through the real UI on an ephemeral loopback port, and tears the directory down on Ctrl-C. Use it to eyeball the rendered output across a catalog of known library states without pointing the server at a real library.
+`examples/explore.rs` seeds a synthetic library into a temp directory, serves it through the real UI on a loopback port, and tears the directory down on Ctrl-C. Use it to eyeball the rendered output across a catalog of known library states without pointing the server at a real library.
 
 Run a scenario:
 
@@ -92,7 +92,7 @@ Run a scenario:
 cargo run --example explore -- mixed-forest
 ```
 
-It prints the URL (an OS-assigned port, not 8080) and serves until Ctrl-C. Run with no scenario, or `--help`, to print the catalog:
+It prints the URL (the app's default port 13379, or an OS-assigned one if that port is busy) and serves until Ctrl-C. Run with no scenario, or `--help`, to print the catalog:
 
 ```shell
 cargo run --example explore
@@ -111,7 +111,7 @@ Flags:
 
 | Flag         | Effect                                                     |
 | ------------ | ---------------------------------------------------------- |
-| `--port N`   | Pin a fixed port instead of an OS-assigned ephemeral one   |
+| `--port N`   | Bind an exact port instead of the default 13379            |
 | `--ttl SECS` | Set the scan-cache staleness window (default 0, cache off) |
 | `--keep`     | Keep the seeded files on exit and print where they landed  |
 

@@ -8,7 +8,7 @@
 //! "Future Work". Loose root audio surfaces the root itself (see
 //! docs/adr/0005-library-root-itself-flaggable.md).
 
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -226,6 +226,28 @@ fn build_pre_marked(base: &Path) -> Vec<PathBuf> {
     vec![root]
 }
 
+/// Bind the harness's loopback listener. With no explicit `--port`, prefer
+/// `default_port` (the application's own default) so the printed URL matches a
+/// real deployment, and fall back to an OS-assigned port only when that port is
+/// already taken. An explicit port is bound exactly, so a conflict there is a
+/// real error the caller surfaces rather than papering over.
+async fn bind_harness_listener(
+    explicit: Option<u16>,
+    default_port: u16,
+) -> std::io::Result<TcpListener> {
+    let preferred = explicit.unwrap_or(default_port);
+    match TcpListener::bind((Ipv4Addr::LOCALHOST, preferred)).await {
+        Ok(listener) => Ok(listener),
+        // Only the defaulting path falls back; an explicit --port stays exact,
+        // so its conflict propagates to the caller.
+        Err(err) if explicit.is_none() && err.kind() == std::io::ErrorKind::AddrInUse => {
+            eprintln!("port {preferred} is in use; serving on an OS-assigned port instead");
+            TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await
+        }
+        Err(err) => Err(err),
+    }
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
@@ -267,8 +289,8 @@ async fn main() -> ExitCode {
     let roots = (scenario.build)(temp.path());
 
     // The real server config, defaulted except for the seeded roots and the TTL.
-    // The default search links stay so the row links render. Config.port is never
-    // consulted: the example binds its own listener below.
+    // The default search links stay so the row links render. The example binds
+    // its own listener below, preferring the app's default port.
     let config = Config {
         library_roots: roots,
         ttl_seconds: args.ttl_seconds,
@@ -284,13 +306,13 @@ async fn main() -> ExitCode {
     let state = Arc::new(AppState::new(config, settings));
     let app = web::router(state);
 
-    // Bind 127.0.0.1, defaulting to an OS-assigned ephemeral port so we never
-    // collide with a production instance on 8080. --port pins a stable URL.
-    let requested = SocketAddr::from((Ipv4Addr::LOCALHOST, args.port.unwrap_or(0)));
-    let listener = match TcpListener::bind(requested).await {
+    // Bind 127.0.0.1. With no --port, prefer the app's default so the printed
+    // URL matches a real deployment, falling back to an OS-assigned port only if
+    // the default is already taken. --port pins an exact port for a stable URL.
+    let listener = match bind_harness_listener(args.port, Config::default().port).await {
         Ok(listener) => listener,
         Err(err) => {
-            eprintln!("could not bind {requested}: {err}");
+            eprintln!("could not bind 127.0.0.1: {err}");
             return ExitCode::FAILURE;
         }
     };
@@ -495,5 +517,39 @@ mod tests {
         for name in ["mixed-forest", "clean-error", "root-flagged", "pre-marked"] {
             assert!(listing.contains(name), "listing is missing {name}");
         }
+    }
+
+    #[tokio::test]
+    async fn binds_the_preferred_port_when_it_is_free() {
+        // Reserve a port to learn a free number, release it, then confirm the
+        // harness binds exactly that preferred port rather than moving off it.
+        let probe = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let free = probe.local_addr().unwrap().port();
+        drop(probe);
+
+        let listener = bind_harness_listener(None, free).await.unwrap();
+        assert_eq!(listener.local_addr().unwrap().port(), free);
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_an_ephemeral_port_when_the_preferred_one_is_taken() {
+        // Hold the preferred port, then ask the harness to prefer it. With no
+        // explicit --port it binds a different OS-assigned port instead of
+        // failing.
+        let held = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let taken = held.local_addr().unwrap().port();
+
+        let listener = bind_harness_listener(None, taken).await.unwrap();
+        assert_ne!(listener.local_addr().unwrap().port(), taken);
+    }
+
+    #[tokio::test]
+    async fn an_explicit_port_conflict_is_surfaced_as_an_error() {
+        // An explicit --port is exact: a conflict must error, not silently move
+        // to another port the way the defaulting path does.
+        let held = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let taken = held.local_addr().unwrap().port();
+
+        assert!(bind_harness_listener(Some(taken), 0).await.is_err());
     }
 }

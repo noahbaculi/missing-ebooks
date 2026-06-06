@@ -7,6 +7,14 @@ description = "Surface audiobook folders that hold audio but no matching ebook"
 license = "GPL-3.0-only"
 repository = "https://github.com/noahbaculi/missing-ebooks"
 
+# Examples default to test = false, which hides the explore harness's tests
+# behind `cargo test --example explore`. Opt it into the default run so plain
+# `cargo test` covers every target.
+[[example]]
+name = "explore"
+path = "examples/explore.rs"
+test = true
+
 [dependencies]
 anyhow = "1.0.102"
 axum = "0.8.9"
