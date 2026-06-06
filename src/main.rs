@@ -1,16 +1,21 @@
-//! Interim CLI: load config, scan each library root, and print the gap tree.
-//! The web UI replaces this entry point in a later increment.
+//! Server entry point: load config, build the shared state, and serve the
+//! read-only web UI. `--print-config` still emits the template and exits.
 
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use missing_ebooks::config::{Config, ConfigError, print_config_template};
-use missing_ebooks::scanner::{ScanInputs, ScanSettings, scan};
-use missing_ebooks::tree::{Node, build};
+use missing_ebooks::scanner::{ScanInputs, ScanSettings};
+use missing_ebooks::state::AppState;
+use missing_ebooks::web;
 
-fn main() -> ExitCode {
+#[tokio::main]
+async fn main() -> ExitCode {
+    tracing_subscriber::fmt::init();
+
     let args: Vec<String> = std::env::args().skip(1).collect();
-
     if args.iter().any(|a| a == "--print-config") {
         print!("{}", print_config_template());
         return ExitCode::SUCCESS;
@@ -36,32 +41,41 @@ fn main() -> ExitCode {
     }) {
         Ok(settings) => settings,
         Err(err) => {
-            eprintln!("error: {err}");
+            tracing::error!(error = %err, "invalid scan settings");
             return ExitCode::from(1);
         }
     };
 
-    for root in &config.library_roots {
-        let canonical = match std::fs::canonicalize(root) {
-            Ok(path) => path,
-            Err(err) => {
-                eprintln!("warning: skipping root {}: {err}", root.display());
-                continue;
-            }
-        };
-        println!("{}", canonical.display());
-        let root_name = canonical
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(".");
-        let forest = build(root_name, &scan(&canonical, &settings));
-        if forest.is_empty() {
-            println!("  (no missing ebooks in this root)");
-        } else {
-            for node in &forest {
-                print_node(node, 1);
-            }
+    let ip: IpAddr = match config.bind.parse() {
+        Ok(ip) => ip,
+        Err(_) => {
+            tracing::error!(bind = %config.bind, "bind is not a valid IP address");
+            return ExitCode::from(1);
         }
+    };
+    if !ip.is_loopback() {
+        tracing::warn!(
+            bind = %config.bind,
+            "binding to a non-loopback address; the server has no authentication"
+        );
+    }
+    let addr = SocketAddr::new(ip, config.port);
+
+    let state = Arc::new(AppState::new(config, settings));
+    let app = web::router(state);
+
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            tracing::error!(%addr, error = %err, "could not bind the listener");
+            return ExitCode::from(1);
+        }
+    };
+    tracing::info!(url = %format!("http://{addr}"), "missing-ebooks listening");
+
+    if let Err(err) = axum::serve(listener, app).await {
+        tracing::error!(error = %err, "server error");
+        return ExitCode::from(1);
     }
     ExitCode::SUCCESS
 }
@@ -79,11 +93,20 @@ fn parse_config_path(args: &[String]) -> Option<PathBuf> {
     None
 }
 
-fn print_node(node: &Node, depth: usize) {
-    let indent = "  ".repeat(depth);
-    let suffix = if node.flagged { " *" } else { "" };
-    println!("{indent}{}{suffix}", node.name);
-    for child in &node.children {
-        print_node(child, depth + 1);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_config_path_in_both_forms() {
+        assert_eq!(
+            parse_config_path(&["--config".to_string(), "/a/b.toml".to_string()]),
+            Some(PathBuf::from("/a/b.toml"))
+        );
+        assert_eq!(
+            parse_config_path(&["--config=/c/d.toml".to_string()]),
+            Some(PathBuf::from("/c/d.toml"))
+        );
+        assert_eq!(parse_config_path(&["--print-config".to_string()]), None);
     }
 }
