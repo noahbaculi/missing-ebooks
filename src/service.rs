@@ -7,8 +7,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use serde::Serialize;
+use thiserror::Error;
 
 use crate::config::Config;
+use crate::marker::Marker;
 use crate::scanner::{self, ScanSettings};
 use crate::state::{AppState, CacheEntry};
 use crate::tree::{self, Node};
@@ -35,6 +37,27 @@ pub enum RootState {
     Clean,
     /// The root could not be scanned (missing, not a directory, or unreadable).
     Error(String),
+}
+
+/// A failure performing a write action. The HTML surface renders it as an inline
+/// error; a future JSON API would render it as an error body (see the spec).
+#[derive(Debug, Error)]
+pub enum DomainError {
+    /// The submitted root index does not name a configured root.
+    #[error("no such library root")]
+    RootIndex,
+    /// The resolved target sits outside every configured root.
+    #[error("target is outside the configured library roots")]
+    OutsideRoots,
+    /// The target folder does not exist, or could not be canonicalized.
+    #[error("target folder does not exist")]
+    TargetMissing,
+    /// The target resolved to a file rather than a directory.
+    #[error("target is not a directory")]
+    NotADirectory,
+    /// The marker file could not be written.
+    #[error("could not write the marker file: {0}")]
+    WriteFailed(std::io::Error),
 }
 
 /// Return the cached view if it is still fresh, otherwise scan and cache it.
@@ -66,6 +89,112 @@ pub async fn rescan(state: &AppState) -> Arc<FlaggedView> {
         view: Arc::clone(&view),
     });
     view
+}
+
+/// Write a marker into a folder and update the cached view in place, without a
+/// rescan (see docs/adr/0002-v1-runtime-write-model.md). The guard and the write
+/// run off the cache lock; the lock is held only for the in-memory mutation.
+pub async fn mark(
+    state: &AppState,
+    root: usize,
+    rel: &str,
+    marker: Marker,
+) -> Result<Arc<FlaggedView>, DomainError> {
+    let root_path = state
+        .config
+        .library_roots
+        .get(root)
+        .ok_or(DomainError::RootIndex)?
+        .clone();
+    let rel_owned = rel.to_string();
+    tokio::task::spawn_blocking(move || write_marker(&root_path, &rel_owned, marker))
+        .await
+        .map_err(|_| DomainError::WriteFailed(std::io::Error::other("marker write task failed")))??;
+
+    let mut guard = state.cache.entry.lock().await;
+    match guard.as_mut() {
+        Some(entry) => {
+            let mut view = (*entry.view).clone();
+            apply_mark(&mut view[root], rel);
+            entry.view = Arc::new(view);
+            Ok(Arc::clone(&entry.view))
+        }
+        None => {
+            let view = Arc::new(build_view(state.config.as_ref(), &state.settings).await);
+            *guard = Some(CacheEntry {
+                stored_at: Instant::now(),
+                view: Arc::clone(&view),
+            });
+            Ok(view)
+        }
+    }
+}
+
+/// Guard the target and write the marker file. Runs on a blocking task: the
+/// canonicalize calls and the write touch the filesystem. The root base comes
+/// from config, so only `rel` is request-controlled, and it is re-validated by
+/// canonicalizing the join and confirming it stays inside the root.
+fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(), DomainError> {
+    let canonical_root = std::fs::canonicalize(root).map_err(|_| DomainError::TargetMissing)?;
+    let target = if rel == "." {
+        canonical_root.clone()
+    } else {
+        canonical_root.join(rel)
+    };
+    let canonical_target =
+        std::fs::canonicalize(&target).map_err(|_| DomainError::TargetMissing)?;
+    if !canonical_target.starts_with(&canonical_root) {
+        return Err(DomainError::OutsideRoots);
+    }
+    if !canonical_target.is_dir() {
+        return Err(DomainError::NotADirectory);
+    }
+    std::fs::write(canonical_target.join(marker.filename()), b"").map_err(DomainError::WriteFailed)
+}
+
+/// Remove a marked folder from one root's section, pruning emptied containers. A
+/// marker covers the folder and everything beneath it, so removing the node's
+/// whole subtree is equivalent to a rescan (see ADR-0002).
+fn apply_mark(section: &mut RootSection, rel: &str) {
+    if rel == "." {
+        // A marker in the root directory covers the whole root (see ADR-0005).
+        section.state = RootState::Clean;
+        return;
+    }
+    let RootState::Forest(forest) = &mut section.state else {
+        return;
+    };
+    let components: Vec<&str> = rel.split('/').collect();
+    remove_path(forest, &components, "");
+    if forest.is_empty() {
+        section.state = RootState::Clean;
+    }
+}
+
+/// Walk the forest by path component, remove the addressed node, and prune any
+/// ancestor that is now an empty, non-flagged container. A target that is already
+/// gone, because a rescan landed first or a button was double-clicked, is a
+/// silent no-op.
+fn remove_path(siblings: &mut Vec<Node>, components: &[&str], parent_rel: &str) {
+    let Some((head, tail)) = components.split_first() else {
+        return;
+    };
+    let cur_rel = if parent_rel.is_empty() {
+        (*head).to_string()
+    } else {
+        format!("{parent_rel}/{head}")
+    };
+    let Some(idx) = siblings.iter().position(|n| n.rel_path == cur_rel) else {
+        return;
+    };
+    if tail.is_empty() {
+        siblings.remove(idx);
+    } else {
+        remove_path(&mut siblings[idx].children, tail, &cur_rel);
+        if siblings[idx].children.is_empty() && !siblings[idx].flagged {
+            siblings.remove(idx);
+        }
+    }
 }
 
 /// Build the read view for every configured root, in config order. Each root is
@@ -281,5 +410,180 @@ mod tests {
             value,
             serde_json::json!({ "path": "/lib", "state": "clean" })
         );
+    }
+
+    fn flagged_leaf(name: &str, rel: &str) -> Node {
+        Node {
+            name: name.to_string(),
+            rel_path: rel.to_string(),
+            flagged: true,
+            children: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn write_marker_creates_each_marker_file() {
+        for marker in Marker::ALL {
+            let dir = tempfile::tempdir().unwrap();
+            fs::create_dir_all(dir.path().join("Book")).unwrap();
+            write_marker(dir.path(), "Book", marker).unwrap();
+            assert!(dir.path().join("Book").join(marker.filename()).exists());
+        }
+    }
+
+    #[test]
+    fn write_marker_at_the_root_uses_dot() {
+        let dir = tempfile::tempdir().unwrap();
+        write_marker(dir.path(), ".", Marker::NoEbook).unwrap();
+        assert!(dir.path().join(".no_ebook").exists());
+    }
+
+    #[test]
+    fn write_marker_rejects_an_escape() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = write_marker(dir.path(), "..", Marker::NoEbook).unwrap_err();
+        assert!(matches!(err, DomainError::OutsideRoots));
+    }
+
+    #[test]
+    fn write_marker_missing_target_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = write_marker(dir.path(), "Nope", Marker::NoEbook).unwrap_err();
+        assert!(matches!(err, DomainError::TargetMissing));
+    }
+
+    #[test]
+    fn write_marker_rejects_a_file_target() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let err = write_marker(dir.path(), "Book/01.mp3", Marker::NoEbook).unwrap_err();
+        assert!(matches!(err, DomainError::NotADirectory));
+    }
+
+    #[test]
+    fn apply_mark_removes_a_leaf_and_prunes_its_container() {
+        let mut section = RootSection {
+            path: "/lib".to_string(),
+            state: RootState::Forest(vec![Node {
+                name: "Author".to_string(),
+                rel_path: "Author".to_string(),
+                flagged: false,
+                children: vec![flagged_leaf("Book", "Author/Book")],
+            }]),
+        };
+        apply_mark(&mut section, "Author/Book");
+        assert!(matches!(section.state, RootState::Clean));
+    }
+
+    #[test]
+    fn apply_mark_on_a_container_removes_the_whole_subtree() {
+        let mut section = RootSection {
+            path: "/lib".to_string(),
+            state: RootState::Forest(vec![Node {
+                name: "Author".to_string(),
+                rel_path: "Author".to_string(),
+                flagged: false,
+                children: vec![
+                    flagged_leaf("Book 1", "Author/Book 1"),
+                    flagged_leaf("Book 2", "Author/Book 2"),
+                ],
+            }]),
+        };
+        apply_mark(&mut section, "Author");
+        assert!(matches!(section.state, RootState::Clean));
+    }
+
+    #[test]
+    fn apply_mark_keeps_a_flagged_node_when_its_child_goes() {
+        let mut section = RootSection {
+            path: "/lib".to_string(),
+            state: RootState::Forest(vec![Node {
+                name: "Author".to_string(),
+                rel_path: "Author".to_string(),
+                flagged: true,
+                children: vec![flagged_leaf("Book", "Author/Book")],
+            }]),
+        };
+        apply_mark(&mut section, "Author/Book");
+        match &section.state {
+            RootState::Forest(nodes) => {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0].name, "Author");
+                assert!(nodes[0].children.is_empty());
+                assert!(nodes[0].flagged);
+            }
+            other => panic!("expected Forest, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn apply_mark_on_the_root_sets_clean() {
+        let mut section = RootSection {
+            path: "/lib".to_string(),
+            state: RootState::Forest(vec![flagged_leaf("Author", "Author")]),
+        };
+        apply_mark(&mut section, ".");
+        assert!(matches!(section.state, RootState::Clean));
+    }
+
+    #[test]
+    fn apply_mark_on_an_absent_path_is_a_noop() {
+        let mut section = RootSection {
+            path: "/lib".to_string(),
+            state: RootState::Forest(vec![flagged_leaf("Author", "Author")]),
+        };
+        apply_mark(&mut section, "Ghost");
+        match &section.state {
+            RootState::Forest(nodes) => assert_eq!(nodes.len(), 1),
+            other => panic!("expected Forest, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn mark_updates_a_warm_cache_in_place_without_rescanning() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = state_for(dir.path(), 600);
+
+        let first = current_view(&state).await;
+        assert!(matches!(first[0].state, RootState::Forest(_)));
+
+        let after = mark(&state, 0, "Book", Marker::NoEbook).await.unwrap();
+        assert!(matches!(after[0].state, RootState::Clean));
+        assert!(dir.path().join("Book/.no_ebook").exists());
+
+        // A new gap appears on disk; the warm TTL means current_view returns the
+        // same marked view, proving mark did not trigger a rescan.
+        touch(&dir.path().join("Other/01.mp3"));
+        let again = current_view(&state).await;
+        assert!(Arc::ptr_eq(&after, &again));
+    }
+
+    #[tokio::test]
+    async fn mark_on_a_cold_cache_scans_fresh() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = state_for(dir.path(), 600);
+
+        let view = mark(&state, 0, "Book", Marker::EbookElsewhere).await.unwrap();
+        assert!(matches!(view[0].state, RootState::Clean));
+        assert!(dir.path().join("Book/.ebook_elsewhere").exists());
+    }
+
+    #[tokio::test]
+    async fn mark_outside_a_root_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = state_for(dir.path(), 600);
+        let err = mark(&state, 0, "..", Marker::NoEbook).await.unwrap_err();
+        assert!(matches!(err, DomainError::OutsideRoots));
+    }
+
+    #[tokio::test]
+    async fn mark_with_a_bad_root_index_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_for(dir.path(), 600);
+        let err = mark(&state, 9, ".", Marker::NoEbook).await.unwrap_err();
+        assert!(matches!(err, DomainError::RootIndex));
     }
 }
