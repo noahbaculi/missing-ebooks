@@ -42,3 +42,14 @@ awkward, so editability is no longer treated as a distinguishing axis: the spec
 and CONTEXT.md now describe the two as differing only in match criterion. The
 names-only UI exclude button stays deferred as described above; it is simply not
 documented as an editability difference.
+
+Update (2026-06-06): implemented in `service::mark`, with the in-place tree edit
+in `apply_mark`/`remove_path`. The cache lock is a plain
+`tokio::sync::Mutex<Option<CacheEntry>>`, the lock option above rather than
+`arc-swap`; a read clones the `Arc<FlaggedView>` while holding it briefly. A
+write runs the path guard and the file write off the lock (the guard is its own
+decision, see ADR-0008), then takes the lock to remove the marked subtree, prune
+emptied containers, and store the new view, leaving `stored_at` untouched so the
+TTL still fires on schedule. One case the body did not spell out: when the cache
+is cold (nothing has been scanned yet) a write builds and stores a fresh view
+instead of editing, because there is no cached view to edit.

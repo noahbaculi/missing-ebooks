@@ -43,7 +43,9 @@ _Avoid_: satisfied, resolved, has-ebook.
 **Marker**:
 A file whose presence makes a folder covered on purpose. `.no_ebook` means no
 ebook exists or could be sourced; `.ebook_elsewhere` means the ebook lives in
-another folder.
+another folder. Each node row has one button per marker that writes the file
+into that folder, so marking a container covers every folder beneath it through
+ancestor coverage.
 _Avoid_: flag file, exception file, sentinel.
 
 **Exclude name**:

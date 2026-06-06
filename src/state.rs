@@ -1,6 +1,7 @@
 //! Application state: the immutable `Arc<Config>` and compiled `Arc<ScanSettings>`,
-//! plus a TTL-memoized scan cache behind one mutex. The cache is read once at
-//! startup and never written back (see docs/adr/0002-v1-runtime-write-model.md).
+//! plus a TTL-memoized scan cache behind one mutex. The cache is filled on the
+//! first read and refreshed by the TTL or a rescan; a marker write updates the
+//! stored view in place rather than rewalking (see docs/adr/0002-v1-runtime-write-model.md).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
