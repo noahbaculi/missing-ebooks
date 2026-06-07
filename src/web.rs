@@ -26,25 +26,27 @@ const HTMX_JS: &str = include_str!("../assets/htmx.min.js");
 /// The hand-rolled stylesheet, embedded at compile time and served from /static.
 const APP_CSS: &str = include_str!("../assets/app.css");
 
-const PAGE_CSS: &str = "\
-body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 60rem; }
-h2 { font-size: 1rem; color: #333; word-break: break-all; }
-ul.tree { list-style: none; padding-left: 1rem; margin: 0.2rem 0; }
-li.node { margin: 0.1rem 0; }
-summary { cursor: pointer; }
-.flagged { font-weight: 600; }
-.rel { color: #777; margin-left: 0.5rem; font-size: 0.85em; }
-.clean { color: #555; font-style: italic; }
-.error { color: #b00000; }
-form.mark { display: inline; margin-left: 0.5rem; }
-form.mark button { font-size: 0.75em; margin-left: 0.25rem; cursor: pointer; }
-span.links { margin-left: 0.5rem; }
-span.links a { font-size: 0.75em; margin-left: 0.25rem; }
-.covered { color: #999; }
-span.status { margin-left: 0.4rem; font-size: 0.85em; }
-.toolbar { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.5rem; }
-a.toggle { font-size: 0.9em; }
-";
+/// Pre-paint theme bootstrap: sets `data-theme` on <html> before first paint so
+/// there is no flash, and defines `toggleTheme` for the navbar button. Saved
+/// choice wins over the OS preference; the choice persists in localStorage.
+const THEME_INIT_JS: &str = r#"(function () {
+  var KEY = 'theme';
+  function apply(t) { document.documentElement.dataset.theme = t; }
+  function preferred() {
+    var saved = localStorage.getItem(KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  apply(preferred());
+  window.toggleTheme = function () {
+    var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem(KEY, next);
+    apply(next);
+  };
+})();"#;
+
+/// Half-filled circle marking the light/dark toggle. Inherits `currentColor`.
+const TOGGLE_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2v14a7 7 0 0 1 0-14z"/></svg>"##;
 
 /// The `view` parameter shared by the index query string and the rescan form. A
 /// lenient `Option<String>` so an absent or unknown value falls back to gaps-only
@@ -117,13 +119,13 @@ fn mode_path(mode: ViewMode) -> &'static str {
     }
 }
 
-/// The in-page toggle: a plain GET link to the other view. Switching modes
-/// reshapes every root, so this is a full-page navigation, not an htmx swap.
+/// The gaps-only / show-all toggle for the navbar: a plain GET link styled as a
+/// button. Switching modes reshapes every root, so this is a full-page navigation.
 fn view_toggle(mode: ViewMode) -> Markup {
     html! {
         @match mode {
-            ViewMode::GapsOnly => a.toggle href="/?view=all" { "Show all folders" },
-            ViewMode::All => a.toggle href="/" { "Show gaps only" },
+            ViewMode::GapsOnly => a.btn.btn-ghost href="/?view=all" { "Show all folders" },
+            ViewMode::All => a.btn.btn-ghost href="/" { "Show gaps only" },
         }
     }
 }
@@ -139,6 +141,16 @@ async fn app_css() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/css;charset=utf-8")], APP_CSS)
 }
 
+/// The light/dark toggle button for the navbar. Behavior lives in THEME_INIT_JS.
+fn theme_toggle() -> Markup {
+    html! {
+        button.btn.btn-ghost.btn-square type="button"
+            aria-label="Toggle light and dark theme"
+            title="Toggle theme"
+            onclick="toggleTheme()" { (PreEscaped(TOGGLE_SVG)) }
+    }
+}
+
 fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         (DOCTYPE)
@@ -147,16 +159,19 @@ fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Missing Ebooks" }
-                style { (PreEscaped(PAGE_CSS)) }
+                script { (PreEscaped(THEME_INIT_JS)) }
+                link rel="stylesheet" href="/static/app.css";
             }
             body {
-                h1 { "Missing Ebooks" }
-                div.toolbar {
+                nav.navbar {
+                    h1 { "Missing Ebooks" }
+                    span.spacer {}
+                    (view_toggle(mode))
+                    (theme_toggle())
                     form method="post" action="/rescan" {
                         input type="hidden" name="view" value=(mode.as_query());
-                        button type="submit" { "Rescan" }
+                        button.btn.btn-primary type="submit" { "Rescan" }
                     }
-                    (view_toggle(mode))
                 }
                 @for (root, section) in view.iter().enumerate() {
                     (render_section(section, root, None, links, mode))
@@ -425,6 +440,23 @@ mod tests {
         let body = body_string(response).await;
         // Spaces in the cleaned query are percent-encoded, so the href carries `%20`.
         assert!(body.contains("q=Author%20Name"));
+    }
+
+    #[tokio::test]
+    async fn index_links_the_stylesheet_and_inits_the_theme() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The external stylesheet replaces the old inline <style> block.
+        assert!(body.contains(r#"href="/static/app.css""#));
+        // The pre-paint theme script is present and reads the OS preference.
+        assert!(body.contains("prefers-color-scheme"));
+        // The toggle is labelled for assistive tech.
+        assert!(body.contains(r#"aria-label="Toggle light and dark theme""#));
     }
 
     #[tokio::test]
