@@ -96,21 +96,21 @@ pub enum DomainError {
 
 /// Return the cached view if it is still fresh, otherwise scan and cache it.
 /// Single-flight is enforced by `Cache::get_or_build`.
-pub async fn current_view(state: &AppState) -> Arc<FlaggedView> {
+pub async fn current_view(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> {
     state
         .cache
-        .get_or_build(ViewMode::GapsOnly, || {
-            build_view(state.config.as_ref(), &state.settings)
+        .get_or_build(mode, || {
+            build_view(state.config.as_ref(), &state.settings, mode)
         })
         .await
 }
 
 /// Force a fresh scan, store it, and return it, ignoring the TTL.
-pub async fn rescan(state: &AppState) -> Arc<FlaggedView> {
+pub async fn rescan(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> {
     state
         .cache
-        .rebuild(ViewMode::GapsOnly, || {
-            build_view(state.config.as_ref(), &state.settings)
+        .rebuild(mode, || {
+            build_view(state.config.as_ref(), &state.settings, mode)
         })
         .await
 }
@@ -123,6 +123,7 @@ pub async fn mark(
     root: usize,
     rel: &str,
     marker: Marker,
+    mode: ViewMode,
 ) -> Result<Arc<FlaggedView>, DomainError> {
     let root_path = state
         .config
@@ -140,10 +141,10 @@ pub async fn mark(
     Ok(state
         .cache
         .edit_both_or_build(
-            ViewMode::GapsOnly,
+            mode,
             |view| apply_mark(&mut view[root], rel),
             |view| apply_mark_all(&mut view[root], rel),
-            || build_view(state.config.as_ref(), &state.settings),
+            || build_view(state.config.as_ref(), &state.settings, mode),
         )
         .await)
 }
@@ -205,17 +206,21 @@ fn apply_mark_all(section: &mut RootSection, rel: &str) {
 
 /// Build the read view for every configured root, in config order. Each root is
 /// scanned on a blocking task so the directory walk does not stall the runtime.
-async fn build_view(config: &Config, settings: &Arc<ScanSettings>) -> FlaggedView {
+async fn build_view(config: &Config, settings: &Arc<ScanSettings>, mode: ViewMode) -> FlaggedView {
     let mut sections = Vec::with_capacity(config.library_roots.len());
     for root in &config.library_roots {
-        sections.push(build_section(root.clone(), Arc::clone(settings)).await);
+        sections.push(build_section(root.clone(), Arc::clone(settings), mode).await);
     }
     sections
 }
 
 /// Scan one root off the async runtime and fold the result into a section.
-async fn build_section(root: std::path::PathBuf, settings: Arc<ScanSettings>) -> RootSection {
-    match tokio::task::spawn_blocking(move || scan_root(&root, &settings)).await {
+async fn build_section(
+    root: std::path::PathBuf,
+    settings: Arc<ScanSettings>,
+    mode: ViewMode,
+) -> RootSection {
+    match tokio::task::spawn_blocking(move || scan_root(&root, &settings, mode)).await {
         Ok(section) => section,
         Err(join_err) => {
             tracing::error!(error = %join_err, "scan task panicked");
@@ -230,7 +235,7 @@ async fn build_section(root: std::path::PathBuf, settings: Arc<ScanSettings>) ->
 /// The synchronous per-root work: canonicalize, scan, build the forest. Runs on a
 /// blocking thread. A canonicalize failure or a non-directory becomes an `Error`
 /// section so one bad root never sinks the page.
-fn scan_root(root: &Path, settings: &ScanSettings) -> RootSection {
+fn scan_root(root: &Path, settings: &ScanSettings, mode: ViewMode) -> RootSection {
     let canonical = match std::fs::canonicalize(root) {
         Ok(path) => path,
         Err(err) => {
@@ -248,16 +253,27 @@ fn scan_root(root: &Path, settings: &ScanSettings) -> RootSection {
             state: RootState::Error("not a directory".to_string()),
         };
     }
-    let flagged = scanner::scan(&canonical, settings);
     let root_name = canonical
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(".");
-    let forest = tree::build(root_name, &flagged);
-    let state = if forest.is_empty() {
-        RootState::Clean
-    } else {
-        RootState::Forest(forest)
+    let state = match mode {
+        ViewMode::GapsOnly => {
+            let flagged = scanner::scan(&canonical, settings);
+            let forest = tree::build(root_name, &flagged);
+            if forest.is_empty() {
+                RootState::Clean
+            } else {
+                RootState::Forest(forest)
+            }
+        }
+        // Show-all always yields a Forest, even an empty one. "Clean" is a
+        // gaps-only idea; an all-mode root shows its full structure or, with no
+        // folders at all, an empty forest the renderer labels "nothing here".
+        ViewMode::All => {
+            let folders = scanner::scan_all(&canonical, settings);
+            RootState::Forest(tree::build_all(root_name, &folders))
+        }
     };
     RootSection {
         path: canonical.display().to_string(),
@@ -295,7 +311,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Author/Book/01.mp3"));
         let cfg = test_config(vec![dir.path().to_path_buf()], 60);
-        let view = build_view(&cfg, &test_settings()).await;
+        let view = build_view(&cfg, &test_settings(), ViewMode::GapsOnly).await;
         assert_eq!(view.len(), 1);
         match &view[0].state {
             RootState::Forest(nodes) => {
@@ -311,7 +327,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("Empty")).unwrap();
         let cfg = test_config(vec![dir.path().to_path_buf()], 60);
-        let view = build_view(&cfg, &test_settings()).await;
+        let view = build_view(&cfg, &test_settings(), ViewMode::GapsOnly).await;
         assert!(matches!(view[0].state, RootState::Clean));
     }
 
@@ -326,7 +342,7 @@ mod tests {
             ],
             60,
         );
-        let view = build_view(&cfg, &test_settings()).await;
+        let view = build_view(&cfg, &test_settings(), ViewMode::GapsOnly).await;
         assert!(matches!(view[0].state, RootState::Error(_)));
         assert!(matches!(view[1].state, RootState::Forest(_)));
     }
@@ -343,10 +359,10 @@ mod tests {
         touch(&dir.path().join("Book/01.mp3"));
         let state = state_for(dir.path(), 600);
 
-        let first = current_view(&state).await;
+        let first = current_view(&state, ViewMode::GapsOnly).await;
         // Cover the gap on disk after the first scan.
         touch(&dir.path().join("Book/Book.epub"));
-        let second = current_view(&state).await;
+        let second = current_view(&state, ViewMode::GapsOnly).await;
 
         assert!(
             Arc::ptr_eq(&first, &second),
@@ -360,11 +376,11 @@ mod tests {
         touch(&dir.path().join("Book/01.mp3"));
         let state = state_for(dir.path(), 0);
 
-        let first = current_view(&state).await;
+        let first = current_view(&state, ViewMode::GapsOnly).await;
         assert!(matches!(first[0].state, RootState::Forest(_)));
 
         touch(&dir.path().join("Book/Book.epub"));
-        let second = current_view(&state).await;
+        let second = current_view(&state, ViewMode::GapsOnly).await;
         assert!(!Arc::ptr_eq(&first, &second));
         assert!(matches!(second[0].state, RootState::Clean));
     }
@@ -375,11 +391,11 @@ mod tests {
         touch(&dir.path().join("Book/01.mp3"));
         let state = state_for(dir.path(), 600);
 
-        let first = current_view(&state).await;
+        let first = current_view(&state, ViewMode::GapsOnly).await;
         assert!(matches!(first[0].state, RootState::Forest(_)));
 
         touch(&dir.path().join("Book/Book.epub"));
-        let refreshed = rescan(&state).await;
+        let refreshed = rescan(&state, ViewMode::GapsOnly).await;
         assert!(matches!(refreshed[0].state, RootState::Clean));
     }
 
@@ -507,17 +523,19 @@ mod tests {
         touch(&dir.path().join("Book/01.mp3"));
         let state = state_for(dir.path(), 600);
 
-        let first = current_view(&state).await;
+        let first = current_view(&state, ViewMode::GapsOnly).await;
         assert!(matches!(first[0].state, RootState::Forest(_)));
 
-        let after = mark(&state, 0, "Book", Marker::NoEbook).await.unwrap();
+        let after = mark(&state, 0, "Book", Marker::NoEbook, ViewMode::GapsOnly)
+            .await
+            .unwrap();
         assert!(matches!(after[0].state, RootState::Clean));
         assert!(dir.path().join("Book/.no_ebook").exists());
 
         // A new gap appears on disk; the warm TTL means current_view returns the
         // same marked view, proving mark did not trigger a rescan.
         touch(&dir.path().join("Other/01.mp3"));
-        let again = current_view(&state).await;
+        let again = current_view(&state, ViewMode::GapsOnly).await;
         assert!(Arc::ptr_eq(&after, &again));
     }
 
@@ -527,9 +545,15 @@ mod tests {
         touch(&dir.path().join("Book/01.mp3"));
         let state = state_for(dir.path(), 600);
 
-        let view = mark(&state, 0, "Book", Marker::EbookElsewhere)
-            .await
-            .unwrap();
+        let view = mark(
+            &state,
+            0,
+            "Book",
+            Marker::EbookElsewhere,
+            ViewMode::GapsOnly,
+        )
+        .await
+        .unwrap();
         assert!(matches!(view[0].state, RootState::Clean));
         assert!(dir.path().join("Book/.ebook_elsewhere").exists());
     }
@@ -539,7 +563,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let state = state_for(dir.path(), 600);
-        let err = mark(&state, 0, "..", Marker::NoEbook).await.unwrap_err();
+        let err = mark(&state, 0, "..", Marker::NoEbook, ViewMode::GapsOnly)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::OutsideRoots));
     }
 
@@ -547,7 +573,9 @@ mod tests {
     async fn mark_with_a_bad_root_index_errors() {
         let dir = tempfile::tempdir().unwrap();
         let state = state_for(dir.path(), 600);
-        let err = mark(&state, 9, ".", Marker::NoEbook).await.unwrap_err();
+        let err = mark(&state, 9, ".", Marker::NoEbook, ViewMode::GapsOnly)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::RootIndex));
     }
 
@@ -611,5 +639,102 @@ mod tests {
     fn view_mode_deserializes_from_the_query_token() {
         let mode: ViewMode = serde_json::from_value(serde_json::json!("all")).unwrap();
         assert_eq!(mode, ViewMode::All);
+    }
+
+    #[tokio::test]
+    async fn all_mode_builds_the_full_tree_including_covered_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        // A gap and a covered book under the same author.
+        touch(&dir.path().join("Author/Gap/01.mp3"));
+        touch(&dir.path().join("Author/Covered/01.mp3"));
+        touch(&dir.path().join("Author/Covered/Covered.epub"));
+        let cfg = test_config(vec![dir.path().to_path_buf()], 60);
+        let view = build_view(&cfg, &test_settings(), ViewMode::All).await;
+        let RootState::Forest(nodes) = &view[0].state else {
+            panic!("show-all always yields a Forest");
+        };
+        let author = &nodes[0];
+        assert_eq!(author.name, "Author");
+        let names: Vec<&str> = author.children.iter().map(|n| n.name.as_str()).collect();
+        // Both books appear, unlike gaps-only which would drop Covered.
+        assert_eq!(names, vec!["Covered", "Gap"]);
+    }
+
+    #[tokio::test]
+    async fn all_slot_is_cold_until_requested_then_builds_on_first_toggle() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Gap/01.mp3"));
+        touch(&dir.path().join("Author/Covered/01.mp3"));
+        touch(&dir.path().join("Author/Covered/Covered.epub"));
+        let state = state_for(dir.path(), 600);
+
+        // Gaps-only read does not populate the all slot.
+        let gaps = current_view(&state, ViewMode::GapsOnly).await;
+        let RootState::Forest(gaps_nodes) = &gaps[0].state else {
+            panic!("expected a Forest");
+        };
+        assert_eq!(gaps_nodes[0].children.len(), 1, "gaps-only drops Covered");
+
+        // First toggle to all builds the all slot.
+        let all = current_view(&state, ViewMode::All).await;
+        let RootState::Forest(all_nodes) = &all[0].state else {
+            panic!("expected a Forest");
+        };
+        assert_eq!(all_nodes[0].children.len(), 2, "all shows Covered too");
+    }
+
+    #[tokio::test]
+    async fn mark_edits_both_warm_slots_and_returns_the_requested_one() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Book/01.mp3"));
+        let state = state_for(dir.path(), 600);
+        // Warm both slots.
+        current_view(&state, ViewMode::GapsOnly).await;
+        current_view(&state, ViewMode::All).await;
+
+        // Mark while in all mode: the returned view is the all slot, with the book
+        // covered (still visible), not removed.
+        let after = mark(&state, 0, "Author/Book", Marker::NoEbook, ViewMode::All)
+            .await
+            .unwrap();
+        let RootState::Forest(nodes) = &after[0].state else {
+            panic!("expected a Forest in all mode");
+        };
+        let book = &nodes[0].children[0];
+        assert_eq!(book.name, "Book");
+        assert!(!book.missing_ebook, "the book is now covered, still shown");
+
+        // The gaps slot was edited too: the book is gone and the root is Clean.
+        let gaps = current_view(&state, ViewMode::GapsOnly).await;
+        assert!(matches!(gaps[0].state, RootState::Clean));
+    }
+
+    #[tokio::test]
+    async fn mark_with_the_all_slot_cold_edits_gaps_and_leaves_all_cold() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Book/01.mp3"));
+        let state = state_for(dir.path(), 600);
+        // Warm only the gaps slot.
+        current_view(&state, ViewMode::GapsOnly).await;
+
+        // Mark in gaps mode. The returned view is gaps-only and Clean.
+        let after = mark(
+            &state,
+            0,
+            "Author/Book",
+            Marker::NoEbook,
+            ViewMode::GapsOnly,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(after[0].state, RootState::Clean));
+
+        // The all slot was cold, so it builds fresh now and already reflects the
+        // marker on disk: the book is covered, not a gap.
+        let all = current_view(&state, ViewMode::All).await;
+        let RootState::Forest(nodes) = &all[0].state else {
+            panic!("expected a Forest");
+        };
+        assert!(!nodes[0].children[0].missing_ebook);
     }
 }
