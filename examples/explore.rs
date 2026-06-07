@@ -198,6 +198,22 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     touch(&root.join(
         "Robin Hobb/Farseer Trilogy/1 - Assassin\u{2019}s Apprentice/01 - Assassin\u{2019}s Apprentice.m4b",
     ));
+    // Frank Herbert: a "Dune Chronicles" series container with a mix of states.
+    // "Dune" stays flagged (and exercises the .flac extension); "Dune Messiah"
+    // is hidden by an .ebook_elsewhere marker and "Children of Dune" by its own
+    // .pdf, so the container surfaces showing only its one remaining gap.
+    touch(&root.join("Frank Herbert/Dune Chronicles/Dune/01 - Dune.flac"));
+    touch(&root.join("Frank Herbert/Dune Chronicles/Dune Messiah/01 - Dune Messiah.mp3"));
+    touch(&root.join("Frank Herbert/Dune Chronicles/Dune Messiah/.ebook_elsewhere"));
+    touch(&root.join("Frank Herbert/Dune Chronicles/Children of Dune/01 - Children of Dune.mp3"));
+    touch(&root.join("Frank Herbert/Dune Chronicles/Children of Dune/Children of Dune.pdf"));
+    // Terry Pratchett: a "Discworld" series container. "Terry Pratchett - Mort"
+    // keeps its internal " - " hyphen verbatim in the cleaned query (an author
+    // prefix is not a dangling separator). "Guards! Guards!" is covered by its
+    // own .mobi, demonstrating a non-epub ebook format counts as coverage.
+    touch(&root.join("Terry Pratchett/Discworld/Terry Pratchett - Mort/01 - Mort.mp3"));
+    touch(&root.join("Terry Pratchett/Discworld/Guards! Guards!/01 - Guards! Guards!.m4b"));
+    touch(&root.join("Terry Pratchett/Discworld/Guards! Guards!/Guards! Guards!.mobi"));
     vec![root]
 }
 
@@ -500,6 +516,8 @@ mod tests {
             "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire",
             "Brandon Sanderson/The Mistborn Saga/Mistborn 02 - The Well of Ascension [2007]",
             "Robin Hobb/Farseer Trilogy/1 - Assassin\u{2019}s Apprentice",
+            "Frank Herbert/Dune Chronicles/Dune",
+            "Terry Pratchett/Discworld/Terry Pratchett - Mort",
         ]
         .iter()
         .map(|s| s.to_string())
