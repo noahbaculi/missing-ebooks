@@ -1,0 +1,29 @@
+#!/bin/sh
+# Pre-commit guard: run the same fmt and clippy checks as the CI jobs in
+# .github/workflows/ci.yml, so those failures surface here instead of after a
+# push. Activate it once per clone with `mise run setup`.
+#
+# The checks read the working tree, not a staged-only snapshot. Building a
+# staged-only view means stashing unstaged changes, which is risky for little
+# gain when commits stage everything they touch. Bypass in a pinch with
+# `git commit --no-verify`; agents must not, per CLAUDE.md.
+set -eu
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# Skip the Rust build for commits that touch no Rust or build-config file, so
+# doc-only and README commits stay fast. fmt and clippy results cannot change
+# unless one of these changed.
+if ! printf '%s\n' "$staged" | grep -Eq '(\.rs$|(^|/)Cargo\.(toml|lock)$|(^|/)(rust-toolchain|rustfmt|\.rustfmt|clippy)\.toml$)'; then
+  exit 0
+fi
+
+if ! cargo fmt --check; then
+  echo "pre-commit: 'cargo fmt --check' failed. Run 'cargo fmt', then re-stage and commit." >&2
+  exit 1
+fi
+
+if ! cargo clippy --locked --all-targets -- -D warnings; then
+  echo "pre-commit: 'cargo clippy' failed. Fix the warnings above, then re-stage and commit." >&2
+  exit 1
+fi
