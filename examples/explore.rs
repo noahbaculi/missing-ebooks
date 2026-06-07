@@ -214,6 +214,41 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     touch(&root.join("Terry Pratchett/Discworld/Terry Pratchett - Mort/01 - Mort.mp3"));
     touch(&root.join("Terry Pratchett/Discworld/Guards! Guards!/01 - Guards! Guards!.m4b"));
     touch(&root.join("Terry Pratchett/Discworld/Guards! Guards!/Guards! Guards!.mobi"));
+    // Ursula K. Le Guin: "The Left Hand of Darkness" is flagged and exercises
+    // the .m4a extension. "The Dispossessed" carries its own .no_ebook marker,
+    // so it drops out while its flagged sibling stays a click target.
+    touch(
+        &root
+            .join("Ursula K. Le Guin/The Left Hand of Darkness/01 - The Left Hand of Darkness.m4a"),
+    );
+    touch(&root.join("Ursula K. Le Guin/The Dispossessed/01 - The Dispossessed.mp3"));
+    touch(&root.join("Ursula K. Le Guin/The Dispossessed/.no_ebook"));
+    // Neal Stephenson: the underscore and dot in "The_Diamond.Age" normalize to
+    // spaces, so the cleaned search query is "The Diamond Age". The flagged path
+    // itself keeps the raw folder name.
+    touch(&root.join("Neal Stephenson/The_Diamond.Age/01 - The Diamond Age.mp3"));
+    // Dan Simmons: the "{Deluxe Edition}" brace segment is stripped from the
+    // query, leaving "Hyperion". The leaf also exercises the .opus extension.
+    touch(&root.join("Dan Simmons/Hyperion {Deluxe Edition}/01 - Hyperion.opus"));
+    // Isaac Asimov: two cleaning cases. "Foundation [Book 1 (Unabridged)]" has a
+    // nested bracket segment stripped whole, leaving "Foundation". "- The Caves
+    // of Steel -" has leading and trailing dashes trimmed, leaving "The Caves of
+    // Steel".
+    touch(&root.join("Isaac Asimov/Foundation [Book 1 (Unabridged)]/01 - Foundation.m4b"));
+    touch(&root.join("Isaac Asimov/- The Caves of Steel -/01 - The Caves of Steel.mp3"));
+    // Neil Gaiman: two non-epub coverage formats. "The Sandman" is covered by a
+    // .cbz comic archive and "American Gods" by an .azw3, so both drop out.
+    // "Neverwhere" has no ebook, so the author still appears with one flagged
+    // book. (.cbr is intentionally omitted: it shares the identical detection
+    // path as .cbz, so a second comic format would add a folder without meaning.)
+    touch(&root.join("Neil Gaiman/The Sandman/01 - The Sandman.mp3"));
+    touch(&root.join("Neil Gaiman/The Sandman/The Sandman.cbz"));
+    touch(&root.join("Neil Gaiman/American Gods/01 - American Gods.m4b"));
+    touch(&root.join("Neil Gaiman/American Gods/American Gods.azw3"));
+    touch(&root.join("Neil Gaiman/Neverwhere/01 - Neverwhere.mp3"));
+    // Octavia E. Butler: a plain flagged book (audio, no ebook) for lifelike
+    // volume, with no special cleaning or coverage case.
+    touch(&root.join("Octavia E. Butler/Kindred/01 - Kindred.mp3"));
     vec![root]
 }
 
@@ -518,6 +553,13 @@ mod tests {
             "Robin Hobb/Farseer Trilogy/1 - Assassin\u{2019}s Apprentice",
             "Frank Herbert/Dune Chronicles/Dune",
             "Terry Pratchett/Discworld/Terry Pratchett - Mort",
+            "Ursula K. Le Guin/The Left Hand of Darkness",
+            "Neal Stephenson/The_Diamond.Age",
+            "Dan Simmons/Hyperion {Deluxe Edition}",
+            "Isaac Asimov/Foundation [Book 1 (Unabridged)]",
+            "Isaac Asimov/- The Caves of Steel -",
+            "Neil Gaiman/Neverwhere",
+            "Octavia E. Butler/Kindred",
         ]
         .iter()
         .map(|s| s.to_string())
