@@ -7,3 +7,18 @@
 [tools]
 "cargo:bacon" = "3"
 "aqua:EmbarkStudios/cargo-deny" = "0.19"
+
+[tasks.setup]
+description = "Point this clone's git at the committed hooks in .githooks"
+run = "git config core.hooksPath .githooks"
+
+[tasks.lint]
+description = "Run the fmt and clippy checks the pre-commit hook enforces"
+run = [
+  "cargo fmt --check",
+  "cargo clippy --locked --all-targets -- -D warnings",
+]
+
+[tasks."test:hooks"]
+description = "Run the pre-commit hook test"
+run = "sh tests/hooks/pre-commit.sh"
