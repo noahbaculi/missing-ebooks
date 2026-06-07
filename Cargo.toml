@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
 description = "Surface audiobook folders that hold audio but no matching ebook"
-license = "GPL-3.0-only"
+license = "AGPL-3.0-or-later"
 repository = "https://github.com/noahbaculi/missing-ebooks"
 
 # Examples default to test = false, which hides the explore harness's tests

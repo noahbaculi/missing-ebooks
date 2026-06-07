@@ -3,7 +3,7 @@
 # The license allow-list below lists every license present in the dependency
 # tree. If a new dependency introduces a license that is not here, the licenses
 # check fails; regenerate the set with `cargo-deny list` and add the new license
-# only after confirming it is compatible with this crate's GPL-3.0-only terms.
+# only after confirming it is compatible with this crate's AGPL-3.0-or-later terms.
 
 [advisories]
 # RUSTSEC advisories and unmaintained crates fail by default in cargo-deny 0.19.
@@ -12,11 +12,11 @@ ignore = []
 
 [licenses]
 allow = [
+    "AGPL-3.0-or-later",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "BSD-3-Clause",
     "BSL-1.0",
-    "GPL-3.0-only",
     "ISC",
     "MIT",
     "Unicode-3.0",
