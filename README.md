@@ -106,6 +106,7 @@ Scenarios:
 | `clean-error`  | Two roots side by side: one fully covered (Clean), one uncreated (Error)   |
 | `root-flagged` | Loose audio in the root, so the root itself is flagged                     |
 | `pre-marked`   | Pre-existing markers hide covered folders; siblings stay click targets     |
+| `big-library`  | ~50 authors with mixed coverage and nesting, for testing scroll and layout at volume |
 
 Flags:
 
