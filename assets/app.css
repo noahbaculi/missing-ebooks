@@ -101,6 +101,7 @@ details > summary::-webkit-details-marker {
   border-radius: var(--radius-field);
   cursor: pointer;
   text-decoration: none;
+  white-space: nowrap;
   transition: background 0.15s, border-color 0.15s, transform 0.05s;
 }
 .btn:active {
@@ -242,6 +243,8 @@ details[open] > summary .chev {
   line-height: 1.4;
   padding: 0.1rem 0.45rem;
   border-radius: 999px;
+  flex: none;
+  white-space: nowrap;
 }
 .badge-warning {
   background: var(--color-warning);
