@@ -48,6 +48,18 @@ const THEME_INIT_JS: &str = r#"(function () {
 /// Half-filled circle marking the light/dark toggle. Inherits `currentColor`.
 const TOGGLE_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2v14a7 7 0 0 1 0-14z"/></svg>"##;
 
+/// Caret that rotates open when its folder is expanded. Inherits `currentColor`.
+const CHEVRON_SVG: &str = r##"<svg class="chev" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>"##;
+
+/// Folder glyph shown on every node row. Inherits `currentColor`.
+const FOLDER_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>"##;
+
+/// Check mark for the "no gaps in this root" state. Inherits `currentColor`.
+const CHECK_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>"##;
+
+/// Circled exclamation for a scan or write error. Inherits `currentColor`.
+const ERROR_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>"##;
+
 /// The `view` parameter shared by the index query string and the rescan form. A
 /// lenient `Option<String>` so an absent or unknown value falls back to gaps-only
 /// rather than rejecting the request.
@@ -97,7 +109,11 @@ async fn mark(State(state): State<Arc<AppState>>, Form(req): Form<MarkRequest>) 
             let view = service::current_view(&state, mode).await;
             let markup = match view.get(req.root) {
                 Some(section) => render_section(section, req.root, Some(&message), links, mode),
-                None => html! { section.root { p.error { (message) } } },
+                None => html! {
+                    section.card.root {
+                        div.alert.alert-error { (PreEscaped(ERROR_SVG)) span { (message) } }
+                    }
+                },
             };
             Html(markup.into_string())
         }
@@ -151,6 +167,16 @@ fn theme_toggle() -> Markup {
     }
 }
 
+/// The rotating folder caret used on collapsible rows.
+fn chevron() -> Markup {
+    html! { (PreEscaped(CHEVRON_SVG)) }
+}
+
+/// The folder glyph used on every node row (every node is a folder).
+fn folder_icon() -> Markup {
+    html! { (PreEscaped(FOLDER_SVG)) }
+}
+
 fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         (DOCTYPE)
@@ -190,43 +216,43 @@ fn render_section(
     mode: ViewMode,
 ) -> Markup {
     html! {
-        section.root {
-            h2 { (section.path) }
+        section.card.root {
+            div.root-head { h2 { (section.path) } }
             @if let Some(message) = error {
-                p.error { (message) }
+                div.alert.alert-error { (PreEscaped(ERROR_SVG)) span { (message) } }
             }
             @match &section.state {
                 RootState::Forest(nodes) => {
                     @if nodes.is_empty() {
-                        // Show-all yields an empty Forest only for a root with no
-                        // folders at all. Gaps-only never reaches here (it sets
-                        // Clean instead).
-                        p.clean { "Nothing here" }
+                        // Show-all yields an empty forest only for a root with no
+                        // folders at all. Gaps-only sets Clean instead.
+                        div.empty { span { "Nothing here" } }
                     } @else {
-                        ul.tree {
+                        ul.menu {
                             @for node in nodes { (render_node(node, root, links, mode)) }
                         }
                     }
                 }
                 RootState::Clean => {
-                    p.clean { "No missing ebooks in this root" }
+                    div.empty { (PreEscaped(CHECK_SVG)) span { "No missing ebooks in this root" } }
                 }
                 RootState::Error(message) => {
-                    p.error { "Could not scan this root: " (message) }
+                    div.alert.alert-error {
+                        (PreEscaped(ERROR_SVG)) span { "Could not scan this root: " (message) }
+                    }
                 }
             }
         }
     }
 }
 
-/// The show-all status marker for a row: a warning on a gap, a check on a covered
-/// folder, nothing on a plain container. Rendered only in show-all mode.
+/// The show-all status marker for a row: a success check on a covered folder. Gaps
+/// are already flagged by the amber icon and the badge, and plain containers need
+/// no marker, so neither gets one. Rendered only in show-all mode.
 fn status_icon(node: &Node) -> Markup {
     html! {
-        @if node.needs_ebook() {
-            span.status title="missing an ebook" { "\u{26A0}" }
-        } @else if !node.missing_ebook {
-            span.status title="covered" { "\u{2713}" }
+        @if !node.missing_ebook {
+            span.status title="covered" { (PreEscaped(CHECK_SVG)) }
         }
     }
 }
@@ -234,33 +260,41 @@ fn status_icon(node: &Node) -> Markup {
 fn render_node(node: &Node, root: usize, links: &[SearchLink], mode: ViewMode) -> Markup {
     // A covered row dims only in show-all; gaps-only never holds covered nodes.
     let covered = mode == ViewMode::All && !node.missing_ebook;
-    // The affordance rule: buttons and links appear only where there is a gap to
-    // act on. In gaps-only every node qualifies, so the output is unchanged.
+    // Buttons and links appear only where there is a gap to act on. In gaps-only
+    // every node qualifies, so the output is unchanged.
     let act = node.has_gap_within();
     html! {
         @if node.children.is_empty() {
-            li.node.flagged[node.needs_ebook()].covered[covered] {
-                span.name { (node.name) }
-                @if mode == ViewMode::All { (status_icon(node)) }
-                span.rel { (node.rel_path) }
-                @if act {
-                    (marker_buttons(root, &node.rel_path, mode))
-                    (search_links(links, &node.name))
+            li {
+                div.row.flagged[node.needs_ebook()].covered[covered] {
+                    span.leaf-pad {}
+                    (folder_icon())
+                    span.name { (node.name) }
+                    @if node.needs_ebook() { span.badge.badge-warning { "needs ebook" } }
+                    @if mode == ViewMode::All { (status_icon(node)) }
+                    span.spring {}
+                    @if act {
+                        (marker_buttons(root, &node.rel_path, mode))
+                        (search_links(links, &node.name))
+                    }
                 }
             }
         } @else {
-            li.node {
+            li {
                 details open {
-                    summary.flagged[node.needs_ebook()].covered[covered] {
+                    summary.row.flagged[node.needs_ebook()].covered[covered] {
+                        (chevron())
+                        (folder_icon())
                         span.name { (node.name) }
+                        @if node.needs_ebook() { span.badge.badge-warning { "needs ebook" } }
                         @if mode == ViewMode::All { (status_icon(node)) }
-                        span.rel { (node.rel_path) }
+                        span.spring {}
                         @if act {
                             (marker_buttons(root, &node.rel_path, mode))
                             (search_links(links, &node.name))
                         }
                     }
-                    ul.tree {
+                    ul {
                         @for child in &node.children { (render_node(child, root, links, mode)) }
                     }
                 }
@@ -271,20 +305,20 @@ fn render_node(node: &Node, root: usize, links: &[SearchLink], mode: ViewMode) -
 
 fn marker_buttons(root: usize, rel: &str, mode: ViewMode) -> Markup {
     html! {
-        form.mark hx-target="closest section.root" hx-swap="outerHTML" {
+        form.mark.actions hx-target="closest section.root" hx-swap="outerHTML" {
             input type="hidden" name="root" value=(root);
             input type="hidden" name="rel" value=(rel);
             input type="hidden" name="view" value=(mode.as_query());
-            button type="button"
+            button.btn.btn-outline.btn-xs type="button"
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"no_ebook"}"#)
                 onclick="event.stopPropagation()" { "No ebook" }
-            button type="button"
+            button.btn.btn-outline.btn-xs type="button"
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"ebook_elsewhere"}"#)
-                onclick="event.stopPropagation()" { "Ebook elsewhere" }
+                onclick="event.stopPropagation()" { "Elsewhere" }
         }
     }
 }
@@ -294,7 +328,8 @@ fn search_links(links: &[SearchLink], name: &str) -> Markup {
         @if !links.is_empty() {
             @let query = urlencoding::encode(&clean_query(name)).into_owned();
             span.links {
-                @for link in links {
+                @for (i, link) in links.iter().enumerate() {
+                    @if i > 0 { span.sep { "·" } }
                     a href=(link.url.replace("{query}", &query))
                         target="_blank" rel="noopener noreferrer" { (link.label) }
                 }
@@ -440,6 +475,22 @@ mod tests {
         let body = body_string(response).await;
         // Spaces in the cleaned query are percent-encoded, so the href carries `%20`.
         assert!(body.contains("q=Author%20Name"));
+    }
+
+    #[tokio::test]
+    async fn index_renders_the_menu_with_a_flagged_badge() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The tree is now a `menu`, and the styled section keeps the `root` hook.
+        assert!(body.contains(r#"class="menu""#));
+        assert!(body.contains(r#"class="card root""#));
+        // A flagged folder carries the warning badge.
+        assert!(body.contains("needs ebook"));
     }
 
     #[tokio::test]
@@ -680,10 +731,8 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // Covered rows carry the check glyph and the covered class. (Plain
-        // `contains("covered")` would be defeated by the `.covered` CSS rule that
-        // is always in the page, so match the rendered class attribute's tail.)
-        assert!(body.contains("\u{2713}"));
+        // Covered rows carry the success check and the covered class.
+        assert!(body.contains(r#"title="covered""#));
         assert!(body.contains(r#"covered""#));
         // A fully covered branch carries no marker buttons.
         assert!(!body.contains(r#"hx-post="/mark""#));
@@ -771,14 +820,10 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // No status icons and no covered rows in the gaps-only output. (Match the
-        // glyphs and the rendered class tail, not bare "covered", which the
-        // `.covered` CSS rule always carries.)
-        assert!(!body.contains("\u{2713}"));
-        assert!(!body.contains("\u{26A0}"));
+        // No status markers and no covered rows in the gaps-only output.
         assert!(!body.contains(r#"class="status""#));
         assert!(!body.contains(r#"covered""#));
-        // But the gap and its buttons are still there.
+        // The gap and its buttons are still there.
         assert!(body.contains("Book"));
         assert!(body.contains(r#"hx-post="/mark""#));
     }
