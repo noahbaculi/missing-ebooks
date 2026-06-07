@@ -84,6 +84,85 @@ pub fn build(root_name: &str, flagged: &[PathBuf]) -> Vec<Node> {
     roots
 }
 
+/// Build the full-tree forest for one root from `scanner::scan_all` output. Every
+/// folder carries its own two facts. Unlike `build`, intermediate nodes are not
+/// inferred as bare containers: `scan_all` emits every folder, so each node's own
+/// entry sets its facts. `root_name` names the `.` node emitted when the root
+/// itself directly holds audio (see ADR-0005).
+#[must_use]
+pub fn build_all(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> Vec<Node> {
+    let mut roots: Vec<Node> = Vec::new();
+    let mut root_entry: Option<&crate::scanner::ScannedFolder> = None;
+    for folder in folders {
+        let components: Vec<String> = folder
+            .rel_path
+            .components()
+            .filter_map(|c| match c {
+                Component::Normal(os) => Some(os.to_string_lossy().into_owned()),
+                _ => None,
+            })
+            .collect();
+        if components.is_empty() {
+            // The empty relative path is the library root itself.
+            root_entry = Some(folder);
+            continue;
+        }
+        insert_all(&mut roots, &components, "", folder);
+    }
+    sort_forest(&mut roots);
+    if let Some(entry) = root_entry
+        && entry.directly_holds_audio
+    {
+        // The root directly holds audio: surface it as a node, pinned ahead of the
+        // author forest (see ADR-0005). In show-all it shows even when covered.
+        roots.insert(
+            0,
+            Node {
+                name: root_name.to_string(),
+                rel_path: ".".to_string(),
+                directly_holds_audio: true,
+                missing_ebook: entry.missing_ebook,
+                children: Vec::new(),
+            },
+        );
+    }
+    roots
+}
+
+fn insert_all(
+    siblings: &mut Vec<Node>,
+    components: &[String],
+    parent_rel: &str,
+    folder: &crate::scanner::ScannedFolder,
+) {
+    let Some((head, tail)) = components.split_first() else {
+        return;
+    };
+    let rel_path = child_rel(parent_rel, head);
+    let idx = match siblings.iter().position(|n| &n.name == head) {
+        Some(i) => i,
+        None => {
+            siblings.push(Node {
+                name: head.clone(),
+                rel_path: rel_path.clone(),
+                // Placeholder facts, overwritten when this folder's own entry is
+                // processed. `scan_all` emits every folder, so that always happens.
+                // A plain container is the safe neutral if it somehow were not.
+                directly_holds_audio: false,
+                missing_ebook: true,
+                children: Vec::new(),
+            });
+            siblings.len() - 1
+        }
+    };
+    if tail.is_empty() {
+        siblings[idx].directly_holds_audio = folder.directly_holds_audio;
+        siblings[idx].missing_ebook = folder.missing_ebook;
+    } else {
+        insert_all(&mut siblings[idx].children, tail, &rel_path, folder);
+    }
+}
+
 /// Join a parent's relative path with a child name, the way the scanner spells a
 /// folder's path relative to its library root: the head alone at the top level,
 /// `parent/head` below it.
@@ -162,6 +241,7 @@ fn sort_forest(nodes: &mut [Node]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scanner::ScannedFolder;
     use std::path::PathBuf;
 
     fn forest(paths: &[&str]) -> Vec<Node> {
@@ -301,5 +381,70 @@ mod tests {
         let mut forest = vec![gap_leaf("Author", "Author")];
         remove_subtree(&mut forest, "Ghost");
         assert_eq!(forest.len(), 1);
+    }
+
+    fn sf(rel: &str, audio: bool, missing: bool) -> ScannedFolder {
+        ScannedFolder {
+            rel_path: PathBuf::from(rel),
+            directly_holds_audio: audio,
+            missing_ebook: missing,
+        }
+    }
+
+    /// Find a node by its `/`-joined relative path, descending the forest.
+    fn find<'a>(forest: &'a [Node], rel: &str) -> Option<&'a Node> {
+        for node in forest {
+            if node.rel_path == rel {
+                return Some(node);
+            }
+            if let Some(found) = find(&node.children, rel) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn build_all_carries_all_four_kinds_sorted() {
+        let folders = vec![
+            sf("", false, true),               // the root, no loose audio: dropped
+            sf("Series", false, false),        // covered container
+            sf("Series/Book 10", true, false), // covered audiobook
+            sf("Series/Book 2", true, false),  // covered audiobook
+            sf("Gap Author", false, true),     // plain container
+            sf("Gap Author/Book", true, true), // gap
+        ];
+        let forest = build_all("Audiobooks", &folders);
+
+        // Top level is natural-sorted and the root has no `.` node.
+        assert_eq!(names(&forest), vec!["Gap Author", "Series"]);
+
+        let series = find(&forest, "Series").unwrap();
+        assert_eq!(
+            (series.directly_holds_audio, series.missing_ebook),
+            (false, false)
+        );
+        // Children natural-sorted: Book 2 before Book 10.
+        assert_eq!(names(&series.children), vec!["Book 2", "Book 10"]);
+
+        let gap = find(&forest, "Gap Author/Book").unwrap();
+        assert!(gap.needs_ebook());
+        let covered_book = find(&forest, "Series/Book 2").unwrap();
+        assert!(!covered_book.missing_ebook);
+        assert!(covered_book.directly_holds_audio);
+    }
+
+    #[test]
+    fn build_all_pins_a_loose_audio_root_as_the_dot_node() {
+        let folders = vec![
+            sf("", true, true), // root holds loose uncovered audio
+            sf("Andy Weir", false, true),
+            sf("Andy Weir/Artemis", true, true),
+        ];
+        let forest = build_all("Audiobooks", &folders);
+        assert_eq!(names(&forest), vec!["Audiobooks", "Andy Weir"]);
+        assert_eq!(forest[0].rel_path, ".");
+        assert!(forest[0].needs_ebook());
+        assert!(forest[0].children.is_empty());
     }
 }
