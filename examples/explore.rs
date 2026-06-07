@@ -123,6 +123,11 @@ fn catalog() -> Vec<Scenario> {
             description: "Pre-existing markers hide covered folders; siblings stay click targets (single root)",
             build: build_pre_marked,
         },
+        Scenario {
+            name: "big-library",
+            description: "~50 authors of varying size with mixed coverage and nesting, for scroll and layout testing at volume (single root)",
+            build: build_big_library,
+        },
     ]
 }
 
@@ -230,6 +235,120 @@ fn build_pre_marked(base: &Path) -> Vec<PathBuf> {
     touch(&root.join("Elsewhere Series/Book A/01 - Book A.mp3"));
     // Plain Author has no markers, so Plain Book stays flagged.
     touch(&root.join("Plain Author/Plain Book/01 - Plain Book.m4b"));
+    vec![root]
+}
+
+fn build_big_library(base: &Path) -> Vec<PathBuf> {
+    let root = base.join("Audiobooks");
+
+    // Name pools. Ten first names by seven last names give 70 unique
+    // combinations; the loop uses the first 50 by index, so every author name is
+    // distinct. The two title pools have periods 8 and 9, both larger than the
+    // biggest author's 12 books, so titles never collide within one author.
+    const FIRST_NAMES: [&str; 10] = [
+        "Ava", "Noah", "Mara", "Idris", "Lena", "Cole", "Priya", "Sten", "Yuki", "Rosa",
+    ];
+    const LAST_NAMES: [&str; 7] = [
+        "Okafor",
+        "Lindqvist",
+        "Castellanos",
+        "Nakamura",
+        "Abernathy",
+        "Delacroix",
+        "Vandermeer",
+    ];
+    const TITLE_LEFT: [&str; 8] = [
+        "The Hollow",
+        "A Distant",
+        "Iron",
+        "The Last",
+        "Crimson",
+        "Pale",
+        "The Silent",
+        "Broken",
+    ];
+    const TITLE_RIGHT: [&str; 9] = [
+        "Horizon", "Archive", "Tide", "Cipher", "Garden", "Engine", "Requiem", "Lantern",
+        "Meridian",
+    ];
+    const AUDIO_EXT: [&str; 3] = ["mp3", "m4b", "m4a"];
+
+    // The scrollable bulk: 50 authors, each with 1..=12 books, with coverage
+    // assigned by a running book index so it spreads through the tree instead of
+    // clustering. Every fifth book is covered by its own epub and every seventh
+    // that is not already covered carries a marker, so both drop out of the
+    // rendered tree while the rest stay flagged.
+    let mut g: usize = 0;
+    for a in 0..50usize {
+        let author = format!("{} {}", FIRST_NAMES[a % 10], LAST_NAMES[(a / 10) % 7]);
+        let books = 1 + (a % 12);
+        // Every sixth author nests its books under a series container, so the
+        // tree gains depth as well as breadth.
+        let series = if a.is_multiple_of(6) {
+            Some(format!("{} Cycle", LAST_NAMES[(a / 10) % 7]))
+        } else {
+            None
+        };
+        for b in 0..books {
+            let title = format!(
+                "{} {}",
+                TITLE_LEFT[(a + b) % 8],
+                TITLE_RIGHT[(a * 2 + b) % 9]
+            );
+            let book_dir = match &series {
+                Some(series) => root.join(&author).join(series).join(&title),
+                None => root.join(&author).join(&title),
+            };
+            touch(&book_dir.join(format!("01 - {title}.{}", AUDIO_EXT[g % 3])));
+            if g.is_multiple_of(5) {
+                // Covered: an ebook beside the audio, so the scanner drops it.
+                touch(&book_dir.join(format!("{title}.epub")));
+            } else if g.is_multiple_of(7) {
+                // Pre-marked: alternate the two marker kinds for variety.
+                let marker = if g.is_multiple_of(2) {
+                    ".no_ebook"
+                } else {
+                    ".ebook_elsewhere"
+                };
+                touch(&book_dir.join(marker));
+            }
+            g += 1;
+        }
+    }
+
+    // Fixed-name anchors. Stable names let the tests assert specific states
+    // without reconstructing generated names, and they add a few deliberate
+    // layout cases to the page.
+
+    // A plainly flagged folder: audio, no ebook.
+    touch(&root.join("Flagged Anchor/A Plain Flagged Book/01 - track.mp3"));
+
+    // Covered by an in-folder epub, so it is absent from the tree.
+    touch(&root.join("Covered Anchor/A Covered Book/01 - track.mp3"));
+    touch(&root.join("Covered Anchor/A Covered Book/A Covered Book.epub"));
+
+    // Covered by an in-folder marker, so it is absent while siblings would stay.
+    touch(&root.join("Marked Anchor/A Pre-Marked Book/01 - track.m4b"));
+    touch(&root.join("Marked Anchor/A Pre-Marked Book/.no_ebook"));
+
+    // Ancestor coverage: one marker at the collection level hides the whole
+    // subtree, so neither book is flagged.
+    touch(&root.join("Ancestor-Covered Collection/.ebook_elsewhere"));
+    touch(&root.join("Ancestor-Covered Collection/Book One/01 - track.mp3"));
+    touch(&root.join("Ancestor-Covered Collection/Book Two/01 - track.mp3"));
+
+    // A very long author and book name, to see how a wide row wraps.
+    touch(&root.join(
+        "A Very Long Author Name That Keeps Going For Layout Testing/\
+An Equally Long Book Title That Should Wrap Across The Line When The Window Is Narrow/01 - track.mp3",
+    ));
+
+    // A deeply nested, non-ASCII case: accents and a U+2019 right single quote
+    // that survives query cleaning and is percent-encoded in the search href.
+    touch(&root.join(
+        "\u{c9}mile R\u{ed}os/The Collected Works/Inner Series/Assassin\u{2019}s Apprentice (Unabridged)/01 - track.m4b",
+    ));
+
     vec![root]
 }
 
@@ -423,6 +542,38 @@ mod tests {
     }
 
     #[test]
+    fn big_library_has_the_expected_flagged_count_and_anchor_states() {
+        let dir = tempfile::tempdir().unwrap();
+        let roots = build_big_library(dir.path());
+        assert_eq!(roots.len(), 1);
+        assert!(roots[0].is_dir());
+
+        let flagged = flagged(&roots[0]);
+
+        // The 216 flagged books from the bulk loop plus the three flagged
+        // anchors. See the plan/builder for the coverage cadence behind this.
+        assert_eq!(flagged.len(), 219);
+
+        // Fixed-name anchors pin specific coverage states.
+        assert!(flagged.contains("Flagged Anchor/A Plain Flagged Book"));
+        assert!(!flagged.contains("Covered Anchor/A Covered Book"));
+        assert!(!flagged.contains("Marked Anchor/A Pre-Marked Book"));
+        // An ancestor marker hides the whole collection subtree.
+        assert!(!flagged.contains("Ancestor-Covered Collection/Book One"));
+    }
+
+    #[test]
+    fn big_library_generation_is_deterministic() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let first_roots = build_big_library(first.path());
+        let second_roots = build_big_library(second.path());
+        // Two independent builds seed identical flagged sets, so the harness shows
+        // the same tree on every launch.
+        assert_eq!(flagged(&first_roots[0]), flagged(&second_roots[0]));
+    }
+
+    #[test]
     fn parses_a_bare_scenario_name_with_defaults() {
         assert_eq!(
             parse_args(&argv(&["mixed-forest"])),
@@ -505,11 +656,17 @@ mod tests {
     }
 
     #[test]
-    fn catalog_lists_all_four_scenarios() {
+    fn catalog_lists_all_five_scenarios() {
         let names: Vec<&str> = catalog().iter().map(|s| s.name).collect();
         assert_eq!(
             names,
-            vec!["mixed-forest", "clean-error", "root-flagged", "pre-marked"]
+            vec![
+                "mixed-forest",
+                "clean-error",
+                "root-flagged",
+                "pre-marked",
+                "big-library"
+            ]
         );
     }
 
@@ -523,7 +680,13 @@ mod tests {
     fn the_listing_carries_the_usage_line_and_every_name() {
         let listing = catalog_listing();
         assert!(listing.contains(USAGE));
-        for name in ["mixed-forest", "clean-error", "root-flagged", "pre-marked"] {
+        for name in [
+            "mixed-forest",
+            "clean-error",
+            "root-flagged",
+            "pre-marked",
+            "big-library",
+        ] {
             assert!(listing.contains(name), "listing is missing {name}");
         }
     }
