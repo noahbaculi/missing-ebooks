@@ -249,6 +249,28 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     // Octavia E. Butler: a plain flagged book (audio, no ebook) for lifelike
     // volume, with no special cleaning or coverage case.
     touch(&root.join("Octavia E. Butler/Kindred/01 - Kindred.mp3"));
+    // Arthur C. Clarke: the one author that mixes two series containers with
+    // loose standalone books, so its node aggregates gaps from three groupings
+    // at once. Each grouping pairs a flagged book with a covered sibling: in
+    // "Space Odyssey", "2001 A Space Odyssey" stays flagged while "2010 Odyssey
+    // Two" is covered by its .epub; in "Rama", "Rendezvous with Rama" stays
+    // flagged while "Rama II" is covered; among the standalones, "The Fountains
+    // of Paradise" stays flagged while "The City and the Stars" is covered.
+    touch(
+        &root.join(
+            "Arthur C. Clarke/Space Odyssey/2001 A Space Odyssey/01 - 2001 A Space Odyssey.mp3",
+        ),
+    );
+    touch(&root.join("Arthur C. Clarke/Space Odyssey/2010 Odyssey Two/01 - 2010 Odyssey Two.m4b"));
+    touch(&root.join("Arthur C. Clarke/Space Odyssey/2010 Odyssey Two/2010 Odyssey Two.epub"));
+    touch(&root.join("Arthur C. Clarke/Rama/Rendezvous with Rama/01 - Rendezvous with Rama.m4b"));
+    touch(&root.join("Arthur C. Clarke/Rama/Rama II/01 - Rama II.mp3"));
+    touch(&root.join("Arthur C. Clarke/Rama/Rama II/Rama II.epub"));
+    touch(
+        &root.join("Arthur C. Clarke/The Fountains of Paradise/01 - The Fountains of Paradise.mp3"),
+    );
+    touch(&root.join("Arthur C. Clarke/The City and the Stars/01 - The City and the Stars.m4b"));
+    touch(&root.join("Arthur C. Clarke/The City and the Stars/The City and the Stars.epub"));
     vec![root]
 }
 
@@ -560,6 +582,9 @@ mod tests {
             "Isaac Asimov/- The Caves of Steel -",
             "Neil Gaiman/Neverwhere",
             "Octavia E. Butler/Kindred",
+            "Arthur C. Clarke/Space Odyssey/2001 A Space Odyssey",
+            "Arthur C. Clarke/Rama/Rendezvous with Rama",
+            "Arthur C. Clarke/The Fountains of Paradise",
         ]
         .iter()
         .map(|s| s.to_string())
