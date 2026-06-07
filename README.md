@@ -132,6 +132,6 @@ With the hook installed, any commit that touches Rust or build-config files runs
 ## Future Work
 
 - [x] Repeatable UI test harness with the same possible seeded states to test multiple scenarios
-- [ ] Prettier UI
+- [x] Prettier UI
 - [ ] Tag-based search query built from path structure, not just the leaf folder name
 - [ ] Runtime button to append an exclude name and persist it to config
