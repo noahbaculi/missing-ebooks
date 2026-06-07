@@ -5,7 +5,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::config::Config;
@@ -13,6 +13,41 @@ use crate::marker::Marker;
 use crate::scanner::{self, ScanSettings};
 use crate::state::AppState;
 use crate::tree::{self, Node};
+
+/// Which view a read or write targets: today's gaps-only forest, or the full
+/// show-all tree. Selects the scan pipeline, the cache slot, and the rendering.
+/// Deserializes from the `view` form field; `from_query` is the lenient path for
+/// the URL query, where an absent or unknown value falls back to gaps-only.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+pub enum ViewMode {
+    /// Today's view: only gaps and the containers above them.
+    #[default]
+    #[serde(rename = "gaps")]
+    GapsOnly,
+    /// The full directory tree, covered folders included.
+    #[serde(rename = "all")]
+    All,
+}
+
+impl ViewMode {
+    /// Parse the URL `view` query parameter. Absent or unrecognized is gaps-only.
+    #[must_use]
+    pub fn from_query(value: Option<&str>) -> ViewMode {
+        match value {
+            Some("all") => ViewMode::All,
+            _ => ViewMode::GapsOnly,
+        }
+    }
+
+    /// The query token for this mode: `gaps` or `all`.
+    #[must_use]
+    pub fn as_query(self) -> &'static str {
+        match self {
+            ViewMode::GapsOnly => "gaps",
+            ViewMode::All => "all",
+        }
+    }
+}
 
 /// The whole read view: one section per configured library root, in config order.
 pub type FlaggedView = Vec<RootSection>;
@@ -493,5 +528,32 @@ mod tests {
         let state = state_for(dir.path(), 600);
         let err = mark(&state, 9, ".", Marker::NoEbook).await.unwrap_err();
         assert!(matches!(err, DomainError::RootIndex));
+    }
+
+    #[test]
+    fn view_mode_parses_the_query_token_leniently() {
+        assert_eq!(ViewMode::from_query(Some("all")), ViewMode::All);
+        assert_eq!(ViewMode::from_query(Some("gaps")), ViewMode::GapsOnly);
+        // Absent or unrecognized falls back to gaps-only.
+        assert_eq!(ViewMode::from_query(None), ViewMode::GapsOnly);
+        assert_eq!(ViewMode::from_query(Some("xyz")), ViewMode::GapsOnly);
+    }
+
+    #[test]
+    fn view_mode_round_trips_through_its_query_token() {
+        for mode in [ViewMode::GapsOnly, ViewMode::All] {
+            assert_eq!(ViewMode::from_query(Some(mode.as_query())), mode);
+        }
+    }
+
+    #[test]
+    fn view_mode_defaults_to_gaps_only() {
+        assert_eq!(ViewMode::default(), ViewMode::GapsOnly);
+    }
+
+    #[test]
+    fn view_mode_deserializes_from_the_query_token() {
+        let mode: ViewMode = serde_json::from_value(serde_json::json!("all")).unwrap();
+        assert_eq!(mode, ViewMode::All);
     }
 }
