@@ -37,6 +37,10 @@ form.mark { display: inline; margin-left: 0.5rem; }
 form.mark button { font-size: 0.75em; margin-left: 0.25rem; cursor: pointer; }
 span.links { margin-left: 0.5rem; }
 span.links a { font-size: 0.75em; margin-left: 0.25rem; }
+.covered { color: #999; }
+span.status { margin-left: 0.4rem; font-size: 0.85em; }
+.toolbar { display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.5rem; }
+a.toggle { font-size: 0.9em; }
 ";
 
 /// The `view` parameter shared by the index query string and the rescan form. A
@@ -109,6 +113,17 @@ fn mode_path(mode: ViewMode) -> &'static str {
     }
 }
 
+/// The in-page toggle: a plain GET link to the other view. Switching modes
+/// reshapes every root, so this is a full-page navigation, not an htmx swap.
+fn view_toggle(mode: ViewMode) -> Markup {
+    html! {
+        @match mode {
+            ViewMode::GapsOnly => a.toggle href="/?view=all" { "Show all folders" },
+            ViewMode::All => a.toggle href="/" { "Show gaps only" },
+        }
+    }
+}
+
 async fn htmx_script() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/javascript;charset=utf-8")],
@@ -128,9 +143,12 @@ fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
             }
             body {
                 h1 { "Missing Ebooks" }
-                form method="post" action="/rescan" {
-                    input type="hidden" name="view" value=(mode.as_query());
-                    button type="submit" { "Rescan" }
+                div.toolbar {
+                    form method="post" action="/rescan" {
+                        input type="hidden" name="view" value=(mode.as_query());
+                        button type="submit" { "Rescan" }
+                    }
+                    (view_toggle(mode))
                 }
                 @for (root, section) in view.iter().enumerate() {
                     (render_section(section, root, None, links, mode))
@@ -156,8 +174,15 @@ fn render_section(
             }
             @match &section.state {
                 RootState::Forest(nodes) => {
-                    ul.tree {
-                        @for node in nodes { (render_node(node, root, links, mode)) }
+                    @if nodes.is_empty() {
+                        // Show-all yields an empty Forest only for a root with no
+                        // folders at all. Gaps-only never reaches here (it sets
+                        // Clean instead).
+                        p.clean { "Nothing here" }
+                    } @else {
+                        ul.tree {
+                            @for node in nodes { (render_node(node, root, links, mode)) }
+                        }
                     }
                 }
                 RootState::Clean => {
@@ -171,23 +196,46 @@ fn render_section(
     }
 }
 
+/// The show-all status marker for a row: a warning on a gap, a check on a covered
+/// folder, nothing on a plain container. Rendered only in show-all mode.
+fn status_icon(node: &Node) -> Markup {
+    html! {
+        @if node.needs_ebook() {
+            span.status title="missing an ebook" { "\u{26A0}" }
+        } @else if !node.missing_ebook {
+            span.status title="covered" { "\u{2713}" }
+        }
+    }
+}
+
 fn render_node(node: &Node, root: usize, links: &[SearchLink], mode: ViewMode) -> Markup {
+    // A covered row dims only in show-all; gaps-only never holds covered nodes.
+    let covered = mode == ViewMode::All && !node.missing_ebook;
+    // The affordance rule: buttons and links appear only where there is a gap to
+    // act on. In gaps-only every node qualifies, so the output is unchanged.
+    let act = node.has_gap_within();
     html! {
         @if node.children.is_empty() {
-            li.node.flagged[node.needs_ebook()] {
+            li.node.flagged[node.needs_ebook()].covered[covered] {
                 span.name { (node.name) }
+                @if mode == ViewMode::All { (status_icon(node)) }
                 span.rel { (node.rel_path) }
-                (marker_buttons(root, &node.rel_path, mode))
-                (search_links(links, &node.name))
+                @if act {
+                    (marker_buttons(root, &node.rel_path, mode))
+                    (search_links(links, &node.name))
+                }
             }
         } @else {
             li.node {
                 details open {
-                    summary.flagged[node.needs_ebook()] {
+                    summary.flagged[node.needs_ebook()].covered[covered] {
                         span.name { (node.name) }
+                        @if mode == ViewMode::All { (status_icon(node)) }
                         span.rel { (node.rel_path) }
-                        (marker_buttons(root, &node.rel_path, mode))
-                        (search_links(links, &node.name))
+                        @if act {
+                            (marker_buttons(root, &node.rel_path, mode))
+                            (search_links(links, &node.name))
+                        }
                     }
                     ul.tree {
                         @for child in &node.children { (render_node(child, root, links, mode)) }
@@ -553,5 +601,126 @@ mod tests {
         assert!(body.contains("Could not mark"));
         // The failed write leaves the tree intact.
         assert!(body.contains("Book"));
+    }
+
+    #[tokio::test]
+    async fn all_view_dims_covered_rows_and_omits_their_buttons() {
+        let dir = tempfile::tempdir().unwrap();
+        // A covered container (series epub) whose books are all covered.
+        touch(&dir.path().join("Series/Series.epub"));
+        touch(&dir.path().join("Series/Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/?view=all")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // Covered rows carry the check glyph and the covered class. (Plain
+        // `contains("covered")` would be defeated by the `.covered` CSS rule that
+        // is always in the page, so match the rendered class attribute's tail.)
+        assert!(body.contains("\u{2713}"));
+        assert!(body.contains(r#"covered""#));
+        // A fully covered branch carries no marker buttons.
+        assert!(!body.contains(r#"hx-post="/mark""#));
+    }
+
+    #[tokio::test]
+    async fn all_view_keeps_buttons_on_a_container_above_a_gap() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Gap/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/?view=all")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The author is a plain container above a gap, so it still gets buttons.
+        assert!(body.contains(r#"hx-post="/mark""#));
+        assert!(body.contains("Gap"));
+    }
+
+    #[tokio::test]
+    async fn the_toggle_points_at_the_other_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Book/01.mp3"));
+        let app = app_for(dir.path());
+
+        let gaps = body_string(
+            app.clone()
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(gaps.contains(r#"href="/?view=all""#));
+
+        let all = body_string(
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .uri("/?view=all")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(all.contains(r#"href="/""#));
+        assert!(all.contains("Show gaps only"));
+    }
+
+    #[tokio::test]
+    async fn all_view_shows_nothing_here_for_a_root_with_no_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        // An empty root: no subfolders, no audio.
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/?view=all")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(body.contains("Nothing here"));
+    }
+
+    #[tokio::test]
+    async fn gaps_only_view_has_no_status_icons_or_covered_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // No status icons and no covered rows in the gaps-only output. (Match the
+        // glyphs and the rendered class tail, not bare "covered", which the
+        // `.covered` CSS rule always carries.)
+        assert!(!body.contains("\u{2713}"));
+        assert!(!body.contains("\u{26A0}"));
+        assert!(!body.contains(r#"class="status""#));
+        assert!(!body.contains(r#"covered""#));
+        // But the gap and its buttons are still there.
+        assert!(body.contains("Book"));
+        assert!(body.contains(r#"hx-post="/mark""#));
     }
 }
