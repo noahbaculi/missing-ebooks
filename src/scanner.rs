@@ -188,6 +188,83 @@ fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<PathBuf
     }
 }
 
+/// One folder from a full walk, tagged with both facts. `scan_all` produces a
+/// `Vec<ScannedFolder>`; `tree::build_all` consumes it. The root walked is the
+/// empty relative path (see ADR-0005), as `scan` spells the loose-root case.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScannedFolder {
+    /// The folder's path relative to the walked root.
+    pub rel_path: PathBuf,
+    /// This folder directly contains at least one audio file.
+    pub directly_holds_audio: bool,
+    /// No ebook or marker covers it (none here, none in any ancestor).
+    pub missing_ebook: bool,
+}
+
+/// Walk `root` and return every folder with both facts, relative to `root`.
+/// Unlike `scan`, coverage does not prune the descent: a covered container is
+/// still walked down to its book folders, each tagged covered. Excluded names,
+/// exclude globs, dot directories, and symlinks still prune. Order is
+/// unspecified; the tree builder sorts.
+#[must_use]
+pub fn scan_all(root: &Path, settings: &ScanSettings) -> Vec<ScannedFolder> {
+    let mut out = Vec::new();
+    visit_all(root, root, false, settings, &mut out);
+    out
+}
+
+fn visit_all(
+    root: &Path,
+    dir: &Path,
+    covered_from_above: bool,
+    settings: &ScanSettings,
+    out: &mut Vec<ScannedFolder>,
+) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            tracing::warn!(dir = %dir.display(), error = %err, "skipping unreadable directory");
+            return;
+        }
+    };
+
+    let mut subdirs: Vec<PathBuf> = Vec::new();
+    let mut has_audio = false;
+    let mut covered_here = false;
+
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            subdirs.push(entry.path());
+        } else {
+            match classify_file(&entry.file_name(), settings) {
+                FileKind::Cover => covered_here = true,
+                FileKind::Audio => has_audio = true,
+                FileKind::Other => {}
+            }
+        }
+    }
+
+    // Coverage is monotonic: once an ancestor covers, everything below is covered.
+    let covered = covered_from_above || covered_here;
+    if let Ok(rel) = dir.strip_prefix(root) {
+        out.push(ScannedFolder {
+            rel_path: rel.to_path_buf(),
+            directly_holds_audio: has_audio,
+            missing_ebook: !covered,
+        });
+    }
+    // Coverage does not stop the descent here; only exclusion does.
+    for sub in subdirs {
+        if is_excluded(root, &sub, settings) {
+            continue;
+        }
+        visit_all(root, &sub, covered, settings, out);
+    }
+}
+
 fn is_excluded(root: &Path, dir: &Path, settings: &ScanSettings) -> bool {
     if let Some(name) = dir.file_name().and_then(OsStr::to_str) {
         // Dot-prefixed directories (.git, .@__thumb, .stfolder) are skipped
@@ -210,7 +287,7 @@ fn is_excluded(root: &Path, dir: &Path, settings: &ScanSettings) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::Path;
 
@@ -382,5 +459,102 @@ mod tests {
             got.is_empty(),
             "a symlinked directory must not be descended into"
         );
+    }
+
+    fn scanned(root: &Path, settings: &ScanSettings) -> BTreeMap<String, (bool, bool)> {
+        scan_all(root, settings)
+            .into_iter()
+            .map(|f| {
+                let rel = f.rel_path.to_string_lossy().replace('\\', "/");
+                (rel, (f.directly_holds_audio, f.missing_ebook))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn scan_all_tags_a_gap_a_covered_audiobook_and_containers() {
+        let dir = tempfile::tempdir().unwrap();
+        // Gap: audio, no cover.
+        touch(&dir.path().join("Gap Author/Gap Book/01.mp3"));
+        // Covered by its own ebook.
+        touch(&dir.path().join("Ebook Author/Ebook Book/01.mp3"));
+        touch(&dir.path().join("Ebook Author/Ebook Book/Ebook Book.epub"));
+        // Covered by its own marker.
+        touch(&dir.path().join("Marker Author/Marker Book/01.mp3"));
+        touch(&dir.path().join("Marker Author/Marker Book/.no_ebook"));
+        let got = scanned(dir.path(), &default_settings(&[]));
+
+        assert_eq!(got["Gap Author"], (false, true)); // plain container
+        assert_eq!(got["Gap Author/Gap Book"], (true, true)); // gap
+        assert_eq!(got["Ebook Author"], (false, true)); // plain container
+        assert_eq!(got["Ebook Author/Ebook Book"], (true, false)); // covered audiobook
+        assert_eq!(got["Marker Author/Marker Book"], (true, false)); // covered audiobook
+    }
+
+    #[test]
+    fn scan_all_carries_ancestor_coverage_down_into_a_covered_container() {
+        let dir = tempfile::tempdir().unwrap();
+        // A series-level epub covers the container and every book under it.
+        touch(&dir.path().join("Series/Series.epub"));
+        touch(&dir.path().join("Series/Book 1/01.mp3"));
+        touch(&dir.path().join("Series/Book 2/01.mp3"));
+        let got = scanned(dir.path(), &default_settings(&[]));
+
+        assert_eq!(got["Series"], (false, false)); // covered container
+        assert_eq!(got["Series/Book 1"], (true, false)); // covered audiobook
+        assert_eq!(got["Series/Book 2"], (true, false)); // covered audiobook
+    }
+
+    #[test]
+    fn scan_all_reports_a_plain_container_with_no_audio_anywhere() {
+        let dir = tempfile::tempdir().unwrap();
+        // An empty-ish folder with no audio and no ebook.
+        std::fs::create_dir_all(dir.path().join("Unsorted")).unwrap();
+        touch(&dir.path().join("Unsorted/cover.jpg"));
+        let got = scanned(dir.path(), &default_settings(&[]));
+        assert_eq!(got["Unsorted"], (false, true)); // plain container
+    }
+
+    #[test]
+    fn scan_all_still_prunes_excluded_dot_and_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("@eaDir/01.mp3"));
+        touch(&dir.path().join(".@__thumb/01.mp3"));
+        touch(&dir.path().join("Book/01.mp3"));
+        let audio: Vec<String> = [".mp3"].iter().map(|s| s.to_string()).collect();
+        let ebook: Vec<String> = [".epub"].iter().map(|s| s.to_string()).collect();
+        let excluded: Vec<String> = vec!["@eadir".to_string()];
+        let settings = ScanSettings::compile(ScanInputs {
+            audio_exts: &audio,
+            ebook_exts: &ebook,
+            excluded_dirs: &excluded,
+            exclude_globs: &[],
+        })
+        .unwrap();
+        let got = scanned(dir.path(), &settings);
+        assert!(!got.contains_key("@eaDir"), "excluded name is pruned");
+        assert!(!got.contains_key(".@__thumb"), "dot directory is pruned");
+        assert_eq!(got["Book"], (true, true));
+    }
+
+    #[test]
+    fn scan_all_reports_loose_root_audio_as_the_empty_path() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("01 - Loose.mp3"));
+        let got = scanned(dir.path(), &default_settings(&[]));
+        // The root itself: holds audio, uncovered.
+        assert_eq!(got[""], (true, true));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn scan_all_does_not_follow_symlinked_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        touch(&outside.path().join("01.mp3"));
+        std::fs::create_dir_all(dir.path().join("Author")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("Author/Linked")).unwrap();
+        let got = scanned(dir.path(), &default_settings(&[]));
+        assert!(!got.contains_key("Author/Linked"));
     }
 }
