@@ -37,6 +37,13 @@ impl Node {
     pub fn needs_ebook(&self) -> bool {
         self.directly_holds_audio && self.missing_ebook
     }
+
+    /// True when this node or any descendant is a gap. Drives the affordance rule:
+    /// marker buttons and search links appear only where there is a gap to act on.
+    #[must_use]
+    pub fn has_gap_within(&self) -> bool {
+        self.needs_ebook() || self.children.iter().any(Node::has_gap_within)
+    }
 }
 
 /// Build the forest of top-level nodes for one root. `root_name` names the node
@@ -228,6 +235,47 @@ fn remove_at(siblings: &mut Vec<Node>, components: &[&str], parent_rel: &str) {
         if siblings[idx].children.is_empty() && !siblings[idx].needs_ebook() {
             siblings.remove(idx);
         }
+    }
+}
+
+/// Cover the node addressed by `rel` (a `/`-joined root-relative path) and its
+/// whole subtree: flip `missing_ebook` to false on it and every descendant,
+/// leaving the nodes in the forest. The show-all counterpart to `remove_subtree`:
+/// a marked folder turns from gap to covered rather than disappearing. An absent
+/// path is a silent no-op. The `.` root sentinel is handled by the caller via
+/// `cover_all`.
+pub fn cover_subtree(forest: &mut [Node], rel: &str) {
+    let components: Vec<&str> = rel.split('/').collect();
+    cover_at(forest, &components, "");
+}
+
+fn cover_at(siblings: &mut [Node], components: &[&str], parent_rel: &str) {
+    let Some((head, tail)) = components.split_first() else {
+        return;
+    };
+    let cur_rel = child_rel(parent_rel, head);
+    let Some(node) = siblings.iter_mut().find(|n| n.rel_path == cur_rel) else {
+        return;
+    };
+    if tail.is_empty() {
+        cover_node(node);
+    } else {
+        cover_at(&mut node.children, tail, &cur_rel);
+    }
+}
+
+/// Cover every node in the forest. Used when the library root itself is marked
+/// (`rel == "."`): coverage from the root flows to everything beneath it.
+pub fn cover_all(forest: &mut [Node]) {
+    for node in forest {
+        cover_node(node);
+    }
+}
+
+fn cover_node(node: &mut Node) {
+    node.missing_ebook = false;
+    for child in &mut node.children {
+        cover_node(child);
     }
 }
 
@@ -446,5 +494,98 @@ mod tests {
         assert_eq!(forest[0].rel_path, ".");
         assert!(forest[0].needs_ebook());
         assert!(forest[0].children.is_empty());
+    }
+
+    #[test]
+    fn cover_subtree_covers_the_addressed_node_and_descendants() {
+        let mut forest = vec![Node {
+            name: "Series".to_string(),
+            rel_path: "Series".to_string(),
+            directly_holds_audio: false,
+            missing_ebook: true,
+            children: vec![
+                gap_leaf("Book 1", "Series/Book 1"),
+                gap_leaf("Book 2", "Series/Book 2"),
+            ],
+        }];
+        cover_subtree(&mut forest, "Series");
+        let series = find(&forest, "Series").unwrap();
+        assert!(!series.missing_ebook);
+        for child in &series.children {
+            assert!(!child.missing_ebook, "descendant flips to covered");
+            assert!(child.directly_holds_audio, "audio fact is untouched");
+        }
+    }
+
+    #[test]
+    fn cover_subtree_leaves_siblings_untouched() {
+        let mut forest = vec![Node {
+            name: "Author".to_string(),
+            rel_path: "Author".to_string(),
+            directly_holds_audio: false,
+            missing_ebook: true,
+            children: vec![
+                gap_leaf("Marked", "Author/Marked"),
+                gap_leaf("Other", "Author/Other"),
+            ],
+        }];
+        cover_subtree(&mut forest, "Author/Marked");
+        assert!(!find(&forest, "Author/Marked").unwrap().missing_ebook);
+        assert!(
+            find(&forest, "Author/Other").unwrap().missing_ebook,
+            "sibling untouched"
+        );
+    }
+
+    #[test]
+    fn cover_subtree_on_an_absent_path_is_a_noop() {
+        let mut forest = vec![gap_leaf("Author", "Author")];
+        cover_subtree(&mut forest, "Ghost");
+        assert!(forest[0].missing_ebook);
+    }
+
+    #[test]
+    fn cover_all_flips_every_node() {
+        let mut forest = vec![
+            Node {
+                name: "A".to_string(),
+                rel_path: "A".to_string(),
+                directly_holds_audio: false,
+                missing_ebook: true,
+                children: vec![gap_leaf("B", "A/B")],
+            },
+            gap_leaf("C", "C"),
+        ];
+        cover_all(&mut forest);
+        assert!(!find(&forest, "A").unwrap().missing_ebook);
+        assert!(!find(&forest, "A/B").unwrap().missing_ebook);
+        assert!(!find(&forest, "C").unwrap().missing_ebook);
+    }
+
+    #[test]
+    fn has_gap_within_sees_a_gap_at_or_below_a_node() {
+        let container = Node {
+            name: "A".to_string(),
+            rel_path: "A".to_string(),
+            directly_holds_audio: false,
+            missing_ebook: true,
+            children: vec![gap_leaf("B", "A/B")],
+        };
+        assert!(container.has_gap_within(), "a descendant gap counts");
+
+        let covered = Node {
+            name: "Series".to_string(),
+            rel_path: "Series".to_string(),
+            directly_holds_audio: false,
+            missing_ebook: false,
+            children: vec![Node {
+                name: "Book".to_string(),
+                rel_path: "Series/Book".to_string(),
+                directly_holds_audio: true,
+                missing_ebook: false,
+                children: Vec::new(),
+            }],
+        };
+        assert!(!covered.has_gap_within(), "a fully covered branch has none");
     }
 }
