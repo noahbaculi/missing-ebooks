@@ -23,6 +23,9 @@ use crate::tree::Node;
 /// The vendored htmx runtime, embedded at compile time and served from /static.
 const HTMX_JS: &str = include_str!("../assets/htmx.min.js");
 
+/// The hand-rolled stylesheet, embedded at compile time and served from /static.
+const APP_CSS: &str = include_str!("../assets/app.css");
+
 const PAGE_CSS: &str = "\
 body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 60rem; }
 h2 { font-size: 1rem; color: #333; word-break: break-all; }
@@ -70,6 +73,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/mark", post(mark))
         .route("/rescan", post(rescan))
         .route("/static/htmx.min.js", get(htmx_script))
+        .route("/static/app.css", get(app_css))
         .with_state(state)
 }
 
@@ -129,6 +133,10 @@ async fn htmx_script() -> impl IntoResponse {
         [(header::CONTENT_TYPE, "text/javascript;charset=utf-8")],
         HTMX_JS,
     )
+}
+
+async fn app_css() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "text/css;charset=utf-8")], APP_CSS)
 }
 
 fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
@@ -417,6 +425,25 @@ mod tests {
         let body = body_string(response).await;
         // Spaces in the cleaned query are percent-encoded, so the href carries `%20`.
         assert!(body.contains("q=Author%20Name"));
+    }
+
+    #[tokio::test]
+    async fn static_route_serves_the_stylesheet() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let content_type = response.headers().get("content-type").unwrap();
+        assert!(content_type.to_str().unwrap().contains("text/css"));
+        let body = body_string(response).await;
+        assert!(body.contains("--color-base-100"));
     }
 
     #[tokio::test]

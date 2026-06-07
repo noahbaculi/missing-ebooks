@@ -1,0 +1,304 @@
+/* ============================================================
+   missing-ebooks stylesheet. Hand-rolled, daisyUI-flavored.
+   Layers: 1) tokens  2) themes  3) base  4) components
+   ============================================================ */
+
+/* ---- 1 + 2: tokens, assigned per theme ---- */
+:root,
+[data-theme="light"] {
+  --color-base-100: #ffffff;
+  --color-base-200: #f2f3f5;
+  --color-base-300: #e5e6e9;
+  --color-base-content: #1f2733;
+  --color-muted: #8b94a3;
+  --color-primary: #605dff;
+  --color-primary-content: #ffffff;
+  --color-warning: #f5a524;
+  --color-warning-content: #432a00;
+  --color-success: #00b074;
+  --color-error: #ef4565;
+  --guide: #dfe2e7;
+  --radius-box: 1rem;
+  --radius-field: 0.5rem;
+  --border: 1px;
+}
+
+[data-theme="dark"] {
+  --color-base-100: #1d232a;
+  --color-base-200: #191e24;
+  --color-base-300: #14181d;
+  --color-base-content: #c7ccd4;
+  --color-muted: #6b7480;
+  --color-primary: #7c79ff;
+  --color-primary-content: #ffffff;
+  --color-warning: #f5a524;
+  --color-warning-content: #2a1a00;
+  --color-success: #00b074;
+  --color-error: #ff6b85;
+  --guide: #2b323b;
+}
+
+/* ---- 3: base ---- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1.5rem;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+  -webkit-font-smoothing: antialiased;
+}
+
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* ---- 4: components ---- */
+
+/* navbar */
+.navbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 52rem;
+  margin: 0 auto 1.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-base-100);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: var(--radius-box);
+}
+.navbar h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.navbar .spacer {
+  flex: 1;
+}
+.navbar form {
+  margin: 0;
+}
+
+/* buttons */
+.btn {
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.8rem;
+  border: var(--border) solid transparent;
+  border-radius: var(--radius-field);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, transform 0.05s;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--color-base-content);
+}
+.btn-ghost:hover {
+  background: var(--color-base-200);
+}
+.btn-outline {
+  background: transparent;
+  border-color: var(--color-base-300);
+  color: var(--color-base-content);
+}
+.btn-outline:hover {
+  background: var(--color-base-200);
+}
+.btn-xs {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+}
+.btn-square {
+  padding: 0.4rem;
+}
+
+/* card / root section */
+.card {
+  max-width: 52rem;
+  margin: 0 auto 1rem;
+  padding: 1rem 1.1rem;
+  background: var(--color-base-100);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: var(--radius-box);
+}
+.root-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.6rem;
+}
+.root-head h2 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  word-break: break-all;
+}
+
+/* menu / tree */
+.menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.9rem;
+}
+.menu ul {
+  list-style: none;
+  margin: 0 0 0 0.85rem;
+  padding-left: 0.8rem;
+  border-left: var(--border) solid var(--guide);
+}
+.menu li {
+  margin: 1px 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-field);
+}
+.row:hover {
+  background: var(--color-base-200);
+}
+
+.chev {
+  width: 0.7rem;
+  flex: none;
+  color: var(--color-muted);
+  transition: transform 0.15s;
+}
+details[open] > summary .chev {
+  transform: rotate(90deg);
+}
+.icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: none;
+  color: var(--color-muted);
+}
+.leaf-pad {
+  width: 0.7rem;
+  flex: none;
+}
+.name {
+  font-weight: 500;
+}
+.spring {
+  flex: 1;
+}
+
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.mark {
+  margin: 0;
+}
+.links {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+}
+.links a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+.links a:hover {
+  text-decoration: underline;
+}
+.links .sep {
+  color: var(--color-muted);
+}
+
+/* badges */
+.badge {
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+}
+.badge-warning {
+  background: var(--color-warning);
+  color: var(--color-warning-content);
+}
+
+/* flagged folders: amber icon + bolder name; the badge carries the label */
+.flagged .icon {
+  color: var(--color-warning);
+}
+.flagged .name {
+  font-weight: 600;
+}
+
+/* covered rows + status check (show-all view only): a dimmed row that carries a
+   success check and no actions */
+.covered .name {
+  color: var(--color-muted);
+  font-weight: 500;
+}
+.covered .icon {
+  color: var(--color-muted);
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+}
+.covered .status .icon {
+  color: var(--color-success);
+}
+
+/* root states */
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius-field);
+  font-size: 0.85rem;
+}
+.alert-error {
+  background: color-mix(in srgb, var(--color-error) 14%, var(--color-base-100));
+  border: var(--border) solid color-mix(in srgb, var(--color-error) 35%, transparent);
+  color: var(--color-base-content);
+}
+.alert .icon {
+  color: var(--color-error);
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.2rem;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+.empty .icon {
+  color: var(--color-success);
+}
