@@ -40,6 +40,23 @@ ancestor up to its library root. A covered folder is never flagged. One
 ebook/marker covers everything beneath it.
 _Avoid_: satisfied, resolved, has-ebook.
 
+**Directly holds audio / Missing ebook**:
+The two independent facts a node carries. _Directly holds audio_ is true when the
+folder itself contains an audio file. _Missing ebook_ is the inverse of _covered_:
+true when no ebook or marker sits in the folder or any ancestor. A flagged folder
+is the pair (directly holds audio, missing ebook); a covered audiobook is (holds
+audio, not missing); a covered container is (no audio, not missing); a plain
+container is (no audio, missing) and needs nothing itself.
+_Avoid_: has-audio flag, uncovered flag.
+
+**Show-all view**:
+An opt-in view that renders the full directory tree, covered folders included,
+down to the individual book folders. A covered folder shows as a dimmed name with
+a check, no buttons and no links. The default view stays gaps-only; a toggle
+switches per view and is not persisted. Marking a folder in show-all turns it from
+a gap into a covered row in place rather than removing it.
+_Avoid_: full view, everything view.
+
 **Marker**:
 A file whose presence makes a folder covered on purpose. `.no_ebook` means no
 ebook exists or could be sourced; `.ebook_elsewhere` means the ebook lives in

@@ -24,6 +24,8 @@ Each flagged row carries:
 
 A rescan button refreshes the view. Scans are cached with a staleness backstop (`ttl_seconds`).
 
+By default the page shows only the gaps. A "Show all folders" toggle beside the Rescan button switches to a fuller view that renders the whole library tree, covered folders included, so a gap can be read in the context of everything around it. Covered folders show dimmed with a check and carry no actions; the gaps keep their buttons and search links. The toggle is per view and is not saved.
+
 ## Getting Started
 
 Set at least one library root and run the server. It exits if no root is configured in any layer.
