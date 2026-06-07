@@ -120,6 +120,12 @@ Flags:
 
 For a live-reload loop while iterating on the UI, run `bacon explore` instead. It rebuilds and reruns the harness on a fixed port whenever `src/`, `examples/`, or `assets/` change. The repo pins bacon in `mise.toml`, so `mise install` provisions it.
 
+## Development
+
+After cloning, run `mise install` to provision the pinned tools, then `mise run setup` once to point git at the committed hooks in `.githooks`.
+
+With the hook installed, any commit that touches Rust or build-config files runs `cargo fmt --check` and `cargo clippy` first, the same checks CI enforces, and blocks the commit if either fails. Run them yourself any time with `mise run lint`. Commits that touch only docs skip the build.
+
 ## Future Work
 
 - [x] Repeatable UI test harness with the same possible seeded states to test multiple scenarios
