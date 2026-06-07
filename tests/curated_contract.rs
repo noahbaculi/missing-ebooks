@@ -2,12 +2,12 @@
 //! must match tests/fixtures/curated/expected.json, the contract from the
 //! design. expected.json is the single source of truth; this test reads it.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use missing_ebooks::config::Config;
-use missing_ebooks::scanner::{ScanInputs, ScanSettings, scan};
-use missing_ebooks::tree::{Node, build};
+use missing_ebooks::scanner::{ScanInputs, ScanSettings, scan, scan_all};
+use missing_ebooks::tree::{Node, build, build_all};
 
 use serde::Deserialize;
 
@@ -16,6 +16,14 @@ struct Expected {
     config: ExpectedConfig,
     flagged: Vec<Finding>,
     containers: Vec<Finding>,
+    all: Vec<AllFolder>,
+}
+
+#[derive(Deserialize)]
+struct AllFolder {
+    path: String,
+    directly_holds_audio: bool,
+    missing_ebook: bool,
 }
 
 #[derive(Deserialize)]
@@ -91,4 +99,32 @@ fn tree_container_set_matches_the_contract() {
         expected.containers.iter().map(|f| f.path.clone()).collect();
     assert_eq!(got_flagged, want_flagged);
     assert_eq!(got_containers, want_containers);
+}
+
+fn collect_all(nodes: &[Node], out: &mut BTreeMap<String, (bool, bool)>) {
+    for node in nodes {
+        out.insert(
+            node.rel_path.clone(),
+            (node.directly_holds_audio, node.missing_ebook),
+        );
+        collect_all(&node.children, out);
+    }
+}
+
+#[test]
+fn scan_all_and_build_all_match_the_contract() {
+    let expected = load_expected();
+    let root = fixture_dir().join("Audiobooks");
+    let folders = scan_all(&root, &expected_settings(&expected));
+    let forest = build_all("Audiobooks", &folders);
+
+    let mut got: BTreeMap<String, (bool, bool)> = BTreeMap::new();
+    collect_all(&forest, &mut got);
+
+    let want: BTreeMap<String, (bool, bool)> = expected
+        .all
+        .iter()
+        .map(|f| (f.path.clone(), (f.directly_holds_audio, f.missing_ebook)))
+        .collect();
+    assert_eq!(got, want);
 }
