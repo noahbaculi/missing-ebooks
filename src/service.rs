@@ -99,7 +99,9 @@ pub enum DomainError {
 pub async fn current_view(state: &AppState) -> Arc<FlaggedView> {
     state
         .cache
-        .get_or_build(|| build_view(state.config.as_ref(), &state.settings))
+        .get_or_build(ViewMode::GapsOnly, || {
+            build_view(state.config.as_ref(), &state.settings)
+        })
         .await
 }
 
@@ -107,7 +109,9 @@ pub async fn current_view(state: &AppState) -> Arc<FlaggedView> {
 pub async fn rescan(state: &AppState) -> Arc<FlaggedView> {
     state
         .cache
-        .rebuild(|| build_view(state.config.as_ref(), &state.settings))
+        .rebuild(ViewMode::GapsOnly, || {
+            build_view(state.config.as_ref(), &state.settings)
+        })
         .await
 }
 
@@ -135,8 +139,10 @@ pub async fn mark(
 
     Ok(state
         .cache
-        .edit_or_build(
+        .edit_both_or_build(
+            ViewMode::GapsOnly,
             |view| apply_mark(&mut view[root], rel),
+            |view| apply_mark_all(&mut view[root], rel),
             || build_view(state.config.as_ref(), &state.settings),
         )
         .await)
@@ -179,6 +185,21 @@ fn apply_mark(section: &mut RootSection, rel: &str) {
     tree::remove_subtree(forest, rel);
     if forest.is_empty() {
         section.state = RootState::Clean;
+    }
+}
+
+/// Apply a marker write to one root's section in the show-all slot. Marking the
+/// root directory covers the whole root (every node flips to covered); otherwise
+/// the marked folder and its descendants flip to covered and stay visible. The
+/// forest walk lives in `tree::cover_subtree` / `tree::cover_all`.
+fn apply_mark_all(section: &mut RootSection, rel: &str) {
+    let RootState::Forest(forest) = &mut section.state else {
+        return;
+    };
+    if rel == "." {
+        tree::cover_all(forest);
+    } else {
+        tree::cover_subtree(forest, rel);
     }
 }
 
@@ -528,6 +549,41 @@ mod tests {
         let state = state_for(dir.path(), 600);
         let err = mark(&state, 9, ".", Marker::NoEbook).await.unwrap_err();
         assert!(matches!(err, DomainError::RootIndex));
+    }
+
+    #[test]
+    fn apply_mark_all_covers_the_addressed_subtree_in_place() {
+        let mut section = RootSection {
+            path: "/lib".to_string(),
+            state: RootState::Forest(vec![Node {
+                name: "Author".to_string(),
+                rel_path: "Author".to_string(),
+                directly_holds_audio: false,
+                missing_ebook: true,
+                children: vec![gap_leaf("Book", "Author/Book")],
+            }]),
+        };
+        apply_mark_all(&mut section, "Author");
+        match &section.state {
+            RootState::Forest(nodes) => {
+                assert!(!nodes[0].missing_ebook);
+                assert!(!nodes[0].children[0].missing_ebook);
+            }
+            other => panic!("expected Forest, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn apply_mark_all_on_the_root_covers_everything() {
+        let mut section = RootSection {
+            path: "/lib".to_string(),
+            state: RootState::Forest(vec![gap_leaf("Author", "Author")]),
+        };
+        apply_mark_all(&mut section, ".");
+        match &section.state {
+            RootState::Forest(nodes) => assert!(!nodes[0].missing_ebook),
+            other => panic!("expected Forest, got {other:?}"),
+        }
     }
 
     #[test]
