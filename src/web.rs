@@ -147,7 +147,7 @@ fn render_section(
 fn render_node(node: &Node, root: usize, links: &[SearchLink]) -> Markup {
     html! {
         @if node.children.is_empty() {
-            li.node.flagged[node.flagged] {
+            li.node.flagged[node.needs_ebook()] {
                 span.name { (node.name) }
                 span.rel { (node.rel_path) }
                 (marker_buttons(root, &node.rel_path))
@@ -156,7 +156,7 @@ fn render_node(node: &Node, root: usize, links: &[SearchLink]) -> Markup {
         } @else {
             li.node {
                 details open {
-                    summary.flagged[node.flagged] {
+                    summary.flagged[node.needs_ebook()] {
                         span.name { (node.name) }
                         span.rel { (node.rel_path) }
                         (marker_buttons(root, &node.rel_path))

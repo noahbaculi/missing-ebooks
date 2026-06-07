@@ -51,7 +51,7 @@ fn expected_settings(expected: &Expected) -> ScanSettings {
 
 fn collect(nodes: &[Node], flagged: &mut BTreeSet<String>, containers: &mut BTreeSet<String>) {
     for node in nodes {
-        if node.flagged {
+        if node.needs_ebook() {
             flagged.insert(node.rel_path.clone());
         } else {
             containers.insert(node.rel_path.clone());

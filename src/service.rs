@@ -346,11 +346,12 @@ mod tests {
         );
     }
 
-    fn flagged_leaf(name: &str, rel: &str) -> Node {
+    fn gap_leaf(name: &str, rel: &str) -> Node {
         Node {
             name: name.to_string(),
             rel_path: rel.to_string(),
-            flagged: true,
+            directly_holds_audio: true,
+            missing_ebook: true,
             children: Vec::new(),
         }
     }
@@ -401,8 +402,9 @@ mod tests {
             state: RootState::Forest(vec![Node {
                 name: "Author".to_string(),
                 rel_path: "Author".to_string(),
-                flagged: false,
-                children: vec![flagged_leaf("Book", "Author/Book")],
+                directly_holds_audio: false,
+                missing_ebook: true,
+                children: vec![gap_leaf("Book", "Author/Book")],
             }]),
         };
         apply_mark(&mut section, "Author/Book");
@@ -416,8 +418,9 @@ mod tests {
             state: RootState::Forest(vec![Node {
                 name: "Author".to_string(),
                 rel_path: "Author".to_string(),
-                flagged: true,
-                children: vec![flagged_leaf("Book", "Author/Book")],
+                directly_holds_audio: true,
+                missing_ebook: true,
+                children: vec![gap_leaf("Book", "Author/Book")],
             }]),
         };
         apply_mark(&mut section, "Author/Book");
@@ -426,7 +429,7 @@ mod tests {
                 assert_eq!(nodes.len(), 1);
                 assert_eq!(nodes[0].name, "Author");
                 assert!(nodes[0].children.is_empty());
-                assert!(nodes[0].flagged);
+                assert!(nodes[0].needs_ebook());
             }
             other => panic!("expected Forest, got {other:?}"),
         }
@@ -436,7 +439,7 @@ mod tests {
     fn apply_mark_on_the_root_sets_clean() {
         let mut section = RootSection {
             path: "/lib".to_string(),
-            state: RootState::Forest(vec![flagged_leaf("Author", "Author")]),
+            state: RootState::Forest(vec![gap_leaf("Author", "Author")]),
         };
         apply_mark(&mut section, ".");
         assert!(matches!(section.state, RootState::Clean));

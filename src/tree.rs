@@ -12,17 +12,31 @@ use std::path::{Component, PathBuf};
 
 use serde::Serialize;
 
-/// One folder in a rendered tree: a flagged gap, a container, or both.
+/// One folder in a rendered tree. Two orthogonal facts describe it: whether it
+/// directly holds audio, and whether it is missing an ebook (uncovered). The gap
+/// the tool surfaces is the derived `needs_ebook()`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Node {
     /// The folder's own name (its last path component).
     pub name: String,
     /// The folder's path relative to the library root, joined with `/`.
     pub rel_path: String,
-    /// True when this folder is itself a flagged gap.
-    pub flagged: bool,
+    /// This folder directly contains at least one audio file.
+    pub directly_holds_audio: bool,
+    /// No ebook or marker covers it: none here and none in any ancestor up to the
+    /// root. The inverse of CONTEXT.md's "covered".
+    pub missing_ebook: bool,
     /// Child nodes, natural-sorted and case-insensitive.
     pub children: Vec<Node>,
+}
+
+impl Node {
+    /// A gap: this folder holds audio and is missing an ebook. Reproduces the old
+    /// `flagged` value. CONTEXT.md's "flagged folder".
+    #[must_use]
+    pub fn needs_ebook(&self) -> bool {
+        self.directly_holds_audio && self.missing_ebook
+    }
 }
 
 /// Build the forest of top-level nodes for one root. `root_name` names the node
@@ -60,7 +74,9 @@ pub fn build(root_name: &str, flagged: &[PathBuf]) -> Vec<Node> {
             Node {
                 name: root_name.to_string(),
                 rel_path: ".".to_string(),
-                flagged: true,
+                // Loose root audio: a gap. The old `flagged: true`.
+                directly_holds_audio: true,
+                missing_ebook: true,
                 children: Vec::new(),
             },
         );
@@ -90,14 +106,19 @@ fn insert(siblings: &mut Vec<Node>, components: &[String], parent_rel: &str) {
             siblings.push(Node {
                 name: head.clone(),
                 rel_path: rel_path.clone(),
-                flagged: false,
+                // A container above a gap: uncovered (the pruned scan never emits
+                // a covered node), holds no direct audio yet. The old default.
+                directly_holds_audio: false,
+                missing_ebook: true,
                 children: Vec::new(),
             });
             siblings.len() - 1
         }
     };
     if tail.is_empty() {
-        siblings[idx].flagged = true;
+        // This path's tail ends here: the folder directly holds audio. With
+        // `missing_ebook` already true, this is a gap. The old `flagged = true`.
+        siblings[idx].directly_holds_audio = true;
     } else {
         insert(&mut siblings[idx].children, tail, &rel_path);
     }
@@ -125,7 +146,7 @@ fn remove_at(siblings: &mut Vec<Node>, components: &[&str], parent_rel: &str) {
         siblings.remove(idx);
     } else {
         remove_at(&mut siblings[idx].children, tail, &cur_rel);
-        if siblings[idx].children.is_empty() && !siblings[idx].flagged {
+        if siblings[idx].children.is_empty() && !siblings[idx].needs_ebook() {
             siblings.remove(idx);
         }
     }
@@ -153,6 +174,26 @@ mod tests {
     }
 
     #[test]
+    fn needs_ebook_is_audio_and_missing() {
+        let cases = [
+            (true, true, true),    // gap
+            (true, false, false),  // covered audiobook
+            (false, false, false), // covered container
+            (false, true, false),  // plain container
+        ];
+        for (audio, missing, want) in cases {
+            let node = Node {
+                name: "X".to_string(),
+                rel_path: "X".to_string(),
+                directly_holds_audio: audio,
+                missing_ebook: missing,
+                children: Vec::new(),
+            };
+            assert_eq!(node.needs_ebook(), want, "audio={audio} missing={missing}");
+        }
+    }
+
+    #[test]
     fn siblings_use_natural_order() {
         let roots = forest(&["Series/Book 2", "Series/Book 10"]);
         assert_eq!(names(&roots), vec!["Series"]);
@@ -169,13 +210,13 @@ mod tests {
     fn nesting_mirrors_the_path_with_no_stray_nodes() {
         let roots = forest(&["A/B/C"]);
         assert_eq!(names(&roots), vec!["A"]);
-        assert!(!roots[0].flagged);
+        assert!(!roots[0].needs_ebook());
         assert_eq!(names(&roots[0].children), vec!["B"]);
-        assert!(!roots[0].children[0].flagged);
+        assert!(!roots[0].children[0].needs_ebook());
         let c = &roots[0].children[0].children[0];
         assert_eq!(c.name, "C");
         assert_eq!(c.rel_path, "A/B/C");
-        assert!(c.flagged);
+        assert!(c.needs_ebook());
         assert!(c.children.is_empty());
     }
 
@@ -192,16 +233,17 @@ mod tests {
         let owned = vec![PathBuf::from(""), PathBuf::from("Andy Weir/Artemis")];
         let roots = build("Audiobooks", &owned);
         assert_eq!(names(&roots), vec!["Audiobooks", "Andy Weir"]);
-        assert!(roots[0].flagged);
+        assert!(roots[0].needs_ebook());
         assert_eq!(roots[0].rel_path, ".");
         assert!(roots[0].children.is_empty());
     }
 
-    fn flagged_leaf(name: &str, rel: &str) -> Node {
+    fn gap_leaf(name: &str, rel: &str) -> Node {
         Node {
             name: name.to_string(),
             rel_path: rel.to_string(),
-            flagged: true,
+            directly_holds_audio: true,
+            missing_ebook: true,
             children: Vec::new(),
         }
     }
@@ -211,8 +253,9 @@ mod tests {
         let mut forest = vec![Node {
             name: "Author".to_string(),
             rel_path: "Author".to_string(),
-            flagged: false,
-            children: vec![flagged_leaf("Book", "Author/Book")],
+            directly_holds_audio: false,
+            missing_ebook: true,
+            children: vec![gap_leaf("Book", "Author/Book")],
         }];
         remove_subtree(&mut forest, "Author/Book");
         assert!(
@@ -226,10 +269,11 @@ mod tests {
         let mut forest = vec![Node {
             name: "Author".to_string(),
             rel_path: "Author".to_string(),
-            flagged: false,
+            directly_holds_audio: false,
+            missing_ebook: true,
             children: vec![
-                flagged_leaf("Book 1", "Author/Book 1"),
-                flagged_leaf("Book 2", "Author/Book 2"),
+                gap_leaf("Book 1", "Author/Book 1"),
+                gap_leaf("Book 2", "Author/Book 2"),
             ],
         }];
         remove_subtree(&mut forest, "Author");
@@ -241,19 +285,20 @@ mod tests {
         let mut forest = vec![Node {
             name: "Author".to_string(),
             rel_path: "Author".to_string(),
-            flagged: true,
-            children: vec![flagged_leaf("Book", "Author/Book")],
+            directly_holds_audio: true,
+            missing_ebook: true,
+            children: vec![gap_leaf("Book", "Author/Book")],
         }];
         remove_subtree(&mut forest, "Author/Book");
         assert_eq!(forest.len(), 1);
         assert_eq!(forest[0].name, "Author");
         assert!(forest[0].children.is_empty());
-        assert!(forest[0].flagged);
+        assert!(forest[0].needs_ebook());
     }
 
     #[test]
     fn remove_subtree_on_an_absent_path_is_a_noop() {
-        let mut forest = vec![flagged_leaf("Author", "Author")];
+        let mut forest = vec![gap_leaf("Author", "Author")];
         remove_subtree(&mut forest, "Ghost");
         assert_eq!(forest.len(), 1);
     }
