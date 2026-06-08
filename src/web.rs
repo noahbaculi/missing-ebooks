@@ -475,6 +475,7 @@ fn search_links(
             @let query = urlencoding::encode(&clean_query(name)).into_owned();
             @let id = next_id("links", root, counter);
             span.links {
+                span.sheet-divider { "Search" }
                 button.btn.btn-outline.btn-xs.links-toggle type="button"
                     popovertarget=(id)
                     aria-label="Search for this book"
@@ -483,7 +484,10 @@ fn search_links(
                 div.links-menu popover="auto" id=(id) onclick="event.stopPropagation()" {
                     @for link in links {
                         a href=(link.url.replace("{query}", &query))
-                            target="_blank" rel="noopener noreferrer" { (link.label) }
+                            target="_blank" rel="noopener noreferrer" {
+                                span.sheet-icon { (PreEscaped(SEARCH_SVG)) }
+                                (link.label)
+                            }
                     }
                 }
             }
@@ -1186,6 +1190,23 @@ mod tests {
         // The compact labels keep the exact text the marker write asserts on.
         assert!(body.contains(">None<"));
         assert!(body.contains(">Elsewhere<"));
+    }
+
+    #[tokio::test]
+    async fn the_action_sheet_marks_the_search_section() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // A sheet-only "Search" divider separates the marker rows from the links.
+        assert!(body.contains(r#"class="sheet-divider""#));
+        // The links still resolve to their configured search URLs.
+        assert!(body.contains("https://www.goodreads.com/search?q=Book"));
     }
 
     #[tokio::test]
