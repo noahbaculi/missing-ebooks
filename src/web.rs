@@ -387,7 +387,7 @@ fn marker_buttons(root: usize, rel: &str, mode: ViewMode) -> Markup {
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"no_ebook"}"#)
-                onclick="event.stopPropagation()" { "No ebook" }
+                onclick="event.stopPropagation()" { "None" }
             button.btn.btn-outline.btn-xs type="button"
                 hx-post="/mark"
                 hx-include="closest form"
@@ -511,7 +511,7 @@ mod tests {
         let body = body_string(response).await;
         assert!(body.contains(r#"hx-post="/mark""#));
         assert!(body.contains(r#"src="/static/htmx.min.js""#));
-        assert!(body.contains("No ebook"));
+        assert!(body.contains(">None<"));
     }
 
     #[tokio::test]
