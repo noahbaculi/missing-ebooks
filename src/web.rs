@@ -218,6 +218,40 @@ fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     }
 }
 
+/// Count the gaps (`needs_ebook()` nodes) anywhere in a forest. Drives the root
+/// summary badge so a collapsed root still tells you how much is unresolved.
+fn count_gaps(nodes: &[Node]) -> usize {
+    nodes
+        .iter()
+        .map(|n| usize::from(n.needs_ebook()) + count_gaps(&n.children))
+        .sum()
+}
+
+/// The badge shown on a root's summary: the gap count, a clean check, or a scan
+/// error. In show-all the forest also holds covered nodes; only gaps are counted.
+fn root_badge(state: &RootState) -> Markup {
+    html! {
+        @match state {
+            RootState::Forest(nodes) => {
+                @let n = count_gaps(nodes);
+                @if n == 0 {
+                    span.root-badge.root-badge-clean { "\u{2713} no gaps" }
+                } @else if n == 1 {
+                    span.root-badge.root-badge-gaps { "1 gap" }
+                } @else {
+                    span.root-badge.root-badge-gaps { (n) " gaps" }
+                }
+            }
+            RootState::Clean => {
+                span.root-badge.root-badge-clean { "\u{2713} no gaps" }
+            }
+            RootState::Error(_) => {
+                span.root-badge.root-badge-error { "scan error" }
+            }
+        }
+    }
+}
+
 fn render_section(
     section: &RootSection,
     root: usize,
@@ -227,28 +261,35 @@ fn render_section(
 ) -> Markup {
     html! {
         section.card.root {
-            div.root-head { h2 { (section.path) } }
-            @if let Some(message) = error {
-                div.alert.alert-error { (PreEscaped(ERROR_SVG)) span { (message) } }
-            }
-            @match &section.state {
-                RootState::Forest(nodes) => {
-                    @if nodes.is_empty() {
-                        // Show-all yields an empty forest only for a root with no
-                        // folders at all. Gaps-only sets Clean instead.
-                        div.empty { span { "Nothing here" } }
-                    } @else {
-                        ul.menu {
-                            @for node in nodes { (render_node(node, root, links, mode)) }
+            details.root-fold open {
+                summary.root-head {
+                    (chevron())
+                    h2 { (section.path) }
+                    span.spring {}
+                    (root_badge(&section.state))
+                }
+                @if let Some(message) = error {
+                    div.alert.alert-error { (PreEscaped(ERROR_SVG)) span { (message) } }
+                }
+                @match &section.state {
+                    RootState::Forest(nodes) => {
+                        @if nodes.is_empty() {
+                            // Show-all yields an empty forest only for a root with no
+                            // folders at all. Gaps-only sets Clean instead.
+                            div.empty { span { "Nothing here" } }
+                        } @else {
+                            ul.menu {
+                                @for node in nodes { (render_node(node, root, links, mode)) }
+                            }
                         }
                     }
-                }
-                RootState::Clean => {
-                    div.empty { (PreEscaped(CHECK_SVG)) span { "No missing ebooks in this root" } }
-                }
-                RootState::Error(message) => {
-                    div.alert.alert-error {
-                        (PreEscaped(ERROR_SVG)) span { "Could not scan this root: " (message) }
+                    RootState::Clean => {
+                        div.empty { (PreEscaped(CHECK_SVG)) span { "No missing ebooks in this root" } }
+                    }
+                    RootState::Error(message) => {
+                        div.alert.alert-error {
+                            (PreEscaped(ERROR_SVG)) span { "Could not scan this root: " (message) }
+                        }
                     }
                 }
             }
@@ -803,6 +844,39 @@ mod tests {
         // Show-all is active; "Gaps only" links back to /.
         assert!(all.contains(r#"href="/""#));
         assert!(all.contains(r#"aria-current="page""#));
+    }
+
+    #[tokio::test]
+    async fn each_root_renders_a_collapsible_summary_with_a_gap_count() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The root head is now a <summary> inside a collapsible <details>.
+        assert!(body.contains(r#"class="root-fold""#));
+        assert!(body.contains("root-head"));
+        // One gap under this root, so the badge reads "1 gap".
+        assert!(body.contains("1 gap"));
+    }
+
+    #[tokio::test]
+    async fn a_clean_root_badge_reads_no_gaps() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        touch(&dir.path().join("Book/Book.epub"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(body.contains("no gaps"));
     }
 
     #[tokio::test]

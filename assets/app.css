@@ -186,6 +186,30 @@ details > summary::-webkit-details-marker {
   color: var(--color-muted);
   word-break: break-all;
 }
+.root-fold > summary.root-head {
+  cursor: pointer;
+}
+.root-badge {
+  flex: none;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.root-badge-gaps {
+  background: var(--color-warning);
+  color: var(--color-warning-content);
+}
+.root-badge-clean {
+  background: color-mix(in srgb, var(--color-success) 18%, var(--color-base-100));
+  color: var(--color-success);
+}
+.root-badge-error {
+  background: color-mix(in srgb, var(--color-error) 16%, var(--color-base-100));
+  color: var(--color-error);
+}
 
 /* menu / tree */
 .menu {
