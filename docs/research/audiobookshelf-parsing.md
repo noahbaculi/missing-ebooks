@@ -1,4 +1,4 @@
-# Audiobookshelf File Parsing Reference
+# Audiobookshelf file parsing reference
 
 How Audiobookshelf (ABS, [advplyr/audiobookshelf](https://github.com/advplyr/audiobookshelf))
 detects and classifies audiobook and ebook files.
@@ -9,7 +9,7 @@ detects and classifies audiobook and ebook files.
 > `server/utils/globals.js` in source as the authoritative list rather than the
 > docs site, which doesn't publish a complete extension table.
 
-## How Classification Works
+## How classification works
 
 ABS decides whether a file is audio, ebook, image, text, or metadata purely from
 its lowercase extension, tested against static allowlist arrays. It doesn't read
@@ -30,7 +30,7 @@ embedded tags to make this decision. The relevant code:
 Classification is case-insensitive and keys only on the extension after the final
 dot.
 
-## Supported Audio Extensions
+## Supported audio extensions
 
 `SupportedAudioTypes` in `globals.js` contains 20 entries:
 
@@ -46,7 +46,7 @@ omits `wav`, which has no MIME entry but is still in the detection list above.
 Expect occasional additions. PR #4212 ("AIFF supported but AIF isn't") added a
 missing variant.
 
-## Supported Ebook Extensions
+## Supported ebook extensions
 
 `SupportedEbookTypes` in `globals.js` contains exactly six entries:
 
@@ -69,7 +69,7 @@ they aren't text formats.
 > progress, but they're still classified as ebooks by extension, so detection is
 > unaffected.
 
-## Library and Folder Structure
+## Library and folder structure
 
 ABS builds books from the directory tree, described in the
 [book scanner guide](https://www.audiobookshelf.org/guides/book-scanner/):
@@ -86,7 +86,7 @@ ABS builds books from the directory tree, described in the
 > deepest book-directory level. If a title splits its audio across `CD1` and `CD2`
 > subfolders, ABS still reports one book, not two.
 
-## Ignored and Non-Content Files
+## Ignored and non-content files
 
 These never count as audio or ebook content:
 
@@ -99,7 +99,7 @@ These never count as audio or ebook content:
 A `.opf` is metadata, not an ebook. A folder whose only book-like file is a `.opf`
 has no ebook as far as ABS is concerned.
 
-## Files and Directories Skipped Before Classification
+## Files and directories skipped before classification
 
 Classification by extension is the second stage. Before it, ABS drops some entries
 from the scan entirely, so they're never classified at all. The rule lives in
@@ -133,7 +133,7 @@ dotpath rule misses it, and ABS names it explicitly. No other vendor name
 (`#recycle`, `Thumbs.db`) is hard-coded; anything starting with a dot is already
 covered.
 
-## Enrichment vs Classification
+## Enrichment vs classification
 
 ABS separates two stages, and only the first decides file type:
 
@@ -163,7 +163,7 @@ primary ebook with priority given to `epub` and marks the rest as supplementary
 ignore in-folder ebooks in an audiobook-only library, and it doesn't automatically
 demote an in-folder ebook to supplementary.
 
-## Series and Sequence from Embedded Tags
+## Series and sequence from embedded tags
 
 Enrichment reads series name and series sequence directly from embedded audio
 tags, not only from folder names. `server/utils/prober.js` runs ffprobe against
@@ -207,7 +207,7 @@ containers." Since the switch from the `tone` tool to ffmpeg for embedding (PR
 tag, and an October 2024 fix stores series and sequence there as a
 semicolon-delimited list to handle multiple series.
 
-## Source of Truth and Version Notes
+## Source of truth and version notes
 
 - Authoritative lists: `server/utils/globals.js` on the branch or tag you run
 - MIME mapping: `server/utils/constants.js` (`AudioMimeType`, 19 keys, no `wav`)
