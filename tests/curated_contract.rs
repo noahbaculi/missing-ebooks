@@ -1,6 +1,6 @@
 //! Integration test: the scanner's flagged set and the tree's container set
-//! must match tests/fixtures/curated/expected.json, the contract from the
-//! design. expected.json is the single source of truth; this test reads it.
+//! must match `tests/fixtures/curated/expected.json`, the contract from the
+//! design. `expected.json` is the single source of truth; this test reads it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};

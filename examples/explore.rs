@@ -5,7 +5,7 @@
 //! unchanged, and tears the directory down on Ctrl-C. There are no assertions and
 //! no browser automation: it just lets you click around a catalog of known
 //! library states. This is the repeatable UI harness listed under the README's
-//! "Future Work". Loose root audio surfaces the root itself (see
+//! "Future work". Loose root audio surfaces the root itself (see
 //! docs/adr/0005-library-root-itself-flaggable.md).
 
 use std::net::Ipv4Addr;
@@ -167,7 +167,7 @@ fn touch(path: &Path) {
 }
 
 // --- Scenario builders. Each one seeds a synthetic library and returns its
-// roots. They start as empty stubs and are filled in one per task. ---
+// roots. ---
 
 fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     let root = base.join("Library");
