@@ -45,31 +45,6 @@ const THEME_INIT_JS: &str = r#"(function () {
   };
 })();"#;
 
-/// Toggles a row's action menu on mobile. The trigger calls this from its
-/// onclick; opening one row closes any other. Defined globally like
-/// `toggleTheme`, and unaffected by htmx section swaps because the swapped
-/// markup re-renders closed.
-const ACTIONS_INIT_JS: &str = r#"window.toggleRowActions = function (trigger) {
-  var row = trigger.closest('.row');
-  if (!row) return;
-  var isOpen = row.getAttribute('data-actions-open') === 'true';
-  var open = document.querySelectorAll('.row[data-actions-open="true"]');
-  for (var i = 0; i < open.length; i++) {
-    if (open[i] !== row) {
-      open[i].removeAttribute('data-actions-open');
-      var other = open[i].querySelector('.actions-trigger');
-      if (other) other.setAttribute('aria-expanded', 'false');
-    }
-  }
-  if (isOpen) {
-    row.removeAttribute('data-actions-open');
-    trigger.setAttribute('aria-expanded', 'false');
-  } else {
-    row.setAttribute('data-actions-open', 'true');
-    trigger.setAttribute('aria-expanded', 'true');
-  }
-};"#;
-
 /// Half-filled circle marking the light/dark toggle. Inherits `currentColor`.
 const TOGGLE_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2v14a7 7 0 0 1 0-14z"/></svg>"##;
 
@@ -251,7 +226,6 @@ fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
                     (render_section(section, root, None, links, mode))
                 }
                 script src="/static/htmx.min.js" {}
-                script { (PreEscaped(ACTIONS_INIT_JS)) }
             }
         }
     }
@@ -412,9 +386,11 @@ fn render_node(
 }
 
 /// The per-row action cluster: a kebab trigger plus the marker buttons and the
-/// search links, wrapped in a group the CSS can collapse. On desktop the trigger
-/// is hidden and the group is `display: contents`, so its children flow inline as
-/// before; on mobile the trigger reveals the group beneath the row.
+/// search links, wrapped in a group that doubles as a native popover. On desktop
+/// the trigger is hidden and the group is `display: contents`, so its children
+/// flow inline in the row as before; on mobile the kebab opens the group as a
+/// bottom action sheet over a dimmed backdrop. The browser provides the toggle,
+/// one-open-at-a-time, light-dismiss, and Esc.
 fn row_actions(
     root: usize,
     rel: &str,
@@ -427,10 +403,14 @@ fn row_actions(
     html! {
         button.actions-trigger type="button"
             aria-label="Actions"
-            aria-expanded="false"
-            aria-controls=(group_id)
-            onclick="toggleRowActions(this); event.stopPropagation()" { (PreEscaped(KEBAB_SVG)) }
-        div.actions-group id=(group_id) {
+            aria-haspopup="menu"
+            popovertarget=(group_id)
+            onclick="event.stopPropagation()" { (PreEscaped(KEBAB_SVG)) }
+        div.actions-group id=(group_id) popover="auto" aria-label=(name) {
+            div.sheet-header {
+                span.sheet-grip aria-hidden="true" {}
+                span.sheet-title { (name) }
+            }
             (marker_buttons(root, rel, mode))
             (search_links(links, name, root, counter))
         }
@@ -630,11 +610,11 @@ mod tests {
             .await
             .unwrap();
         let body = body_string(response).await;
-        // No links means no `span.links` is emitted. The CSS rule in <style> names
-        // `span.links`, so match the rendered attribute, which appears only on a row.
+        // No links means no `span.links` is emitted, and no search popover menu.
+        // The kebab still carries `popovertarget`; it is the sheet trigger now.
         assert!(!body.contains(r#"class="links""#));
-        // No links means no dropdown trigger either.
-        assert!(!body.contains("popovertarget"));
+        assert!(!body.contains(r#"class="links-menu""#));
+        assert!(!body.contains(r#"title="Search links""#));
     }
 
     #[tokio::test]
@@ -1152,18 +1132,24 @@ mod tests {
             .await
             .unwrap();
         let body = body_string(response).await;
-        // A labelled trigger button that the mobile CSS reveals; it controls
-        // the action group by id and reports its open state.
+        // A labelled kebab that opens the per-row action sheet via the native
+        // popover API, and the group that is that popover.
         assert!(body.contains(r#"class="actions-trigger""#));
         assert!(body.contains(r#"aria-label="Actions""#));
-        assert!(body.contains(r#"aria-expanded="false""#));
+        assert!(body.contains(r#"aria-haspopup="menu""#));
+        assert!(body.contains("popovertarget"));
         assert!(body.contains(r#"class="actions-group""#));
-        // The marker buttons and search links still render, now inside the group.
+        assert!(body.contains(r#"popover="auto""#));
+        // The group is labelled with the folder name and titles the sheet with it.
+        assert!(body.contains(r#"aria-label="Book""#));
+        assert!(body.contains(r#"class="sheet-title""#));
+        // The marker buttons and search links still render inside the group.
         assert!(body.contains(r#"hx-post="/mark""#));
         assert!(body.contains(">None<"));
         assert!(body.contains("Goodreads"));
-        // The toggle helper is defined for the trigger's onclick.
-        assert!(body.contains("toggleRowActions"));
+        // The bespoke toggle is gone; the browser drives open/close now.
+        assert!(!body.contains("toggleRowActions"));
+        assert!(!body.contains("aria-expanded"));
     }
 
     #[tokio::test]

@@ -303,6 +303,18 @@ details[open] > summary .chev {
 .actions-group {
   display: contents;
 }
+/* sheet-only chrome: the grab handle, the title, the per-row icons, the verbose
+   marker labels, and the "Search" divider. hidden by default so the inline
+   desktop cluster shows only the compact pills and the bare search links; the
+   mobile sheet reveals each of these. */
+.sheet-header,
+.sheet-grip,
+.sheet-title,
+.sheet-icon,
+.sheet-divider,
+.label-long {
+  display: none;
+}
 .links {
   display: inline-flex;
   align-items: center;
