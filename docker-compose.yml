@@ -1,0 +1,24 @@
+# Pull and run the published image. Adjust the volume, PUID/PGID, and library
+# root to your setup. The app has no authentication, so the host port is bound
+# to loopback by default (see the README for exposing it to the network).
+services:
+  missing-ebooks:
+    image: ghcr.io/noahbaculi/missing-ebooks:latest
+    container_name: missing-ebooks
+    ports:
+      # host:container. Loopback-only by default; use "13379:13379" for LAN.
+      - "127.0.0.1:13379:13379"
+    environment:
+      # Match these to whoever owns your library on the host so marker writes
+      # land with the right ownership.
+      PUID: 1000
+      PGID: 1000
+      MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks
+      # MISSING_EBOOKS_TTL_SECONDS: 60
+    volumes:
+      # Mount your library read-write (the app writes marker files into it).
+      - /mnt/nas/Audiobooks:/audiobooks
+      # Optional: mount a config.toml for file-only settings (search links,
+      # exclude globs, extension lists). Auto-detected at this path.
+      # - ./config.toml:/config/config.toml:ro
+    restart: unless-stopped
