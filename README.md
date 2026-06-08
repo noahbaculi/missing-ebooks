@@ -2,6 +2,12 @@
 
 Self-hosted web server that scans audiobook library trees and surfaces folders that hold audio but no matching ebook, so the gaps are easy to find and fill.
 
+## Live demo
+
+Try it without installing anything: **[demo-missing-ebooks.noahbaculi.com](https://demo-missing-ebooks.noahbaculi.com)**.
+Each visit opens a private, throwaway sandbox seeded with sample audiobooks. Your
+clicks stay yours and the sandbox resets when idle.
+
 ## How it works
 
 Point the server at one or more library roots. Each root is scanned and rendered as its own tree. A folder is flagged when it directly holds an audio file and nothing covers it: no ebook and no marker in that folder or any ancestor up to its root. One ebook or marker covers everything beneath it.
