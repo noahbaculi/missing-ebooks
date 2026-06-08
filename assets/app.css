@@ -618,6 +618,7 @@ details[open] > summary .chev {
   .actions-group .links {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: 0.15rem;
   }
   .actions-group .links-toggle {
@@ -627,6 +628,7 @@ details[open] > summary .chev {
     display: block !important;
     position: static !important;
     inset: auto !important;
+    width: 100%;
     min-width: 0;
     padding: 0;
     border: none;

@@ -778,6 +778,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_left_aligns_the_sheet_search_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The links column stretches to full width instead of centering, so the
+        // search links share the marker buttons' left edge.
+        assert!(body.contains("align-items: stretch"));
+    }
+
+    #[tokio::test]
     async fn static_route_serves_the_htmx_script() {
         let dir = tempfile::tempdir().unwrap();
         let response = app_for(dir.path())
