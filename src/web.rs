@@ -191,7 +191,7 @@ async fn app_css() -> impl IntoResponse {
 /// The light/dark toggle button for the navbar. Behavior lives in `THEME_INIT_JS`.
 fn theme_toggle() -> Markup {
     html! {
-        button.btn.btn-ghost.btn-square type="button"
+        button.btn.btn-ghost.btn-square.theme-toggle type="button"
             aria-label="Toggle light and dark theme"
             title="Toggle theme"
             onclick="toggleTheme()" { (PreEscaped(TOGGLE_SVG)) }
@@ -816,6 +816,49 @@ mod tests {
         // line and a long name wraps inside its own box instead.
         assert!(body.contains(".row:not(.covered)"));
         assert!(body.contains("overflow-wrap: anywhere"));
+    }
+
+    #[tokio::test]
+    async fn stylesheet_stacks_the_navbar_view_toggle_into_a_full_width_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The segmented view toggle drops to its own row at full width, with the
+        // two segments sharing it as equal-width halves.
+        assert!(body.contains(".navbar .segmented"));
+        assert!(body.contains("flex-basis: 100%"));
+        assert!(body.contains(".navbar .segmented .segment"));
+        // The theme toggle is ordered by a dedicated class, not a `> button`
+        // child selector, so a later navbar button can't drift into its row.
+        assert!(body.contains(".navbar .theme-toggle"));
+        assert!(!body.contains(".navbar > button"));
+    }
+
+    #[tokio::test]
+    async fn stylesheet_indents_the_mobile_cover_files_past_the_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // Covering filenames drop below the folder name and indent past where the
+        // name starts, so they read as subordinate rather than lining up flush.
+        assert!(body.contains(".cover-files"));
+        assert!(body.contains("padding-left: 3.5rem"));
     }
 
     #[tokio::test]

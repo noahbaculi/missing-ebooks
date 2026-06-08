@@ -470,14 +470,15 @@ details[open] > summary .chev {
   }
   /* phone navbar lays out in two rows: the title with the theme toggle and
      rescan on top, the view toggle as a full-width segmented control below.
-     flex `order` moves the controls without reordering the markup. `.navbar >
-     button` matches only the theme toggle, since rescan lives inside a form.
-     the leading spacer keeps growing on the top row, so the theme toggle and
-     rescan stay pinned to the right edge instead of stranding a gap on wrap. */
+     flex `order` moves the controls without reordering the markup. each control
+     is matched by class (.spacer, .theme-toggle, form, .segmented) so a later
+     navbar addition can't silently inherit a row's order. the leading spacer
+     keeps growing on the top row, so the theme toggle and rescan stay pinned to
+     the right edge instead of stranding a gap on wrap. */
   .navbar .spacer {
     order: 1;
   }
-  .navbar > button {
+  .navbar .theme-toggle {
     order: 2;
   }
   .navbar form {
