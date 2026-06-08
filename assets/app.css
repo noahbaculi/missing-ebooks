@@ -327,9 +327,6 @@ details[open] > summary .chev {
   color: var(--color-muted);
 }
 .links-menu {
-  /* a popover defaults to fixed and centered; re-anchor it under the button */
-  position: absolute;
-  inset: auto;
   margin: 0;
   min-width: 9rem;
   padding: 0.25rem;
@@ -337,8 +334,16 @@ details[open] > summary .chev {
   border: var(--border) solid var(--color-base-300);
   border-radius: var(--radius-field);
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
-  position-area: bottom span-left;
-  position-try-fallbacks: top span-left, bottom span-right;
+}
+/* where CSS anchor positioning is available, re-anchor the popover under its
+   button; elsewhere the popover keeps the usable centered top-layer default. */
+@supports (position-area: bottom span-left) {
+  .links-menu {
+    position: absolute;
+    inset: auto;
+    position-area: bottom span-left;
+    position-try-fallbacks: top span-left, bottom span-right;
+  }
 }
 .links-menu a {
   display: block;
