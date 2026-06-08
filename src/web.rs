@@ -361,7 +361,7 @@ fn render_node(
                     span.leaf-pad {}
                     (folder_icon())
                     span.name { (node.name) }
-                    @if node.needs_ebook() { span.badge.badge-warning { "needs ebook" } }
+                    @if node.needs_ebook() { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
                     @if mode == ViewMode::All { (status_icon(node)) }
                     (cover_files_span(node, mode))
                     span.spring {}
@@ -377,7 +377,7 @@ fn render_node(
                         (chevron())
                         (folder_icon())
                         span.name { (node.name) }
-                        @if node.needs_ebook() { span.badge.badge-warning { "needs ebook" } }
+                        @if node.needs_ebook() { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
                         @if mode == ViewMode::All { (status_icon(node)) }
                         (cover_files_span(node, mode))
                         span.spring {}
@@ -816,6 +816,21 @@ mod tests {
         // line and a long name wraps inside its own box instead.
         assert!(body.contains(".row:not(.covered)"));
         assert!(body.contains("overflow-wrap: anywhere"));
+    }
+
+    #[tokio::test]
+    async fn the_flagged_badge_carries_a_hover_title() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The mobile dot has no visible text, so the badge gets a title that names
+        // it on hover. The literal label is still emitted as the badge's content.
+        assert!(body.contains(r#"title="needs ebook""#));
+        assert!(body.contains("needs ebook"));
     }
 
     #[tokio::test]
