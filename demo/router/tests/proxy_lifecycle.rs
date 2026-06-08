@@ -267,3 +267,104 @@ async fn forward_failure_evicts_the_session() {
     assert_eq!(inner.pool.available(), 1, "port returned to the pool");
     assert!(inner.children.is_empty(), "child handle dropped");
 }
+
+#[tokio::test]
+async fn second_request_reuses_the_sandbox_without_respawning() {
+    let stub_port = start_stub().await;
+    let config = test_config(stub_port, stub_port);
+    let launcher = FakeLauncher::new(stub_port);
+    let launches = launcher.launches.clone();
+    let state = build_state(
+        Box::new(launcher),
+        SessionStore::new(config.max_sandboxes, config.max_per_ip),
+        PortPool::new(config.port_low, config.port_high),
+        config,
+    );
+
+    // First request: no cookie, so the router spawns and sets the session cookie.
+    let first = app(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header("cf-connecting-ip", "203.0.113.11")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let set_cookie = first
+        .headers()
+        .get("set-cookie")
+        .expect("first request sets a cookie")
+        .to_str()
+        .unwrap()
+        .to_string();
+    // The "me_demo_sid=<value>" pair, dropped of its attributes, to send back.
+    let cookie_pair = set_cookie.split(';').next().unwrap().to_string();
+
+    // Second request carries the cookie: the router reuses the same sandbox and
+    // does not mint a new one.
+    let second = app(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header("cf-connecting-ip", "203.0.113.11")
+                .header("cookie", &cookie_pair)
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+    assert!(
+        second.headers().get("set-cookie").is_none(),
+        "a reused session does not re-set the cookie"
+    );
+    assert_eq!(
+        launches.load(Ordering::SeqCst),
+        1,
+        "the sandbox is spawned once and reused"
+    );
+}
+
+#[tokio::test]
+async fn reaper_releases_idle_sandboxes() {
+    use missing_ebooks_demo_router::proxy::reap_once;
+    use missing_ebooks_demo_router::session::{Sandbox, SessionId};
+    use std::time::Instant;
+
+    let config = test_config(9000, 9000);
+    let mut store = SessionStore::new(config.max_sandboxes, config.max_per_ip);
+    let mut pool = PortPool::new(config.port_low, config.port_high);
+    let port = pool.allocate().unwrap();
+
+    // A stand-in child so the reaper has a real pid and handle to clean up.
+    let child = tokio::process::Command::new("sleep")
+        .arg("3600")
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let pid = child.id().unwrap();
+
+    let stale = Instant::now() - Duration::from_secs(3600);
+    store.insert(
+        SessionId("stale".into()),
+        Sandbox {
+            port,
+            pid,
+            client_ip: "203.0.113.12".into(),
+            last_seen: stale,
+        },
+    );
+
+    let state = build_state(Box::new(FakeLauncher::new(port)), store, pool, config);
+    state.inner.lock().await.children.insert(pid, child);
+
+    reap_once(&state, Instant::now(), Duration::from_secs(1200)).await;
+
+    let inner = state.inner.lock().await;
+    assert_eq!(inner.store.live_count(), 0, "idle sandbox reaped");
+    assert_eq!(inner.pool.available(), 1, "port returned to the pool");
+    assert!(inner.children.is_empty(), "child handle removed");
+}

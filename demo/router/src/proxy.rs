@@ -3,7 +3,7 @@
 //! injects the demo banner into full-page HTML responses.
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::body::Bytes;
 use axum::extract::State;
@@ -250,6 +250,35 @@ async fn evict(state: &Arc<AppState>, sid: &SessionId) {
         inner.children.remove(&sandbox.pid)
     };
     if let Some(mut child) = child {
+        tokio::spawn(async move {
+            let _ = child.wait().await;
+        });
+    }
+}
+
+/// One reaper pass: remove every sandbox idle past `idle` as of `now`, return its
+/// port to the pool, SIGINT its process so `explore` clears its temp dir, and wait
+/// the child off the calling task so it does not linger as a zombie under PID 1.
+/// The binary's reaper loop calls this on a timer; tests call it directly.
+pub async fn reap_once(state: &Arc<AppState>, now: Instant, idle: Duration) {
+    let (reaped, mut children) = {
+        let mut inner = state.inner.lock().await;
+        let reaped = inner.store.reap_idle(now, idle);
+        let mut children = Vec::new();
+        for s in &reaped {
+            inner.pool.release(s.port);
+            if let Some(child) = inner.children.remove(&s.pid) {
+                children.push(child);
+            }
+        }
+        (reaped, children)
+    };
+    for s in &reaped {
+        // SIGINT lets explore remove its temp dir before exiting.
+        sandbox::shutdown(s.pid);
+        tracing::info!(port = s.port, pid = s.pid, "reaped idle sandbox");
+    }
+    for mut child in children.drain(..) {
         tokio::spawn(async move {
             let _ = child.wait().await;
         });

@@ -11,42 +11,19 @@ use tokio::sync::Mutex;
 
 use missing_ebooks_demo_router::config::Config;
 use missing_ebooks_demo_router::ports::PortPool;
-use missing_ebooks_demo_router::proxy::{AppState, Inner};
+use missing_ebooks_demo_router::proxy::{self, AppState, Inner};
 use missing_ebooks_demo_router::sandbox::{self, RealLauncher};
 use missing_ebooks_demo_router::session::SessionStore;
 use missing_ebooks_demo_router::app;
 
-/// The background reaper: every tick, remove idle sandboxes, SIGINT their
-/// processes, and return their ports to the pool.
+/// The background reaper: every tick, sweep idle sandboxes through `reap_once`,
+/// which kills their processes and returns their ports to the pool.
 async fn run_reaper(state: Arc<AppState>) {
     let idle = state.config.idle;
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
     loop {
         tick.tick().await;
-        let now = std::time::Instant::now();
-        let (reaped, mut children) = {
-            let mut inner = state.inner.lock().await;
-            let reaped = inner.store.reap_idle(now, idle);
-            let mut children = Vec::new();
-            for s in &reaped {
-                inner.pool.release(s.port);
-                if let Some(child) = inner.children.remove(&s.pid) {
-                    children.push(child);
-                }
-            }
-            (reaped, children)
-        };
-        for s in &reaped {
-            // SIGINT lets explore remove its temp dir before exiting.
-            sandbox::shutdown(s.pid);
-            tracing::info!(port = s.port, pid = s.pid, "reaped idle sandbox");
-        }
-        // Wait the exited children so they do not linger as zombies under PID 1.
-        for mut child in children.drain(..) {
-            tokio::spawn(async move {
-                let _ = child.wait().await;
-            });
-        }
+        proxy::reap_once(&state, std::time::Instant::now(), idle).await;
     }
 }
 
