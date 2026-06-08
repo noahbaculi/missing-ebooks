@@ -12,6 +12,10 @@ publish = false
 # directories up.
 [workspace]
 
+[lib]
+name = "missing_ebooks_demo_router"
+path = "src/lib.rs"
+
 [[bin]]
 name = "router"
 path = "src/main.rs"
