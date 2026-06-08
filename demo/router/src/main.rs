@@ -8,6 +8,7 @@ mod banner;
 mod capacity;
 mod config;
 mod ports;
+mod proxy;
 mod sandbox;
 mod session;
 
