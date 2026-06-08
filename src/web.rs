@@ -72,6 +72,15 @@ const FAVICON_HREF: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2
 /// Inherits `currentColor`.
 const KEBAB_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>"##;
 
+/// A "no entry" sign (circle with a horizontal bar) for the sheet's "Mark as
+/// None" row. Shown only inside the mobile sheet. Inherits `currentColor`.
+const NO_ENTRY_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg>"##;
+
+/// A "move out" arrow leaving a box for the sheet's "Ebook elsewhere" row, in
+/// the same style as the external-link glyph. Shown only inside the mobile
+/// sheet. Inherits `currentColor`.
+const MOVE_OUT_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/><path d="M14 3h7v7"/><path d="M10 14L21 3"/></svg>"##;
+
 /// The `view` parameter shared by the index query string and the rescan form. A
 /// lenient `Option<String>` so an absent or unknown value falls back to gaps-only
 /// rather than rejecting the request.
@@ -427,12 +436,20 @@ fn marker_buttons(root: usize, rel: &str, mode: ViewMode) -> Markup {
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"no_ebook"}"#)
-                onclick="event.stopPropagation()" { "None" }
+                onclick="event.stopPropagation()" {
+                    span.sheet-icon { (PreEscaped(NO_ENTRY_SVG)) }
+                    span.label-long { "Mark as None" }
+                    span.label-short { "None" }
+                }
             button.btn.btn-outline.btn-xs type="button"
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"ebook_elsewhere"}"#)
-                onclick="event.stopPropagation()" { "Elsewhere" }
+                onclick="event.stopPropagation()" {
+                    span.sheet-icon { (PreEscaped(MOVE_OUT_SVG)) }
+                    span.label-long { "Ebook elsewhere" }
+                    span.label-short { "Elsewhere" }
+                }
         }
     }
 }
@@ -1150,6 +1167,25 @@ mod tests {
         // The bespoke toggle is gone; the browser drives open/close now.
         assert!(!body.contains("toggleRowActions"));
         assert!(!body.contains("aria-expanded"));
+    }
+
+    #[tokio::test]
+    async fn the_action_sheet_titles_with_the_folder_and_shows_verbose_labels() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The sheet header titles the sheet with the folder name.
+        assert!(body.contains(r#"class="sheet-title">Book<"#));
+        // The verbose, sheet-only marker labels sit alongside the compact ones.
+        assert!(body.contains("Mark as None"));
+        assert!(body.contains("Ebook elsewhere"));
+        // The compact labels keep the exact text the marker write asserts on.
+        assert!(body.contains(">None<"));
+        assert!(body.contains(">Elsewhere<"));
     }
 
     #[tokio::test]
