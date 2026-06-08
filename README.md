@@ -39,6 +39,36 @@ It binds to `127.0.0.1:13379` by default. Open http://127.0.0.1:13379.
 > [!NOTE]
 > The server has no authentication. It binds to loopback by default; binding to a non-loopback address logs a warning at startup.
 
+## Run with Docker
+
+A multi-arch image (amd64 and arm64) is published to GitHub Container Registry. With [Docker Compose](https://docs.docker.com/compose/), drop this `docker-compose.yml` beside your other stacks, edit the volume and IDs, and run `docker compose up -d`:
+
+```yaml
+services:
+  missing-ebooks:
+    image: ghcr.io/noahbaculi/missing-ebooks:latest
+    container_name: missing-ebooks
+    ports:
+      - "127.0.0.1:13379:13379"
+    environment:
+      PUID: 1000
+      PGID: 1000
+      MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks
+    volumes:
+      - /mnt/nas/Audiobooks:/audiobooks
+      # - ./config.toml:/config/config.toml:ro
+    restart: unless-stopped
+```
+
+Then open http://127.0.0.1:13379.
+
+- **`PUID`/`PGID`** set the user the server runs as. The app writes marker files into your library, so set these to match whoever owns it on the host (run `id` to find yours). They default to `1000`.
+- **The library is mounted read-write** at `/audiobooks` and named by `MISSING_EBOOKS_LIBRARY_ROOTS`. For multiple roots, add a mount per root and list the container paths separated by `:`.
+- **File-only settings** (search links, exclude globs, extension lists) come from a mounted `config.toml`. Uncomment the second volume; the entrypoint auto-detects `/config/config.toml`.
+
+> [!WARNING]
+> The app has no authentication. The compose file above binds the host port to `127.0.0.1`, so it is reachable only from the machine running it. To reach it from the LAN, change the mapping to `"13379:13379"`, and put a reverse proxy with authentication in front of it before exposing it beyond your network.
+
 ## Configuration
 
 Configuration resolves in three layers: built-in defaults, an optional `config.toml`, then environment variables on top (env over file over default).
@@ -70,6 +100,8 @@ These environment variables override the file when set:
 | `MISSING_EBOOKS_BIND`          | `bind`                                   |
 | `MISSING_EBOOKS_PORT`          | `port`                                   |
 | `MISSING_EBOOKS_TTL_SECONDS`   | `ttl_seconds`                            |
+| `PUID`                         | Container run-as user ID (Docker only)   |
+| `PGID`                         | Container run-as group ID (Docker only)  |
 
 Extension lists, exclude rules, and search links are file-only. The printed template documents every key.
 
