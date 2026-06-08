@@ -135,13 +135,23 @@ fn mode_path(mode: ViewMode) -> &'static str {
     }
 }
 
-/// The gaps-only / show-all toggle for the navbar: a plain GET link styled as a
-/// button. Switching modes reshapes every root, so this is a full-page navigation.
+/// The gaps-only / show-all view control for the navbar: a two-segment control.
+/// The segment for the current view is inert and marked `aria-current`; the other
+/// is a GET link that navigates to its view. Switching reshapes every root, so it
+/// is a full-page navigation, and the choice is not persisted.
 fn view_toggle(mode: ViewMode) -> Markup {
     html! {
-        @match mode {
-            ViewMode::GapsOnly => a.btn.btn-ghost href="/?view=all" { "Show all folders" },
-            ViewMode::All => a.btn.btn-ghost href="/" { "Show gaps only" },
+        div.segmented role="group" aria-label="View" {
+            @match mode {
+                ViewMode::GapsOnly => {
+                    span.segment.segment-active aria-current="page" { "Gaps only" }
+                    a.segment href="/?view=all" { "All folders" }
+                }
+                ViewMode::All => {
+                    a.segment href="/" { "Gaps only" }
+                    span.segment.segment-active aria-current="page" { "All folders" }
+                }
+            }
         }
     }
 }
@@ -760,7 +770,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_toggle_points_at_the_other_mode() {
+    async fn the_view_control_marks_the_active_segment() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Author/Book/01.mp3"));
         let app = app_for(dir.path());
@@ -772,6 +782,10 @@ mod tests {
                 .unwrap(),
         )
         .await;
+        // Gaps-only is the active view; "All folders" is the link to the other view.
+        assert!(gaps.contains(r#"class="segmented""#));
+        assert!(gaps.contains("Gaps only"));
+        assert!(gaps.contains("All folders"));
         assert!(gaps.contains(r#"href="/?view=all""#));
 
         let all = body_string(
@@ -786,8 +800,9 @@ mod tests {
                 .unwrap(),
         )
         .await;
+        // Show-all is active; "Gaps only" links back to /.
         assert!(all.contains(r#"href="/""#));
-        assert!(all.contains("Show gaps only"));
+        assert!(all.contains(r#"aria-current="page""#));
     }
 
     #[tokio::test]
