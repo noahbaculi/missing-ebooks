@@ -22,10 +22,30 @@ use crate::session::{AdmitError, Sandbox, SessionId, SessionStore};
 pub struct AppState {
     pub config: Config,
     pub launcher: Box<dyn Launcher>,
+    /// One HTTP client for every proxied request, built once and cloned from a
+    /// shared inner Arc, so its connection pool is reused instead of rebuilt per
+    /// request.
+    pub client: reqwest::Client,
     /// Store and pool move together under one lock: every allocate pairs with an
     /// insert, and every reap pairs with a release, so a single mutex keeps them
     /// consistent without a second lock to order.
     pub inner: Mutex<Inner>,
+}
+
+/// Build the HTTP client the router uses for proxied requests and readiness
+/// polls. One instance is built at startup and cloned (a `reqwest::Client` is an
+/// Arc internally), so the connection pool is shared.
+///
+/// Redirects are not followed. The app relies on Post/Redirect/Get: `/rescan`
+/// answers a full-page POST with a 303 to `/` (src/web.rs). That redirect has to
+/// reach the visitor's browser so the address bar updates and a refresh does not
+/// re-POST. Following it here would collapse the 303 into the index's 200 and
+/// defeat the pattern.
+pub fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("build reqwest client")
 }
 
 pub struct Inner {
@@ -226,8 +246,7 @@ async fn forward(
         .unwrap_or("/");
     let url = format!("http://127.0.0.1:{port}{path}");
 
-    let client = reqwest::Client::new();
-    let mut req = client.request(method.clone(), &url);
+    let mut req = state.client.request(method.clone(), &url);
     for (name, value) in headers.iter() {
         if !is_hop_by_hop(name.as_str()) {
             req = req.header(name.as_str(), value.as_bytes());

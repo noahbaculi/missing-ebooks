@@ -31,6 +31,8 @@ pub trait Launcher: Send + Sync {
 /// The production launcher: runs the compiled `explore` binary.
 pub struct RealLauncher {
     pub explore_bin: String,
+    /// The shared client, used here only to poll a new sandbox for readiness.
+    pub client: reqwest::Client,
 }
 
 #[async_trait::async_trait]
@@ -49,16 +51,15 @@ impl Launcher for RealLauncher {
             .spawn()
             .with_context(|| format!("spawning {} {scenario}", self.explore_bin))?;
         let pid = child.id().context("spawned child has no pid")?;
-        wait_ready(port, ready_timeout).await?;
+        wait_ready(&self.client, port, ready_timeout).await?;
         Ok(Spawned { child, pid })
     }
 }
 
 /// Poll `GET http://127.0.0.1:{port}/` until it returns any HTTP response or the
 /// timeout elapses.
-pub async fn wait_ready(port: u16, timeout: Duration) -> anyhow::Result<()> {
+pub async fn wait_ready(client: &reqwest::Client, port: u16, timeout: Duration) -> anyhow::Result<()> {
     let url = format!("http://127.0.0.1:{port}/");
-    let client = reqwest::Client::new();
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         if client.get(&url).send().await.is_ok() {

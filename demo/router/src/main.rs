@@ -61,10 +61,13 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!(swept, "removed leftover explore temp dirs at startup");
     }
 
+    let client = missing_ebooks_demo_router::proxy::http_client();
     let state = Arc::new(AppState {
         launcher: Box::new(RealLauncher {
             explore_bin: config.explore_bin.clone(),
+            client: client.clone(),
         }),
+        client,
         inner: Mutex::new(Inner {
             store: SessionStore::new(config.max_sandboxes, config.max_per_ip),
             pool: PortPool::new(config.port_low, config.port_high),
