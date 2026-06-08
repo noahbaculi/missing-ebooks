@@ -273,6 +273,31 @@ details[open] > summary .chev {
 .mark {
   margin: 0;
 }
+
+/* per-row action trigger: a kebab that reveals the cluster on mobile only. on
+   desktop the trigger is hidden and the group is display:contents, so its
+   children flow inline in the row exactly as before. */
+.actions-trigger {
+  display: none;
+  font: inherit;
+  align-items: center;
+  padding: 0.2rem;
+  background: transparent;
+  border: var(--border) solid transparent;
+  border-radius: var(--radius-field);
+  cursor: pointer;
+}
+.actions-trigger:hover {
+  background: var(--color-base-200);
+}
+.actions-trigger .icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  color: var(--color-muted);
+}
+.actions-group {
+  display: contents;
+}
 .links {
   display: inline-flex;
   align-items: center;
@@ -410,4 +435,81 @@ details[open] > summary .chev {
 }
 .empty .icon {
   color: var(--color-success);
+}
+
+/* ---- mobile: first-class phone layout ---- */
+/* See docs/superpowers/specs/2026-06-07-mobile-ui-improvements-design.md */
+@media (max-width: 600px) {
+  body {
+    padding: 1rem 0.75rem;
+  }
+  .navbar {
+    flex-wrap: wrap;
+  }
+  .card {
+    padding: 1rem 0.85rem;
+  }
+
+  /* rows may wrap so the action menu and cover files can drop to a new line */
+  .row {
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
+  }
+  .name {
+    min-width: 0;
+  }
+
+  /* show the kebab trigger; the cluster stays hidden until its row is opened */
+  .actions-trigger {
+    display: inline-flex;
+  }
+  .actions-group {
+    display: none;
+    flex-basis: 100%;
+    padding-left: 1.7rem;
+  }
+  .row[data-actions-open="true"] .actions-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  /* touch-sized controls in the open menu */
+  .actions-group .btn {
+    font-size: 0.85rem;
+    padding: 0.55rem 0.9rem;
+  }
+
+  /* search links render inline inside the menu, not as a floating popover */
+  .actions-group .links {
+    flex-basis: 100%;
+  }
+  .actions-group .links-toggle {
+    display: none;
+  }
+  .actions-group .links-menu {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+  }
+  .actions-group .links-menu a {
+    padding: 0.5rem 0.4rem;
+    font-size: 0.85rem;
+  }
+
+  /* covering filenames (show-all) drop below the folder name, fully readable */
+  .cover-files {
+    flex-basis: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    padding-left: 1.7rem;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
 }

@@ -722,6 +722,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_carries_the_mobile_layout_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        assert!(body.contains("@media (max-width: 600px)"));
+        assert!(body.contains(".actions-trigger"));
+        assert!(body.contains("data-actions-open"));
+    }
+
+    #[tokio::test]
     async fn static_route_serves_the_htmx_script() {
         let dir = tempfile::tempdir().unwrap();
         let response = app_for(dir.path())
