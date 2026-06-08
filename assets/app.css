@@ -363,10 +363,12 @@ details[open] > summary .chev {
   color: var(--color-success);
 }
 
-/* covering ebook/marker filenames on a covered row (show-all only): muted and
-   right-aligned, truncated with an ellipsis so a long list never wraps the row */
+/* covering ebook/marker filenames on a covered row (show-all only): muted, set off
+   from the covered check by extra left margin, truncated with an ellipsis so a long
+   list never wraps the row */
 .cover-files {
   flex: none;
+  margin-left: 0.75rem;
   max-width: 45%;
   overflow: hidden;
   text-overflow: ellipsis;

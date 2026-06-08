@@ -312,9 +312,9 @@ fn status_icon(node: &Node) -> Markup {
     }
 }
 
-/// The covering ebook and marker filenames for a covered row, right-aligned in
-/// muted text. Show-all only; empty for gaps and for folders covered from above,
-/// so nothing renders there.
+/// The covering ebook and marker filenames for a covered row, in muted text just
+/// after the status check. Show-all only; empty for gaps and for folders covered
+/// from above, so nothing renders there.
 fn cover_files_span(node: &Node, mode: ViewMode) -> Markup {
     html! {
         @if mode == ViewMode::All && !node.cover_files.is_empty() {
@@ -344,8 +344,8 @@ fn render_node(
                     span.name { (node.name) }
                     @if node.needs_ebook() { span.badge.badge-warning { "needs ebook" } }
                     @if mode == ViewMode::All { (status_icon(node)) }
-                    span.spring {}
                     (cover_files_span(node, mode))
+                    span.spring {}
                     @if act {
                         (marker_buttons(root, &node.rel_path, mode))
                         (search_links(links, &node.name, root, counter))
@@ -361,8 +361,8 @@ fn render_node(
                         span.name { (node.name) }
                         @if node.needs_ebook() { span.badge.badge-warning { "needs ebook" } }
                         @if mode == ViewMode::All { (status_icon(node)) }
-                        span.spring {}
                         (cover_files_span(node, mode))
+                        span.spring {}
                         @if act {
                             (marker_buttons(root, &node.rel_path, mode))
                             (search_links(links, &node.name, root, counter))
