@@ -1,6 +1,5 @@
 //! Web-agnostic service layer: the read view types and the typed operations
 //! (current view, marker write) shared by the HTML UI and a future JSON API.
-//! This increment builds the read path; the marker write arrives in a later one.
 
 use std::path::Path;
 use std::sync::Arc;

@@ -20,10 +20,10 @@ use crate::service::{self, FlaggedView, RootSection, RootState, ViewMode};
 use crate::state::AppState;
 use crate::tree::Node;
 
-/// The vendored htmx runtime, embedded at compile time and served from /static.
+/// The vendored htmx runtime, embedded at compile time and served from `/static`.
 const HTMX_JS: &str = include_str!("../assets/htmx.min.js");
 
-/// The hand-rolled stylesheet, embedded at compile time and served from /static.
+/// The hand-rolled stylesheet, embedded at compile time and served from `/static`.
 const APP_CSS: &str = include_str!("../assets/app.css");
 
 /// Pre-paint theme bootstrap: sets `data-theme` on <html> before first paint so
@@ -170,7 +170,7 @@ async fn app_css() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/css;charset=utf-8")], APP_CSS)
 }
 
-/// The light/dark toggle button for the navbar. Behavior lives in THEME_INIT_JS.
+/// The light/dark toggle button for the navbar. Behavior lives in `THEME_INIT_JS`.
 fn theme_toggle() -> Markup {
     html! {
         button.btn.btn-ghost.btn-square type="button"
