@@ -134,7 +134,7 @@ pub fn build_all(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> 
                 directly_holds_audio: true,
                 missing_ebook: entry.missing_ebook,
                 children: Vec::new(),
-                cover_files: Vec::new(),
+                cover_files: entry.cover_files.clone(),
             },
         );
     }
@@ -171,6 +171,7 @@ fn insert_all(
     if tail.is_empty() {
         siblings[idx].directly_holds_audio = folder.directly_holds_audio;
         siblings[idx].missing_ebook = folder.missing_ebook;
+        siblings[idx].cover_files = folder.cover_files.clone();
     } else {
         insert_all(&mut siblings[idx].children, tail, &rel_path, folder);
     }
@@ -507,6 +508,45 @@ mod tests {
         assert_eq!(forest[0].rel_path, ".");
         assert!(forest[0].needs_ebook());
         assert!(forest[0].children.is_empty());
+    }
+
+    fn sf_cov(rel: &str, audio: bool, missing: bool, cover_files: &[&str]) -> ScannedFolder {
+        ScannedFolder {
+            rel_path: PathBuf::from(rel),
+            directly_holds_audio: audio,
+            missing_ebook: missing,
+            cover_files: cover_files.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn build_all_carries_cover_files_onto_the_node() {
+        let folders = vec![
+            sf_cov("Series", false, false, &["Series.epub"]),
+            sf_cov("Series/Book 1", true, false, &[]),
+        ];
+        let forest = build_all("Audiobooks", &folders);
+        assert_eq!(
+            find(&forest, "Series").unwrap().cover_files,
+            vec!["Series.epub".to_string()]
+        );
+        assert!(
+            find(&forest, "Series/Book 1")
+                .unwrap()
+                .cover_files
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn build_all_carries_root_cover_files_onto_the_dot_node() {
+        let folders = vec![
+            sf_cov("", true, false, &[".no_ebook"]),
+            sf_cov("Author", false, true, &[]),
+        ];
+        let forest = build_all("Audiobooks", &folders);
+        assert_eq!(forest[0].rel_path, ".");
+        assert_eq!(forest[0].cover_files, vec![".no_ebook".to_string()]);
     }
 
     #[test]
