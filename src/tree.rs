@@ -12,6 +12,8 @@ use std::path::{Component, PathBuf};
 
 use serde::Serialize;
 
+use crate::marker::Marker;
+
 /// One folder in a rendered tree. Two orthogonal facts describe it: whether it
 /// directly holds audio, and whether it is missing an ebook (uncovered). The gap
 /// the tool surfaces is the derived `needs_ebook()`.
@@ -246,18 +248,17 @@ fn remove_at(siblings: &mut Vec<Node>, components: &[&str], parent_rel: &str) {
     }
 }
 
-/// Cover the node addressed by `rel` (a `/`-joined root-relative path) and its
-/// whole subtree: flip `missing_ebook` to false on it and every descendant,
-/// leaving the nodes in the forest. The show-all counterpart to `remove_subtree`:
-/// a marked folder turns from gap to covered rather than disappearing. An absent
-/// path is a silent no-op. The `.` root sentinel is handled by the caller via
-/// `cover_all`.
-pub fn cover_subtree(forest: &mut [Node], rel: &str) {
+/// Cover the node addressed by `rel` and its whole subtree: flip `missing_ebook`
+/// to false on it and every descendant, leaving the nodes in the forest. The
+/// addressed node also gains `marker`'s filename in its `cover_files`, so a row
+/// marked in show-all shows the marker that now covers it without a rescan. An
+/// absent path is a silent no-op. The `.` root sentinel is handled via `cover_all`.
+pub fn cover_subtree(forest: &mut [Node], rel: &str, marker: Marker) {
     let components: Vec<&str> = rel.split('/').collect();
-    cover_at(forest, &components, "");
+    cover_at(forest, &components, "", marker);
 }
 
-fn cover_at(siblings: &mut [Node], components: &[&str], parent_rel: &str) {
+fn cover_at(siblings: &mut [Node], components: &[&str], parent_rel: &str, marker: Marker) {
     let Some((head, tail)) = components.split_first() else {
         return;
     };
@@ -267,16 +268,30 @@ fn cover_at(siblings: &mut [Node], components: &[&str], parent_rel: &str) {
     };
     if tail.is_empty() {
         cover_node(node);
+        add_marker(node, marker);
     } else {
-        cover_at(&mut node.children, tail, &cur_rel);
+        cover_at(&mut node.children, tail, &cur_rel, marker);
     }
 }
 
-/// Cover every node in the forest. Used when the library root itself is marked
-/// (`rel == "."`): coverage from the root flows to everything beneath it.
-pub fn cover_all(forest: &mut [Node]) {
-    for node in forest {
+/// Cover every node in the forest, used when the library root itself is marked
+/// (`rel == "."`). The marker's filename is added to the `.` node when one is
+/// present, so the root row shows what now covers it.
+pub fn cover_all(forest: &mut [Node], marker: Marker) {
+    for node in forest.iter_mut() {
         cover_node(node);
+        if node.rel_path == "." {
+            add_marker(node, marker);
+        }
+    }
+}
+
+/// Append a written marker's filename to a node's cover files, unless it is
+/// already listed (a double-click must not list it twice).
+fn add_marker(node: &mut Node, marker: Marker) {
+    let name = marker.filename().to_string();
+    if !node.cover_files.iter().any(|existing| existing == &name) {
+        node.cover_files.push(name);
     }
 }
 
@@ -562,7 +577,7 @@ mod tests {
             ],
             cover_files: Vec::new(),
         }];
-        cover_subtree(&mut forest, "Series");
+        cover_subtree(&mut forest, "Series", Marker::NoEbook);
         let series = find(&forest, "Series").unwrap();
         assert!(!series.missing_ebook);
         for child in &series.children {
@@ -584,7 +599,7 @@ mod tests {
             ],
             cover_files: Vec::new(),
         }];
-        cover_subtree(&mut forest, "Author/Marked");
+        cover_subtree(&mut forest, "Author/Marked", Marker::NoEbook);
         assert!(!find(&forest, "Author/Marked").unwrap().missing_ebook);
         assert!(
             find(&forest, "Author/Other").unwrap().missing_ebook,
@@ -595,7 +610,7 @@ mod tests {
     #[test]
     fn cover_subtree_on_an_absent_path_is_a_noop() {
         let mut forest = vec![gap_leaf("Author", "Author")];
-        cover_subtree(&mut forest, "Ghost");
+        cover_subtree(&mut forest, "Ghost", Marker::NoEbook);
         assert!(forest[0].missing_ebook);
     }
 
@@ -612,10 +627,62 @@ mod tests {
             },
             gap_leaf("C", "C"),
         ];
-        cover_all(&mut forest);
+        cover_all(&mut forest, Marker::NoEbook);
         assert!(!find(&forest, "A").unwrap().missing_ebook);
         assert!(!find(&forest, "A/B").unwrap().missing_ebook);
         assert!(!find(&forest, "C").unwrap().missing_ebook);
+    }
+
+    #[test]
+    fn cover_subtree_appends_the_written_marker_to_the_addressed_node() {
+        let mut forest = vec![Node {
+            name: "Series".to_string(),
+            rel_path: "Series".to_string(),
+            directly_holds_audio: false,
+            missing_ebook: true,
+            children: vec![gap_leaf("Book", "Series/Book")],
+            cover_files: Vec::new(),
+        }];
+        cover_subtree(&mut forest, "Series", Marker::NoEbook);
+        let series = find(&forest, "Series").unwrap();
+        assert!(!series.missing_ebook);
+        assert_eq!(series.cover_files, vec![".no_ebook".to_string()]);
+        assert!(
+            find(&forest, "Series/Book").unwrap().cover_files.is_empty(),
+            "a descendant is covered from above, with no local cover file"
+        );
+    }
+
+    #[test]
+    fn cover_subtree_does_not_duplicate_a_marker_on_a_repeat_mark() {
+        let mut forest = vec![gap_leaf("Book", "Book")];
+        cover_subtree(&mut forest, "Book", Marker::NoEbook);
+        cover_subtree(&mut forest, "Book", Marker::NoEbook);
+        assert_eq!(
+            find(&forest, "Book").unwrap().cover_files,
+            vec![".no_ebook".to_string()]
+        );
+    }
+
+    #[test]
+    fn cover_all_appends_the_marker_to_the_dot_node() {
+        let mut forest = vec![
+            Node {
+                name: "Audiobooks".to_string(),
+                rel_path: ".".to_string(),
+                directly_holds_audio: true,
+                missing_ebook: true,
+                children: Vec::new(),
+                cover_files: Vec::new(),
+            },
+            gap_leaf("Author", "Author"),
+        ];
+        cover_all(&mut forest, Marker::EbookElsewhere);
+        assert_eq!(
+            find(&forest, ".").unwrap().cover_files,
+            vec![".ebook_elsewhere".to_string()]
+        );
+        assert!(!find(&forest, "Author").unwrap().missing_ebook);
     }
 
     #[test]

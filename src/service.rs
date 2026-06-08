@@ -143,7 +143,7 @@ pub async fn mark(
         .edit_both_or_build(
             mode,
             |view| apply_mark(&mut view[root], rel),
-            |view| apply_mark_all(&mut view[root], rel),
+            |view| apply_mark_all(&mut view[root], rel, marker),
             || build_view(state.config.as_ref(), &state.settings, mode),
         )
         .await)
@@ -193,14 +193,14 @@ fn apply_mark(section: &mut RootSection, rel: &str) {
 /// root directory covers the whole root (every node flips to covered); otherwise
 /// the marked folder and its descendants flip to covered and stay visible. The
 /// forest walk lives in `tree::cover_subtree` / `tree::cover_all`.
-fn apply_mark_all(section: &mut RootSection, rel: &str) {
+fn apply_mark_all(section: &mut RootSection, rel: &str, marker: Marker) {
     let RootState::Forest(forest) = &mut section.state else {
         return;
     };
     if rel == "." {
-        tree::cover_all(forest);
+        tree::cover_all(forest, marker);
     } else {
-        tree::cover_subtree(forest, rel);
+        tree::cover_subtree(forest, rel, marker);
     }
 }
 
@@ -595,7 +595,7 @@ mod tests {
                 cover_files: Vec::new(),
             }]),
         };
-        apply_mark_all(&mut section, "Author");
+        apply_mark_all(&mut section, "Author", Marker::NoEbook);
         match &section.state {
             RootState::Forest(nodes) => {
                 assert!(!nodes[0].missing_ebook);
@@ -611,11 +611,24 @@ mod tests {
             path: "/lib".to_string(),
             state: RootState::Forest(vec![gap_leaf("Author", "Author")]),
         };
-        apply_mark_all(&mut section, ".");
+        apply_mark_all(&mut section, ".", Marker::NoEbook);
         match &section.state {
             RootState::Forest(nodes) => assert!(!nodes[0].missing_ebook),
             other => panic!("expected Forest, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn apply_mark_all_records_the_written_marker_on_the_row() {
+        let mut section = RootSection {
+            path: "/lib".to_string(),
+            state: RootState::Forest(vec![gap_leaf("Book", "Book")]),
+        };
+        apply_mark_all(&mut section, "Book", Marker::NoEbook);
+        let RootState::Forest(nodes) = &section.state else {
+            panic!("expected a Forest");
+        };
+        assert_eq!(nodes[0].cover_files, vec![".no_ebook".to_string()]);
     }
 
     #[test]
