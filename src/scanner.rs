@@ -235,7 +235,8 @@ fn visit_all(
 
     let mut subdirs: Vec<PathBuf> = Vec::new();
     let mut has_audio = false;
-    let mut covered_here = false;
+    let mut ebooks: Vec<String> = Vec::new();
+    let mut markers: Vec<String> = Vec::new();
 
     for entry in entries.flatten() {
         let Ok(file_type) = entry.file_type() else {
@@ -244,8 +245,10 @@ fn visit_all(
         if file_type.is_dir() {
             subdirs.push(entry.path());
         } else {
-            match classify_file(&entry.file_name(), settings) {
-                FileKind::Ebook | FileKind::Marker => covered_here = true,
+            let file_name = entry.file_name();
+            match classify_file(&file_name, settings) {
+                FileKind::Ebook => ebooks.push(file_name.to_string_lossy().into_owned()),
+                FileKind::Marker => markers.push(file_name.to_string_lossy().into_owned()),
                 FileKind::Audio => has_audio = true,
                 FileKind::Other => {}
             }
@@ -253,13 +256,21 @@ fn visit_all(
     }
 
     // Coverage is monotonic: once an ancestor covers, everything below is covered.
-    let covered = covered_from_above || covered_here;
+    let covered = covered_from_above || !ebooks.is_empty() || !markers.is_empty();
+
+    // Local cover files: ebooks first, then markers, each natural-sorted so the
+    // order is stable across filesystems.
+    ebooks.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
+    markers.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
+    let mut cover_files = ebooks;
+    cover_files.extend(markers);
+
     if let Ok(rel) = dir.strip_prefix(root) {
         out.push(ScannedFolder {
             rel_path: rel.to_path_buf(),
             directly_holds_audio: has_audio,
             missing_ebook: !covered,
-            cover_files: Vec::new(),
+            cover_files,
         });
     }
     // Coverage does not stop the descent here; only exclusion does.
@@ -562,5 +573,57 @@ mod tests {
         std::os::unix::fs::symlink(outside.path(), dir.path().join("Author/Linked")).unwrap();
         let got = scanned(dir.path(), &default_settings(&[]));
         assert!(!got.contains_key("Author/Linked"));
+    }
+
+    fn cover_files_of(root: &Path, settings: &ScanSettings) -> BTreeMap<String, Vec<String>> {
+        scan_all(root, settings)
+            .into_iter()
+            .map(|f| {
+                let rel = f.rel_path.to_string_lossy().replace('\\', "/");
+                (rel, f.cover_files)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn scan_all_records_ebook_and_marker_filenames_on_the_holding_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Ebook Book/01.mp3"));
+        touch(&dir.path().join("Ebook Book/Ebook Book.epub"));
+        touch(&dir.path().join("Marker Book/01.mp3"));
+        touch(&dir.path().join("Marker Book/.no_ebook"));
+        touch(&dir.path().join("Gap Book/01.mp3"));
+        let got = cover_files_of(dir.path(), &default_settings(&[]));
+        assert_eq!(got["Ebook Book"], vec!["Ebook Book.epub".to_string()]);
+        assert_eq!(got["Marker Book"], vec![".no_ebook".to_string()]);
+        assert!(got["Gap Book"].is_empty());
+    }
+
+    #[test]
+    fn scan_all_leaves_cover_files_empty_for_ancestor_covered_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Series/Series.epub"));
+        touch(&dir.path().join("Series/Book 1/01.mp3"));
+        let got = cover_files_of(dir.path(), &default_settings(&[]));
+        assert_eq!(got["Series"], vec!["Series.epub".to_string()]);
+        assert!(
+            got["Series/Book 1"].is_empty(),
+            "covered from above, no local cover file"
+        );
+    }
+
+    #[test]
+    fn scan_all_lists_ebooks_before_markers_for_different_named_formats() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        touch(&dir.path().join("Book/Book.epub"));
+        touch(&dir.path().join("Book/Book (2016).pdf"));
+        touch(&dir.path().join("Book/.no_ebook"));
+        let got = cover_files_of(dir.path(), &default_settings(&[]));
+        // Both ebooks are listed verbatim, then the marker last.
+        assert_eq!(got["Book"].len(), 3);
+        assert!(got["Book"][..2].contains(&"Book.epub".to_string()));
+        assert!(got["Book"][..2].contains(&"Book (2016).pdf".to_string()));
+        assert_eq!(got["Book"][2], ".no_ebook".to_string());
     }
 }
