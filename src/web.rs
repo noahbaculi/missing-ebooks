@@ -760,6 +760,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_lays_out_marker_tiles_side_by_side() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The two marker buttons share a row as equal-width tiles.
+        assert!(body.contains(".actions-group .mark .btn"));
+        assert!(body.contains("flex-direction: row"));
+    }
+
+    #[tokio::test]
     async fn static_route_serves_the_htmx_script() {
         let dir = tempfile::tempdir().unwrap();
         let response = app_for(dir.path())

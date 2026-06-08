@@ -576,23 +576,30 @@ details[open] > summary .chev {
     display: none;
   }
 
-  /* marker buttons become large, left-aligned, full-width rows */
+  /* marker buttons: two equal-width filled tiles side by side, icon over label */
   .actions-group .mark {
     display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
+    flex-direction: row;
+    gap: 0.5rem;
   }
-  .actions-group .btn {
-    justify-content: flex-start;
-    gap: 0.65rem;
-    width: 100%;
-    padding: 0.7rem 0.6rem;
+  .actions-group .mark .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.85rem 0.5rem;
     font-size: 0.95rem;
     border: none;
     border-radius: var(--radius-field);
-  }
-  .actions-group .btn:hover {
     background: var(--color-base-200);
+  }
+  .actions-group .mark .btn:hover {
+    background: var(--color-base-300);
+  }
+  .actions-group .mark .btn .icon {
+    width: 1.4rem;
+    height: 1.4rem;
   }
 
   /* a "Search" section label between the marker rows and the links */
