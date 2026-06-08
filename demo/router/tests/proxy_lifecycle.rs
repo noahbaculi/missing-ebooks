@@ -230,3 +230,40 @@ async fn upstream_redirects_are_passed_through_not_followed() {
         "/after"
     );
 }
+
+#[tokio::test]
+async fn forward_failure_evicts_the_session() {
+    // A port nothing listens on: bind to claim one, then drop the listener so the
+    // proxy's forward gets connection-refused.
+    let dead_port = {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        listener.local_addr().unwrap().port()
+    };
+    let config = test_config(dead_port, dead_port);
+    let state = build_state(
+        Box::new(FakeLauncher::new(dead_port)),
+        SessionStore::new(config.max_sandboxes, config.max_per_ip),
+        PortPool::new(config.port_low, config.port_high),
+        config,
+    );
+
+    let response = app(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header("cf-connecting-ip", "203.0.113.10")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+
+    // The dead sandbox must not linger: the visitor's next request has to be able
+    // to spawn a fresh one, so the session, its port, and its child are released.
+    let inner = state.inner.lock().await;
+    assert_eq!(inner.store.live_count(), 0, "session evicted");
+    assert_eq!(inner.pool.available(), 1, "port returned to the pool");
+    assert!(inner.children.is_empty(), "child handle dropped");
+}

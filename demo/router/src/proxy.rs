@@ -129,9 +129,9 @@ pub async fn handle(
     let ip = client_ip(&headers);
     let existing = read_cookie(&headers, &state.config.cookie_name);
 
-    // Resolve the serving port and, when a sandbox is freshly created, the cookie
-    // to set on the way out.
-    let (port, set_cookie) = match resolve_sandbox(&state, existing, &ip, now).await {
+    // Resolve the serving port, the session in use, and (for a freshly created
+    // sandbox) the cookie to set on the way out.
+    let (port, sid, set_cookie) = match resolve_sandbox(&state, existing, &ip, now).await {
         Ok(resolved) => resolved,
         Err(Admit::Capacity) => {
             return (
@@ -156,6 +156,11 @@ pub async fn handle(
         }
         Err(err) => {
             tracing::error!(%err, port, "proxy forward failed");
+            // The sandbox passed its readiness check but is unreachable now, so
+            // drop the session: otherwise the cookie keeps routing this visitor to
+            // the dead port until the idle reaper clears it. Evicting lets their
+            // next request spawn a fresh sandbox.
+            evict(&state, &sid).await;
             (StatusCode::BAD_GATEWAY, "demo backend unavailable").into_response()
         }
     }
@@ -167,19 +172,19 @@ enum Admit {
     Spawn(anyhow::Error),
 }
 
-/// Find the sandbox for this session, or spawn one. Returns the port and, for a
-/// new session, the cookie to set.
+/// Find the sandbox for this session, or spawn one. Returns the serving port, the
+/// session id in use, and (for a freshly spawned sandbox) the cookie to set.
 async fn resolve_sandbox(
     state: &Arc<AppState>,
     existing: Option<SessionId>,
     ip: &str,
     now: Instant,
-) -> Result<(u16, Option<HeaderValue>), Admit> {
+) -> Result<(u16, SessionId, Option<HeaderValue>), Admit> {
     // Fast path: a known, live session. Touch it and reuse its port.
-    if let Some(sid) = existing.clone() {
+    if let Some(sid) = existing {
         let mut inner = state.inner.lock().await;
         if let Some(port) = inner.store.touch(&sid, now) {
-            return Ok((port, None));
+            return Ok((port, sid, None));
         }
     }
 
@@ -219,7 +224,7 @@ async fn resolve_sandbox(
     // Park the child handle by pid so the reaper can wait() on it after SIGINT.
     inner.children.insert(spawned.pid, spawned.child);
     inner.store.insert(
-        sid,
+        sid.clone(),
         Sandbox {
             port,
             pid: spawned.pid,
@@ -227,7 +232,28 @@ async fn resolve_sandbox(
             last_seen: now,
         },
     );
-    Ok((port, Some(cookie)))
+    Ok((port, sid, Some(cookie)))
+}
+
+/// Drop a session whose sandbox is unreachable: remove its row, return its port to
+/// the pool, and SIGINT the process so `explore` clears its temp dir (the startup
+/// sweep is the backstop if it is already gone). The child is waited off the
+/// request path so it does not linger as a zombie under the container's PID 1.
+async fn evict(state: &Arc<AppState>, sid: &SessionId) {
+    let child = {
+        let mut inner = state.inner.lock().await;
+        let Some(sandbox) = inner.store.remove(sid) else {
+            return;
+        };
+        inner.pool.release(sandbox.port);
+        sandbox::shutdown(sandbox.pid);
+        inner.children.remove(&sandbox.pid)
+    };
+    if let Some(mut child) = child {
+        tokio::spawn(async move {
+            let _ = child.wait().await;
+        });
+    }
 }
 
 /// Forward one request to the sandbox on `port` and return its response, with the
@@ -287,8 +313,3 @@ async fn forward(
         .expect("valid response")
         .into_response())
 }
-
-// Silence the unused-import warning for sandbox during early wiring; the reaper
-// in main uses sandbox::shutdown.
-#[allow(unused_imports)]
-use sandbox as _sandbox_in_scope;
