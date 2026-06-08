@@ -45,6 +45,31 @@ const THEME_INIT_JS: &str = r#"(function () {
   };
 })();"#;
 
+/// Toggles a row's action menu on mobile. The trigger calls this from its
+/// onclick; opening one row closes any other. Defined globally like
+/// `toggleTheme`, and unaffected by htmx section swaps because the swapped
+/// markup re-renders closed.
+const ACTIONS_INIT_JS: &str = r#"window.toggleRowActions = function (trigger) {
+  var row = trigger.closest('.row');
+  if (!row) return;
+  var isOpen = row.getAttribute('data-actions-open') === 'true';
+  var open = document.querySelectorAll('.row[data-actions-open="true"]');
+  for (var i = 0; i < open.length; i++) {
+    if (open[i] !== row) {
+      open[i].removeAttribute('data-actions-open');
+      var other = open[i].querySelector('.actions-trigger');
+      if (other) other.setAttribute('aria-expanded', 'false');
+    }
+  }
+  if (isOpen) {
+    row.removeAttribute('data-actions-open');
+    trigger.setAttribute('aria-expanded', 'false');
+  } else {
+    row.setAttribute('data-actions-open', 'true');
+    trigger.setAttribute('aria-expanded', 'true');
+  }
+};"#;
+
 /// Half-filled circle marking the light/dark toggle. Inherits `currentColor`.
 const TOGGLE_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2v14a7 7 0 0 1 0-14z"/></svg>"##;
 
@@ -67,6 +92,10 @@ const ERROR_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" st
 /// has an identity and the browser stops requesting `/favicon.ico`. The stroke
 /// is the light-theme primary, which reads on both light and dark tab strips.
 const FAVICON_HREF: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23605dff' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M4 19V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z'/%3E%3Cpath d='M6 21h13'/%3E%3C/svg%3E";
+
+/// Vertical three-dot "more actions" glyph for the mobile per-row menu trigger.
+/// Inherits `currentColor`.
+const KEBAB_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>"##;
 
 /// The `view` parameter shared by the index query string and the rescan form. A
 /// lenient `Option<String>` so an absent or unknown value falls back to gaps-only
@@ -222,6 +251,7 @@ fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
                     (render_section(section, root, None, links, mode))
                 }
                 script src="/static/htmx.min.js" {}
+                script { (PreEscaped(ACTIONS_INIT_JS)) }
             }
         }
     }
@@ -353,8 +383,7 @@ fn render_node(
                     (cover_files_span(node, mode))
                     span.spring {}
                     @if act {
-                        (marker_buttons(root, &node.rel_path, mode))
-                        (search_links(links, &node.name, root, counter))
+                        (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
                     }
                 }
             }
@@ -370,8 +399,7 @@ fn render_node(
                         (cover_files_span(node, mode))
                         span.spring {}
                         @if act {
-                            (marker_buttons(root, &node.rel_path, mode))
-                            (search_links(links, &node.name, root, counter))
+                            (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
                         }
                     }
                     ul {
@@ -379,6 +407,32 @@ fn render_node(
                     }
                 }
             }
+        }
+    }
+}
+
+/// The per-row action cluster: a kebab trigger plus the marker buttons and the
+/// search links, wrapped in a group the CSS can collapse. On desktop the trigger
+/// is hidden and the group is `display: contents`, so its children flow inline as
+/// before; on mobile the trigger reveals the group beneath the row.
+fn row_actions(
+    root: usize,
+    rel: &str,
+    name: &str,
+    links: &[SearchLink],
+    mode: ViewMode,
+    counter: &std::cell::Cell<usize>,
+) -> Markup {
+    let group_id = next_id("acts", root, counter);
+    html! {
+        button.actions-trigger type="button"
+            aria-label="Actions"
+            aria-expanded="false"
+            aria-controls=(group_id)
+            onclick="toggleRowActions(this); event.stopPropagation()" { (PreEscaped(KEBAB_SVG)) }
+        div.actions-group id=(group_id) {
+            (marker_buttons(root, rel, mode))
+            (search_links(links, name, root, counter))
         }
     }
 }
@@ -403,13 +457,14 @@ fn marker_buttons(root: usize, rel: &str, mode: ViewMode) -> Markup {
     }
 }
 
-/// Next DOM-safe popover id for a row's search menu. The relative path can hold
-/// slashes and spaces, so a root index plus a per-render counter is used instead.
-/// The counter is reset per `render_section`, so ids are unique within one render.
-fn next_id(root: usize, counter: &std::cell::Cell<usize>) -> String {
+/// Next DOM-safe id with the given prefix for a row's popover or action group.
+/// The relative path can hold slashes and spaces, so a root index plus a
+/// per-render counter is used instead. The counter is reset per
+/// `render_section`, so ids are unique within one render.
+fn next_id(prefix: &str, root: usize, counter: &std::cell::Cell<usize>) -> String {
     let n = counter.get();
     counter.set(n + 1);
-    format!("links-{root}-{n}")
+    format!("{prefix}-{root}-{n}")
 }
 
 fn search_links(
@@ -421,7 +476,7 @@ fn search_links(
     html! {
         @if !links.is_empty() {
             @let query = urlencoding::encode(&clean_query(name)).into_owned();
-            @let id = next_id(root, counter);
+            @let id = next_id("links", root, counter);
             span.links {
                 button.btn.btn-outline.btn-xs.links-toggle type="button"
                     popovertarget=(id)
@@ -1068,5 +1123,51 @@ mod tests {
         // The gap and its buttons are still there.
         assert!(body.contains("Book"));
         assert!(body.contains(r#"hx-post="/mark""#));
+    }
+
+    #[tokio::test]
+    async fn each_actionable_row_has_an_actions_trigger() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // A labelled trigger button that the mobile CSS reveals; it controls
+        // the action group by id and reports its open state.
+        assert!(body.contains(r#"class="actions-trigger""#));
+        assert!(body.contains(r#"aria-label="Actions""#));
+        assert!(body.contains(r#"aria-expanded="false""#));
+        assert!(body.contains(r#"class="actions-group""#));
+        // The marker buttons and search links still render, now inside the group.
+        assert!(body.contains(r#"hx-post="/mark""#));
+        assert!(body.contains(">None<"));
+        assert!(body.contains("Goodreads"));
+        // The toggle helper is defined for the trigger's onclick.
+        assert!(body.contains("toggleRowActions"));
+    }
+
+    #[tokio::test]
+    async fn a_covered_row_has_no_actions_trigger() {
+        let dir = tempfile::tempdir().unwrap();
+        // A fully covered branch: the book has its own ebook, nothing to act on.
+        touch(&dir.path().join("Series/Series.epub"));
+        touch(&dir.path().join("Series/Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/?view=all")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // No gap under this branch, so no trigger and no group are emitted.
+        assert!(!body.contains(r#"class="actions-trigger""#));
+        assert!(!body.contains(r#"class="actions-group""#));
     }
 }
