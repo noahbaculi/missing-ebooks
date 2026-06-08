@@ -296,6 +296,11 @@ details[open] > summary .chev {
   height: 0.85rem;
   color: var(--color-muted);
 }
+/* the search toggle stays grey even in flagged rows, where .flagged .icon
+   would otherwise tint it amber along with the folder icon */
+.flagged .links-toggle .icon {
+  color: var(--color-muted);
+}
 .links-menu {
   /* a popover defaults to fixed and centered; re-anchor it under the button */
   position: absolute;
