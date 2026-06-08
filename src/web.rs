@@ -737,7 +737,11 @@ mod tests {
         let body = body_string(response).await;
         assert!(body.contains("@media (max-width: 600px)"));
         assert!(body.contains(".actions-trigger"));
-        assert!(body.contains("data-actions-open"));
+        // The action group is now a bottom sheet driven by the popover API, not
+        // the old `data-actions-open` toggle.
+        assert!(body.contains(":popover-open"));
+        assert!(body.contains("::backdrop"));
+        assert!(!body.contains("data-actions-open"));
     }
 
     #[tokio::test]
