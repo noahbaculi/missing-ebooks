@@ -468,6 +468,29 @@ details[open] > summary .chev {
   .navbar {
     flex-wrap: wrap;
   }
+  /* phone navbar lays out in two rows: the title with the theme toggle and
+     rescan on top, the view toggle as a full-width segmented control below.
+     flex `order` moves the controls without reordering the markup. `.navbar >
+     button` matches only the theme toggle, since rescan lives inside a form.
+     the leading spacer keeps growing on the top row, so the theme toggle and
+     rescan stay pinned to the right edge instead of stranding a gap on wrap. */
+  .navbar .spacer {
+    order: 1;
+  }
+  .navbar > button {
+    order: 2;
+  }
+  .navbar form {
+    order: 3;
+  }
+  .navbar .segmented {
+    order: 4;
+    flex-basis: 100%;
+  }
+  .navbar .segmented .segment {
+    flex: 1;
+    text-align: center;
+  }
   .card {
     padding: 1rem 0.85rem;
   }
