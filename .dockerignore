@@ -1,0 +1,15 @@
+# Keep the Docker build context to just the sources the image needs.
+# Everything here is excluded from `docker build`.
+target
+.git
+.github
+docs
+tests
+.playwright-mcp
+.superpowers
+.githooks
+*.md
+bacon.toml
+deny.toml
+mise.toml
+rust-toolchain.toml
