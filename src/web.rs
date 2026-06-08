@@ -796,6 +796,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_collapses_the_flagged_badge_and_keeps_rows_on_one_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // On mobile the "needs ebook" pill collapses to an amber dot. The label is
+        // pushed out of the box with the image-replacement idiom (text-indent), not
+        // removed, so it stays in the HTML for screen readers.
+        assert!(body.contains("text-indent: 100%"));
+        // Non-covered rows stop wrapping, so the dot and kebab stay on the first
+        // line and a long name wraps inside its own box instead.
+        assert!(body.contains(".row:not(.covered)"));
+        assert!(body.contains("overflow-wrap: anywhere"));
+    }
+
+    #[tokio::test]
     async fn static_route_serves_the_htmx_script() {
         let dir = tempfile::tempdir().unwrap();
         let response = app_for(dir.path())

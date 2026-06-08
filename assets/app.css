@@ -480,6 +480,30 @@ details[open] > summary .chev {
   .name {
     min-width: 0;
   }
+  /* the "needs ebook" pill collapses to an amber dot. text-indent + overflow hide
+     the label visually while keeping it in the DOM and the accessibility tree, so
+     screen readers still announce it and the HTML tests still match. the amber fill
+     comes from .badge-warning; .badge already carries flex: none. */
+  .badge {
+    width: 0.5rem;
+    height: 0.5rem;
+    min-width: 0.5rem;
+    padding: 0;
+    border-radius: 999px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-indent: 100%;
+  }
+  /* flagged and container rows stay on one line: a long name wraps inside its own
+     box instead of bumping the dot and kebab down to a second line. covered rows
+     keep the wrap from the .row rule above so the covering filename can still drop
+     below the name. */
+  .row:not(.covered) {
+    flex-wrap: nowrap;
+  }
+  .row:not(.covered) .name {
+    overflow-wrap: anywhere;
+  }
 
   /* show the kebab trigger; it opens the per-row action sheet via the popover API */
   .actions-trigger {
