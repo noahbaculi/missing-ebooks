@@ -290,6 +290,39 @@ details[open] > summary .chev {
   color: var(--color-muted);
 }
 
+/* search-links dropdown: a magnifying-glass button opens a popover menu */
+.links-toggle .icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  color: var(--color-muted);
+}
+.links-menu {
+  /* a popover defaults to fixed and centered; re-anchor it under the button */
+  position: absolute;
+  inset: auto;
+  margin: 0;
+  min-width: 9rem;
+  padding: 0.25rem;
+  background: var(--color-base-100);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: var(--radius-field);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  position-area: bottom span-left;
+  position-try-fallbacks: top span-left, bottom span-right;
+}
+.links-menu a {
+  display: block;
+  padding: 0.3rem 0.5rem;
+  border-radius: calc(var(--radius-field) - 0.2rem);
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.links-menu a:hover {
+  background: var(--color-base-200);
+}
+
 /* badges */
 .badge {
   font-size: 0.66rem;

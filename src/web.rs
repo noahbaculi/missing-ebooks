@@ -51,6 +51,9 @@ const TOGGLE_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="current
 /// Caret that rotates open when its folder is expanded. Inherits `currentColor`.
 const CHEVRON_SVG: &str = r##"<svg class="chev" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>"##;
 
+/// Magnifying glass for the search-links dropdown trigger. Inherits `currentColor`.
+const SEARCH_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>"##;
+
 /// Folder glyph shown on every node row. Inherits `currentColor`.
 const FOLDER_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>"##;
 
@@ -259,6 +262,7 @@ fn render_section(
     links: &[SearchLink],
     mode: ViewMode,
 ) -> Markup {
+    let counter = std::cell::Cell::new(0usize);
     html! {
         section.card.root {
             details.root-fold open {
@@ -279,7 +283,7 @@ fn render_section(
                             div.empty { span { "Nothing here" } }
                         } @else {
                             ul.menu {
-                                @for node in nodes { (render_node(node, root, links, mode)) }
+                                @for node in nodes { (render_node(node, root, links, mode, &counter)) }
                             }
                         }
                     }
@@ -308,7 +312,13 @@ fn status_icon(node: &Node) -> Markup {
     }
 }
 
-fn render_node(node: &Node, root: usize, links: &[SearchLink], mode: ViewMode) -> Markup {
+fn render_node(
+    node: &Node,
+    root: usize,
+    links: &[SearchLink],
+    mode: ViewMode,
+    counter: &std::cell::Cell<usize>,
+) -> Markup {
     // A covered row dims only in show-all; gaps-only never holds covered nodes.
     let covered = mode == ViewMode::All && !node.missing_ebook;
     // Buttons and links appear only where there is a gap to act on. In gaps-only
@@ -326,7 +336,7 @@ fn render_node(node: &Node, root: usize, links: &[SearchLink], mode: ViewMode) -
                     span.spring {}
                     @if act {
                         (marker_buttons(root, &node.rel_path, mode))
-                        (search_links(links, &node.name))
+                        (search_links(links, &node.name, root, counter))
                     }
                 }
             }
@@ -342,11 +352,11 @@ fn render_node(node: &Node, root: usize, links: &[SearchLink], mode: ViewMode) -
                         span.spring {}
                         @if act {
                             (marker_buttons(root, &node.rel_path, mode))
-                            (search_links(links, &node.name))
+                            (search_links(links, &node.name, root, counter))
                         }
                     }
                     ul {
-                        @for child in &node.children { (render_node(child, root, links, mode)) }
+                        @for child in &node.children { (render_node(child, root, links, mode, counter)) }
                     }
                 }
             }
@@ -374,15 +384,36 @@ fn marker_buttons(root: usize, rel: &str, mode: ViewMode) -> Markup {
     }
 }
 
-fn search_links(links: &[SearchLink], name: &str) -> Markup {
+/// Next DOM-safe popover id for a row's search menu. The relative path can hold
+/// slashes and spaces, so a root index plus a per-render counter is used instead.
+/// The counter is reset per `render_section`, so ids are unique within one render.
+fn next_id(root: usize, counter: &std::cell::Cell<usize>) -> String {
+    let n = counter.get();
+    counter.set(n + 1);
+    format!("links-{root}-{n}")
+}
+
+fn search_links(
+    links: &[SearchLink],
+    name: &str,
+    root: usize,
+    counter: &std::cell::Cell<usize>,
+) -> Markup {
     html! {
         @if !links.is_empty() {
             @let query = urlencoding::encode(&clean_query(name)).into_owned();
+            @let id = next_id(root, counter);
             span.links {
-                @for (i, link) in links.iter().enumerate() {
-                    @if i > 0 { span.sep { "·" } }
-                    a href=(link.url.replace("{query}", &query))
-                        target="_blank" rel="noopener noreferrer" { (link.label) }
+                button.btn.btn-outline.btn-xs.links-toggle type="button"
+                    popovertarget=(id)
+                    aria-label="Search for this book"
+                    title="Search links"
+                    onclick="event.stopPropagation()" { (PreEscaped(SEARCH_SVG)) }
+                div.links-menu popover="auto" id=(id) onclick="event.stopPropagation()" {
+                    @for link in links {
+                        a href=(link.url.replace("{query}", &query))
+                            target="_blank" rel="noopener noreferrer" { (link.label) }
+                    }
                 }
             }
         }
@@ -513,6 +544,27 @@ mod tests {
         // No links means no `span.links` is emitted. The CSS rule in <style> names
         // `span.links`, so match the rendered attribute, which appears only on a row.
         assert!(!body.contains(r#"class="links""#));
+        // No links means no dropdown trigger either.
+        assert!(!body.contains("popovertarget"));
+    }
+
+    #[tokio::test]
+    async fn search_links_render_inside_a_popover_menu() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // A magnifying-glass button opens a popover that holds the links.
+        assert!(body.contains("popovertarget"));
+        assert!(body.contains(r#"class="links-menu""#));
+        // The link itself is unchanged, just relocated into the menu.
+        assert!(body.contains("https://www.goodreads.com/search?q=Book"));
+        assert!(body.contains(r#"target="_blank""#));
     }
 
     #[tokio::test]
