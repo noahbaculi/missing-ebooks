@@ -1,0 +1,30 @@
+# The demo stack: the session-router and a Cloudflare Tunnel client. No host
+# ports are published. cloudflared reaches the router over the compose network,
+# and Cloudflare routes demo-missing-ebooks.noahbaculi.com to it through the
+# tunnel. See demo/README.md for the one-time tunnel setup.
+services:
+  router:
+    build:
+      # Build context is the repo root so the image can compile both the core
+      # explore example and the router crate.
+      context: ..
+      dockerfile: demo/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      ROUTER_BIND: 0.0.0.0:8080
+      ROUTER_SCENARIO: mixed-forest
+      ROUTER_MAX_SANDBOXES: "50"
+      ROUTER_MAX_PER_IP: "2"
+      ROUTER_IDLE_SECS: "1200"
+      ROUTER_PORT_RANGE: "9000-9100"
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - router
+    restart: unless-stopped
