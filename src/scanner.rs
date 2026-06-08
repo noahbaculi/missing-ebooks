@@ -99,14 +99,15 @@ fn normalize_exts(exts: &[String]) -> HashSet<String> {
 #[derive(Clone, Copy, PartialEq)]
 enum FileKind {
     Audio,
-    Cover, // an ebook or a marker: anything that makes a folder covered
+    Ebook,  // a real ebook file: counts as coverage and is listed by name
+    Marker, // a .no_ebook / .ebook_elsewhere marker: counts as coverage
     Other,
 }
 
 fn classify_file(name: &OsStr, settings: &ScanSettings) -> FileKind {
     let name = name.to_string_lossy();
     if Marker::from_filename(name.as_ref()).is_some() {
-        return FileKind::Cover;
+        return FileKind::Marker;
     }
     if name.starts_with('.') {
         // AppleDouble ._*, hidden sidecars (.beets), .gitkeep: never audio/ebook.
@@ -116,7 +117,7 @@ fn classify_file(name: &OsStr, settings: &ScanSettings) -> FileKind {
         Some(ext) => {
             let ext = ext.to_lowercase();
             if settings.ebook_exts.contains(&ext) {
-                FileKind::Cover
+                FileKind::Ebook
             } else if settings.audio_exts.contains(&ext) {
                 FileKind::Audio
             } else {
@@ -158,7 +159,7 @@ fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<PathBuf
             subdirs.push(entry.path());
         } else {
             match classify_file(&entry.file_name(), settings) {
-                FileKind::Cover => covered = true,
+                FileKind::Ebook | FileKind::Marker => covered = true,
                 FileKind::Audio => has_audio = true,
                 FileKind::Other => {}
             }
@@ -240,7 +241,7 @@ fn visit_all(
             subdirs.push(entry.path());
         } else {
             match classify_file(&entry.file_name(), settings) {
-                FileKind::Cover => covered_here = true,
+                FileKind::Ebook | FileKind::Marker => covered_here = true,
                 FileKind::Audio => has_audio = true,
                 FileKind::Other => {}
             }
