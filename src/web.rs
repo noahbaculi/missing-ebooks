@@ -63,6 +63,11 @@ const CHECK_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" st
 /// Circled exclamation for a scan or write error. Inherits `currentColor`.
 const ERROR_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>"##;
 
+/// A small book glyph as an inline SVG data URI, used for the favicon so the tab
+/// has an identity and the browser stops requesting `/favicon.ico`. The stroke
+/// is the light-theme primary, which reads on both light and dark tab strips.
+const FAVICON_HREF: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23605dff' stroke-width='2' stroke-linejoin='round'%3E%3Cpath d='M4 19V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z'/%3E%3Cpath d='M6 21h13'/%3E%3C/svg%3E";
+
 /// The `view` parameter shared by the index query string and the rescan form. A
 /// lenient `Option<String>` so an absent or unknown value falls back to gaps-only
 /// rather than rejecting the request.
@@ -198,6 +203,7 @@ fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Missing Ebooks" }
+                link rel="icon" href=(FAVICON_HREF);
                 script { (PreEscaped(THEME_INIT_JS)) }
                 link rel="stylesheet" href="/static/app.css";
             }
@@ -485,6 +491,21 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_string(response).await;
         assert!(body.contains("Book"));
+    }
+
+    #[tokio::test]
+    async fn index_links_an_inline_favicon() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // An inline SVG data-URI favicon, so the browser stops requesting
+        // /favicon.ico and the tab gets an identity.
+        assert!(body.contains(r#"rel="icon""#));
+        assert!(body.contains("data:image/svg+xml,"));
     }
 
     #[tokio::test]
