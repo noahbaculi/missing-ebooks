@@ -2,7 +2,7 @@
 
 Self-hosted web server that scans audiobook library trees and surfaces folders that hold audio but no matching ebook, so the gaps are easy to find and fill.
 
-## How It Works
+## How it works
 
 Point the server at one or more library roots. Each root is scanned and rendered as its own tree. A folder is flagged when it directly holds an audio file and nothing covers it: no ebook and no marker in that folder or any ancestor up to its root. One ebook or marker covers everything beneath it.
 
@@ -26,7 +26,7 @@ A rescan button refreshes the view. Scans are cached with a staleness backstop (
 
 By default the page shows only the gaps. A "Show all folders" toggle beside the Rescan button switches to a fuller view that renders the whole library tree, covered folders included, so a gap can be read in the context of everything around it. Covered folders show dimmed with a check and carry no actions; the gaps keep their buttons and search links. The toggle is per view and is not saved.
 
-## Getting Started
+## Getting started
 
 Set at least one library root and run the server. It exits if no root is configured in any layer.
 
@@ -129,7 +129,7 @@ After cloning, run `mise install` to provision the pinned tools, then `mise run 
 
 With the hook installed, any commit that touches Rust or build-config files runs `cargo fmt --check` and `cargo clippy` first, the same checks CI enforces, and blocks the commit if either fails. Run them yourself any time with `mise run lint`. Commits that touch only docs skip the build.
 
-## Future Work
+## Future work
 
 - [x] Repeatable UI test harness with the same possible seeded states to test multiple scenarios
 - [x] Prettier UI
