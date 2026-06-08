@@ -76,10 +76,10 @@ const KEBAB_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="currentC
 /// None" row. Shown only inside the mobile sheet. Inherits `currentColor`.
 const NO_ENTRY_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg>"##;
 
-/// A "move out" arrow leaving a box for the sheet's "Ebook elsewhere" row, in
-/// the same style as the external-link glyph. Shown only inside the mobile
-/// sheet. Inherits `currentColor`.
-const MOVE_OUT_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/><path d="M14 3h7v7"/><path d="M10 14L21 3"/></svg>"##;
+/// A book with a small check, marking that this audiobook's ebook is accounted
+/// for somewhere else rather than missing. Shown on the sheet's "Ebook
+/// elsewhere" button. Inherits `currentColor`.
+const EBOOK_ELSEWHERE_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg>"##;
 
 /// The `view` parameter shared by the index query string and the rescan form. A
 /// lenient `Option<String>` so an absent or unknown value falls back to gaps-only
@@ -446,7 +446,7 @@ fn marker_buttons(root: usize, rel: &str, mode: ViewMode) -> Markup {
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"ebook_elsewhere"}"#)
                 onclick="event.stopPropagation()" {
-                    span.sheet-icon { (PreEscaped(MOVE_OUT_SVG)) }
+                    span.sheet-icon { (PreEscaped(EBOOK_ELSEWHERE_SVG)) }
                     span.label-long { "Ebook elsewhere" }
                     span.label-short { "Elsewhere" }
                 }
@@ -589,6 +589,21 @@ mod tests {
         assert!(body.contains(r#"hx-post="/mark""#));
         assert!(body.contains(r#"src="/static/htmx.min.js""#));
         assert!(body.contains(">None<"));
+    }
+
+    #[tokio::test]
+    async fn elsewhere_button_uses_the_book_check_icon() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The "Ebook elsewhere" button now carries a book-and-check glyph (the
+        // checkmark path), not the old open-external-link arrow.
+        assert!(body.contains("m9 9.5 2 2 4-4"));
+        assert!(!body.contains("M10 14L21 3"));
     }
 
     #[tokio::test]
