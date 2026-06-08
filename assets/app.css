@@ -295,6 +295,11 @@ details[open] > summary .chev {
   height: 1.05rem;
   color: var(--color-muted);
 }
+/* the kebab stays grey even in flagged rows, where .flagged .icon would
+   otherwise tint it amber along with the folder icon */
+.flagged .actions-trigger .icon {
+  color: var(--color-muted);
+}
 .actions-group {
   display: contents;
 }
