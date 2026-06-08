@@ -200,6 +200,10 @@ pub struct ScannedFolder {
     pub directly_holds_audio: bool,
     /// No ebook or marker covers it (none here, none in any ancestor).
     pub missing_ebook: bool,
+    /// Ebook and marker filenames that physically sit in this folder and cover it
+    /// on its own. Ebooks first, then markers, each natural-sorted. Empty for gaps,
+    /// plain containers, and folders covered only through an ancestor.
+    pub cover_files: Vec<String>,
 }
 
 /// Walk `root` and return every folder with both facts, relative to `root`.
@@ -255,6 +259,7 @@ fn visit_all(
             rel_path: rel.to_path_buf(),
             directly_holds_audio: has_audio,
             missing_ebook: !covered,
+            cover_files: Vec::new(),
         });
     }
     // Coverage does not stop the descent here; only exclusion does.
