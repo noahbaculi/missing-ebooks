@@ -478,10 +478,13 @@ async fn main() -> ExitCode {
     // the scanner emits (an unreadable root, for example) are visible.
     tracing_subscriber::fmt::init();
 
-    let temp = match tempfile::TempDir::new() {
+    let temp = match tempfile::Builder::new()
+        .prefix("explore-")
+        .tempdir_in("/tmp")
+    {
         Ok(temp) => temp,
         Err(err) => {
-            eprintln!("could not create a temp directory: {err}");
+            eprintln!("could not create a temp directory under /tmp: {err}");
             return ExitCode::FAILURE;
         }
     };
