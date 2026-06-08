@@ -24,6 +24,8 @@ struct AllFolder {
     path: String,
     directly_holds_audio: bool,
     missing_ebook: bool,
+    #[serde(default)]
+    cover_files: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -101,11 +103,15 @@ fn tree_container_set_matches_the_contract() {
     assert_eq!(got_containers, want_containers);
 }
 
-fn collect_all(nodes: &[Node], out: &mut BTreeMap<String, (bool, bool)>) {
+fn collect_all(nodes: &[Node], out: &mut BTreeMap<String, (bool, bool, Vec<String>)>) {
     for node in nodes {
         out.insert(
             node.rel_path.clone(),
-            (node.directly_holds_audio, node.missing_ebook),
+            (
+                node.directly_holds_audio,
+                node.missing_ebook,
+                node.cover_files.clone(),
+            ),
         );
         collect_all(&node.children, out);
     }
@@ -118,13 +124,22 @@ fn scan_all_and_build_all_match_the_contract() {
     let folders = scan_all(&root, &expected_settings(&expected));
     let forest = build_all("Audiobooks", &folders);
 
-    let mut got: BTreeMap<String, (bool, bool)> = BTreeMap::new();
+    let mut got: BTreeMap<String, (bool, bool, Vec<String>)> = BTreeMap::new();
     collect_all(&forest, &mut got);
 
-    let want: BTreeMap<String, (bool, bool)> = expected
+    let want: BTreeMap<String, (bool, bool, Vec<String>)> = expected
         .all
         .iter()
-        .map(|f| (f.path.clone(), (f.directly_holds_audio, f.missing_ebook)))
+        .map(|f| {
+            (
+                f.path.clone(),
+                (
+                    f.directly_holds_audio,
+                    f.missing_ebook,
+                    f.cover_files.clone(),
+                ),
+            )
+        })
         .collect();
     assert_eq!(got, want);
 }
