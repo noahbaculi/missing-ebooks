@@ -312,6 +312,17 @@ fn status_icon(node: &Node) -> Markup {
     }
 }
 
+/// The covering ebook and marker filenames for a covered row, right-aligned in
+/// muted text. Show-all only; empty for gaps and for folders covered from above,
+/// so nothing renders there.
+fn cover_files_span(node: &Node, mode: ViewMode) -> Markup {
+    html! {
+        @if mode == ViewMode::All && !node.cover_files.is_empty() {
+            span.cover-files title="covering files" { (node.cover_files.join(", ")) }
+        }
+    }
+}
+
 fn render_node(
     node: &Node,
     root: usize,
@@ -334,6 +345,7 @@ fn render_node(
                     @if node.needs_ebook() { span.badge.badge-warning { "needs ebook" } }
                     @if mode == ViewMode::All { (status_icon(node)) }
                     span.spring {}
+                    (cover_files_span(node, mode))
                     @if act {
                         (marker_buttons(root, &node.rel_path, mode))
                         (search_links(links, &node.name, root, counter))
@@ -350,6 +362,7 @@ fn render_node(
                         @if node.needs_ebook() { span.badge.badge-warning { "needs ebook" } }
                         @if mode == ViewMode::All { (status_icon(node)) }
                         span.spring {}
+                        (cover_files_span(node, mode))
                         @if act {
                             (marker_buttons(root, &node.rel_path, mode))
                             (search_links(links, &node.name, root, counter))
@@ -948,6 +961,73 @@ mod tests {
         )
         .await;
         assert!(body.contains("Nothing here"));
+    }
+
+    #[tokio::test]
+    async fn all_view_lists_the_covering_ebook_on_a_covered_row() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Covered/01.mp3"));
+        touch(&dir.path().join("Author/Covered/Covered.epub"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/?view=all")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(body.contains(r#"class="cover-files""#));
+        assert!(body.contains("Covered.epub"));
+    }
+
+    #[tokio::test]
+    async fn gaps_only_view_lists_no_cover_files() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Gap/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(!body.contains(r#"class="cover-files""#));
+    }
+
+    #[tokio::test]
+    async fn marking_in_all_mode_shows_the_written_marker_on_the_row() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Book/01.mp3"));
+        let app = app_for(dir.path());
+        // Warm the all slot.
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/?view=all")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Author/Book&kind=no_ebook&view=all"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        assert!(body.contains(r#"class="cover-files""#));
+        assert!(body.contains(".no_ebook"));
     }
 
     #[tokio::test]
