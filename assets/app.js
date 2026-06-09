@@ -159,6 +159,10 @@
   document.body.addEventListener("htmx:beforeRequest", function (evt) {
     var btn = evt.detail.elt;
     if (!btn || !btn.matches('[hx-post="/mark"]')) return;
+    // The section swap removes this button. If it still holds focus when that
+    // happens, the browser jumps the scroll to the document bottom (in both views),
+    // so drop focus first. Focus would end up on <body> after the swap regardless.
+    if (document.activeElement === btn) btn.blur();
     var form = btn.closest("form.mark");
     var view = form && form.querySelector('input[name="view"]');
     if (view && view.value === "all") return;

@@ -745,6 +745,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn app_script_blurs_the_mark_button_before_the_swap() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.js")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The section swap removes the focused mark button. Left focused, the browser
+        // jumps the scroll to the page bottom (true in both views), so the script
+        // drops focus before the swap.
+        assert!(body.contains("blur"));
+    }
+
+    #[tokio::test]
     async fn stylesheet_collapses_the_leaving_row_and_respects_reduced_motion() {
         let dir = tempfile::tempdir().unwrap();
         let body = body_string(
