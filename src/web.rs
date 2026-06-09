@@ -509,7 +509,7 @@ fn row_actions(
 
 fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup {
     html! {
-        form.mark.actions hx-target="closest section.root" hx-swap="outerHTML" {
+        form.mark.actions hx-target="closest section.root" hx-swap="outerHTML transition:true" {
             input type="hidden" name="root" value=(root);
             input type="hidden" name="rel" value=(rel);
             input type="hidden" name="view" value=(mode.as_query());
@@ -653,6 +653,22 @@ mod tests {
         assert!(body.contains(r#"id="roots""#));
         // The sections themselves are unchanged.
         assert!(body.contains(r#"class="card root""#));
+    }
+
+    #[tokio::test]
+    async fn marker_form_requests_a_view_transition() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The mark swap opts into the View Transitions API so the folder animates out
+        // instead of snapping.
+        assert!(body.contains("outerHTML transition:true"));
     }
 
     #[tokio::test]
