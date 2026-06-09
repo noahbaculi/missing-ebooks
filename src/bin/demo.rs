@@ -3,8 +3,7 @@
 //! Seeds a synthetic library into a temp directory, scans it into shared base
 //! views, and serves the production UI with a demo banner. Each visitor is pinned
 //! to an in-memory session by a cookie; their marks are replayed on top of the
-//! base view per request and never touch disk. See
-//! docs/superpowers/specs/2026-06-08-in-memory-demo-sandboxing-design.md.
+//! base view per request and never touch disk.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
