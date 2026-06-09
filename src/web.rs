@@ -1096,6 +1096,10 @@ mod tests {
         assert!(body.contains(".settings-panel"));
         assert!(body.contains(".switch-track"));
         assert!(body.contains(".settings-panel:popover-open"));
+        // The mobile sheet resets the desktop anchor positioning; without this the
+        // @supports position-area rule keeps the panel pinned under the cog at
+        // partial width instead of spanning the full bottom of the viewport.
+        assert!(body.contains("position-area: none"));
     }
 
     #[tokio::test]
