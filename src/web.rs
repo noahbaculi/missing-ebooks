@@ -1072,6 +1072,9 @@ mod tests {
         // The dialog is themed and dims the page behind it.
         assert!(body.contains(".confirm-dialog"));
         assert!(body.contains(".confirm-dialog::backdrop"));
+        // The non-matching marker glyph hides via the `hidden` attribute. The
+        // explicit `.confirm-icon` display must honor it, or both glyphs show.
+        assert!(body.contains(".confirm-icon[hidden]"));
     }
 
     #[tokio::test]

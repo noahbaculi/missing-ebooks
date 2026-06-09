@@ -612,6 +612,12 @@ details[open] > summary .chev {
 .confirm-icon {
   display: inline-flex;
 }
+/* the inline-flex above outranks the user-agent `[hidden] { display: none }`, so
+   the non-matching marker glyph would otherwise still show; re-hide it explicitly
+   so only the glyph for the fired button's marker renders. */
+.confirm-icon[hidden] {
+  display: none;
+}
 .confirm-icon .icon {
   width: 1.05rem;
   height: 1.05rem;
