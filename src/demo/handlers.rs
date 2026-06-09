@@ -193,6 +193,16 @@ async fn mark(
     response
 }
 
+/// Redirect to the page for `mode`. Used after a POST so a refresh re-issues a
+/// GET instead of re-firing the action (Post/Redirect/Get); `Redirect::to` emits
+/// 303 See Other.
+fn redirect_to_view(mode: ViewMode) -> Redirect {
+    match mode {
+        ViewMode::GapsOnly => Redirect::to("/"),
+        ViewMode::All => Redirect::to("/?view=all"),
+    }
+}
+
 async fn reset(
     State(state): State<Arc<DemoState>>,
     headers: HeaderMap,
@@ -212,13 +222,9 @@ async fn reset(
             None => return capacity_response(),
         }
     };
-    // 303 See Other (Post/Redirect/Get) back to the view the reset came from, so a
-    // refresh does not re-fire the reset.
-    let mut response = Redirect::to(match mode {
-        ViewMode::GapsOnly => "/",
-        ViewMode::All => "/?view=all",
-    })
-    .into_response();
+    // Back to the view the reset came from, so a refresh lands the visitor where
+    // they were rather than re-firing the reset.
+    let mut response = redirect_to_view(mode).into_response();
     if let Some(cookie) = set_cookie {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
@@ -227,12 +233,9 @@ async fn reset(
 
 async fn rescan(Form(query): Form<ViewQuery>) -> Redirect {
     // Every GET re-derives, and marks live in the session, so a rescan just
-    // returns the visitor to their current view. 303 See Other (Post/Redirect/Get).
+    // returns the visitor to their current view.
     let mode = ViewMode::from_query(query.view.as_deref());
-    Redirect::to(match mode {
-        ViewMode::GapsOnly => "/",
-        ViewMode::All => "/?view=all",
-    })
+    redirect_to_view(mode)
 }
 
 /// Liveness probe for the container healthcheck. Answers without minting a
@@ -522,6 +525,37 @@ mod tests {
         assert_eq!(reset.status(), StatusCode::SEE_OTHER);
         assert_eq!(reset.headers().get("location").unwrap(), "/?view=all");
         assert!(reset.headers().get(header::SET_COOKIE).is_some());
+    }
+
+    #[tokio::test]
+    async fn reset_at_capacity_serves_the_503_like_the_other_posts() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 1, Duration::from_secs(1200)).await;
+
+        // Fill the single slot with one visitor.
+        let first = router(state.clone())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
+
+        // A cookie-less reset cannot mint a session in a full store, so it gets
+        // the same soft 503 as a fresh GET rather than a redirect.
+        let reset = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/reset")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(reset.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = body_string(reset).await;
+        assert!(body.contains("at capacity"));
     }
 
     #[tokio::test]
