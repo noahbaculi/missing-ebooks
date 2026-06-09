@@ -1,19 +1,31 @@
 # missing-ebooks demo site
 
-A public, ephemeral demo of missing-ebooks. Every visitor gets a private,
-throwaway sandbox seeded with sample data; it resets after a few idle minutes.
-The stack is a session-router in front of the `explore` harness, fronted by a
-Cloudflare Tunnel. No inbound ports are opened on the host.
+A public, ephemeral demo of missing-ebooks. One server process serves every
+visitor; each visitor gets a private view seeded with sample data, and their
+changes are kept in memory and reset after a few idle minutes. The stack is the
+demo server fronted by a Cloudflare Tunnel. No inbound ports are opened on the
+host.
 
 ## What runs where
 
 - **Host:** any always-on Linux box. The reference host is an Oracle Cloud
   always-free Ampere VM (arm64), which builds the arm64 image natively.
-- **Containers:** `router` (spawns one `explore` sandbox per visitor and
-  reverse-proxies to it) and `cloudflared` (the tunnel client).
+- **Containers:** `demo` (the single server process) and `cloudflared` (the
+  tunnel client).
 - **Cloudflare:** terminates TLS for `demo-missing-ebooks.noahbaculi.com` and
-  routes it to the router over the tunnel. A single-label subdomain keeps it
-  under free Universal SSL.
+  routes it to the demo server over the tunnel. A single-label subdomain keeps
+  it under free Universal SSL.
+
+## How isolation works
+
+One process serves all visitors. The seeded library is scanned once at startup
+into shared, read-only base views. A session cookie pins each visitor to an
+in-memory set of marks; on every request the server clones the base view and
+replays that session's marks on top, so each visitor sees only their own
+changes. Marks never touch disk, the data is synthetic, and an idle reaper
+recycles abandoned sessions. A global session cap bounds memory; at the cap a
+new visitor gets a soft 503 page. Request volume is throttled at the Cloudflare
+edge.
 
 ## One-time host setup
 
@@ -29,7 +41,7 @@ Cloudflare Tunnel. No inbound ports are opened on the host.
 3. Add a public hostname to the tunnel:
    - Subdomain: `demo-missing-ebooks`
    - Domain: `noahbaculi.com`
-   - Service: `HTTP`, URL `router:8080`
+   - Service: `HTTP`, URL `demo:8080`
 4. Copy `demo/.env.example` to `demo/.env` and paste the token into
    `TUNNEL_TOKEN`.
 
@@ -41,8 +53,8 @@ From the repo root on the host:
 docker compose -f demo/docker-compose.yml --env-file demo/.env up -d --build
 ```
 
-Then open https://demo-missing-ebooks.noahbaculi.com. The first request seeds a
-sandbox and drops you into the live UI with the demo banner.
+Then open https://demo-missing-ebooks.noahbaculi.com. The first request mints a
+session and drops you into the live UI with the demo banner.
 
 ## Edge protections (recommended)
 
@@ -54,20 +66,19 @@ In the Cloudflare dashboard for `noahbaculi.com`:
 
 ## Operations
 
-- **Logs:** `docker compose -f demo/docker-compose.yml logs -f router`
+- **Logs:** `docker compose -f demo/docker-compose.yml logs -f demo`
 - **Update after a code change:**
   `docker compose -f demo/docker-compose.yml up -d --build`
-- **Tuning:** edit the `ROUTER_*` environment values in
-  `demo/docker-compose.yml` (idle window, session caps, port range, scenario,
-  the readiness and forward timeouts, the response-size cap, and the cookie
+- **Tuning:** edit the `DEMO_*` environment values in
+  `demo/docker-compose.yml` (scenario, idle window, session cap, and the cookie
   name) and re-run the up command.
 - **Reset everything:** `docker compose -f demo/docker-compose.yml down` removes
-  the containers; sandboxes are ephemeral, so nothing else needs cleanup.
+  the containers; sessions live only in memory, so nothing else needs cleanup.
 
 ## Notes
 
-- The app has no authentication. That is acceptable here because each sandbox is
-  isolated, seeded with synthetic data, and thrown away. Marker writes land only
-  in the visitor's own temp directory and cannot escape it.
-- A container restart reaps all sandbox processes; the router also clears
-  leftover `/tmp/explore-*` directories on startup.
+- The app has no authentication. That is acceptable here because the data is
+  synthetic and the only per-session write is an in-memory mark that resets when
+  the session is idle. No marker file is written on the request path.
+- A container restart drops every in-memory session; there is no on-disk state to
+  clean up.
