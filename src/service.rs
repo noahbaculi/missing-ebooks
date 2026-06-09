@@ -114,6 +114,17 @@ pub async fn rescan(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> {
         .await
 }
 
+/// The result of a marker write: the refreshed view plus whether this call
+/// actually created the file. `created` is false for a re-mark of an
+/// already-marked folder, which the HTML surface uses to suppress the undo toast.
+#[derive(Debug)]
+pub struct MarkOutcome {
+    /// The refreshed view after the write, the requesting mode's slot.
+    pub view: Arc<FlaggedView>,
+    /// True when this call made the file; false for a re-mark of a marked folder.
+    pub created: bool,
+}
+
 /// Write a marker into a folder and update the cached view in place, without a
 /// rescan (see docs/adr/0002-v1-runtime-write-model.md). The guard and the write
 /// run off the cache lock; the lock is held only for the in-memory mutation.
@@ -123,7 +134,7 @@ pub async fn mark(
     rel: &str,
     marker: Marker,
     mode: ViewMode,
-) -> Result<Arc<FlaggedView>, DomainError> {
+) -> Result<MarkOutcome, DomainError> {
     let root_path = state
         .config
         .library_roots
@@ -131,13 +142,13 @@ pub async fn mark(
         .ok_or(DomainError::RootIndex)?
         .clone();
     let rel_owned = rel.to_string();
-    tokio::task::spawn_blocking(move || write_marker(&root_path, &rel_owned, marker))
+    let created = tokio::task::spawn_blocking(move || write_marker(&root_path, &rel_owned, marker))
         .await
         .map_err(|_| {
             DomainError::WriteFailed(std::io::Error::other("marker write task failed"))
         })??;
 
-    Ok(state
+    let view = state
         .cache
         .edit_both_or_build(
             mode,
@@ -145,14 +156,18 @@ pub async fn mark(
             |view| apply_mark_all(&mut view[root], rel, marker),
             || build_view(state.config.as_ref(), &state.settings, mode),
         )
-        .await)
+        .await;
+    Ok(MarkOutcome { view, created })
 }
 
-/// Guard the target and write the marker file. Runs on a blocking task: the
-/// canonicalize calls and the write touch the filesystem. The root base comes
+/// Guard the target and create the marker file. Runs on a blocking task: the
+/// canonicalize calls and the open touch the filesystem. The root base comes
 /// from config, so only `rel` is request-controlled, and it is re-validated by
-/// canonicalizing the join and confirming it stays inside the root.
-fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(), DomainError> {
+/// canonicalizing the join and confirming it stays inside the root. The open is
+/// create-only: returns `Ok(true)` when this call made the file, `Ok(false)`
+/// when it was already there. Create-only keeps a re-mark a no-op and lets undo
+/// delete only files its own action created.
+fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<bool, DomainError> {
     let canonical_root = std::fs::canonicalize(root).map_err(|_| DomainError::TargetMissing)?;
     let target = if rel == "." {
         canonical_root.clone()
@@ -167,7 +182,15 @@ fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(), DomainErro
     if !canonical_target.is_dir() {
         return Err(DomainError::NotADirectory);
     }
-    std::fs::write(canonical_target.join(marker.filename()), b"").map_err(DomainError::WriteFailed)
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(canonical_target.join(marker.filename()))
+    {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(DomainError::WriteFailed(e)),
+    }
 }
 
 /// Apply a marker write to one root's section. Marking the root directory covers
@@ -443,6 +466,17 @@ mod tests {
     }
 
     #[test]
+    fn write_marker_reports_created_then_not_created() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("Book")).unwrap();
+        // First write creates the file.
+        assert!(write_marker(dir.path(), "Book", Marker::NoEbook).unwrap());
+        // Second write finds it already there: not created, file still present.
+        assert!(!write_marker(dir.path(), "Book", Marker::NoEbook).unwrap());
+        assert!(dir.path().join("Book").join(".no_ebook").exists());
+    }
+
+    #[test]
     fn write_marker_at_the_root_uses_dot() {
         let dir = tempfile::tempdir().unwrap();
         write_marker(dir.path(), ".", Marker::NoEbook).unwrap();
@@ -535,14 +569,14 @@ mod tests {
         let after = mark(&state, 0, "Book", Marker::NoEbook, ViewMode::GapsOnly)
             .await
             .unwrap();
-        assert!(matches!(after[0].state, RootState::Clean));
+        assert!(matches!(after.view[0].state, RootState::Clean));
         assert!(dir.path().join("Book/.no_ebook").exists());
 
         // A new gap appears on disk; the warm TTL means current_view returns the
         // same marked view, proving mark did not trigger a rescan.
         touch(&dir.path().join("Other/01.mp3"));
         let again = current_view(&state, ViewMode::GapsOnly).await;
-        assert!(Arc::ptr_eq(&after, &again));
+        assert!(Arc::ptr_eq(&after.view, &again));
     }
 
     #[tokio::test]
@@ -560,7 +594,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(matches!(view[0].state, RootState::Clean));
+        assert!(matches!(view.view[0].state, RootState::Clean));
         assert!(dir.path().join("Book/.ebook_elsewhere").exists());
     }
 
@@ -717,7 +751,7 @@ mod tests {
         let after = mark(&state, 0, "Author/Book", Marker::NoEbook, ViewMode::All)
             .await
             .unwrap();
-        let RootState::Forest(nodes) = &after[0].state else {
+        let RootState::Forest(nodes) = &after.view[0].state else {
             panic!("expected a Forest in all mode");
         };
         let book = &nodes[0].children[0];
@@ -747,7 +781,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(matches!(after[0].state, RootState::Clean));
+        assert!(matches!(after.view[0].state, RootState::Clean));
 
         // The all slot was cold, so it builds fresh now and already reflects the
         // marker on disk: the book is covered, not a gap.

@@ -124,8 +124,8 @@ async fn mark(State(state): State<Arc<AppState>>, Form(req): Form<MarkRequest>) 
     let links = &state.config.search_links;
     let mode = req.view;
     match service::mark(&state, req.root, &req.rel, req.kind, mode).await {
-        Ok(view) => {
-            Html(render_section(&view[req.root], req.root, None, links, mode).into_string())
+        Ok(outcome) => {
+            Html(render_section(&outcome.view[req.root], req.root, None, links, mode).into_string())
         }
         Err(err) => {
             let message = format!("Could not mark {}: {err}", req.rel);
