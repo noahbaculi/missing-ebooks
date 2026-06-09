@@ -52,6 +52,29 @@ async fn start_redirecting_stub() -> u16 {
     port
 }
 
+/// A stub that answers `/` with an HTML page labeled `content-encoding: gzip`,
+/// standing in for a compressed page the router must not try to rewrite.
+async fn start_encoded_html_stub() -> u16 {
+    let app = axum::Router::new().route(
+        "/",
+        axum::routing::get(|| async {
+            (
+                [
+                    ("content-type", "text/html"),
+                    ("content-encoding", "gzip"),
+                ],
+                "<html><body>real page</body></html>",
+            )
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    port
+}
+
 /// A stub that answers `/` with a plain-text body of `body_len` bytes, for
 /// exercising the response-size cap.
 async fn start_sized_stub(body_len: usize) -> u16 {
@@ -407,6 +430,49 @@ async fn second_request_reuses_the_sandbox_without_respawning() {
         1,
         "the sandbox is spawned once and reused"
     );
+}
+
+#[tokio::test]
+async fn encoded_html_is_passed_through_without_banner_injection() {
+    let stub_port = start_encoded_html_stub().await;
+    let config = test_config(stub_port, stub_port);
+    let state = build_state(
+        Box::new(FakeLauncher::new(stub_port)),
+        SessionStore::new(config.max_sandboxes, config.max_per_ip),
+        PortPool::new(config.port_low, config.port_high),
+        config,
+    );
+
+    let response = app(state)
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header("cf-connecting-ip", "203.0.113.15")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("content-encoding")
+            .expect("content-encoding is preserved")
+            .to_str()
+            .unwrap(),
+        "gzip"
+    );
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8_lossy(&body);
+    // Splicing into an encoded body would corrupt it, so the banner is skipped
+    // and the bytes pass through untouched.
+    assert!(
+        !html.contains("me-demo-banner"),
+        "must not inject into an encoded body"
+    );
+    assert!(html.contains("real page"), "body passed through unchanged");
 }
 
 #[tokio::test]

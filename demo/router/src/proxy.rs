@@ -347,6 +347,11 @@ async fn forward(
         .map(|ct| ct.contains("text/html"))
         .unwrap_or(false);
     let is_htmx = headers.contains_key("hx-request");
+    // A content-encoding (gzip and the like) means the bytes are not the literal
+    // HTML, so splicing the banner in would corrupt the body and leave the
+    // recomputed length wrong. The app serves uncompressed pages today, but
+    // honoring the header keeps the splice safe if that ever changes.
+    let is_encoded = upstream_headers.contains_key("content-encoding");
 
     // Buffer the body with a ceiling. The banner splice needs the whole HTML page
     // in hand, so streaming straight through is not an option for full pages;
@@ -363,7 +368,7 @@ async fn forward(
     }
 
     let mut builder = Response::builder().status(status);
-    let final_body: Vec<u8> = if is_html && !is_htmx {
+    let final_body: Vec<u8> = if is_html && !is_htmx && !is_encoded {
         banner::inject(&String::from_utf8_lossy(&bytes)).into_bytes()
     } else {
         bytes
