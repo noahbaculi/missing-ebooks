@@ -508,81 +508,110 @@
     else rescanTerminalFailure();
   }
 
-  // ---- action toast (undo + errors) ----
+  // ---- action toast stack (undo + errors) ----
 
-  var toast = null;
-  var toastUndo = null;
-  var toastMsg = null;
-  var toastTimer = null;
-  var pendingUndo = null;
+  // Up to three toasts coexist; a fourth evicts the oldest. A success toast
+  // offers an undo and clears after SUCCESS_MS; an error carries no undo and
+  // lingers longer.
+  var stack = null;
+  var template = null;
+  var MAX_TOASTS = 3;
+  var SUCCESS_MS = 8000;
+  var ERROR_MS = 15000;
 
   // The marker token to the label the buttons use, for the success message.
   var KIND_LABEL = { no_ebook: "None", ebook_elsewhere: "Ebook elsewhere" };
 
-  function hideToast() {
-    if (toastTimer) {
-      clearTimeout(toastTimer);
-      toastTimer = null;
-    }
-    if (toast) toast.hidden = true;
-    pendingUndo = null;
+  // Remove one toast node and clear its dismiss timer.
+  function dismissToast(node) {
+    if (node._timer) clearTimeout(node._timer);
+    node.remove();
   }
 
-  // Show the success variant: an undo offer that clears after a few seconds.
+  // Drop the oldest toasts until appending one more stays within MAX_TOASTS.
+  function evictOldest() {
+    while (stack.children.length >= MAX_TOASTS) {
+      dismissToast(stack.firstElementChild);
+    }
+  }
+
+  // A fresh toast node cloned from the page template.
+  function newToastNode() {
+    return template.content.firstElementChild.cloneNode(true);
+  }
+
+  // A small inline element carrying text: the monospace folder chip or the
+  // tinted marker-label pill.
+  function span(cls, text) {
+    var el = document.createElement("span");
+    el.className = cls;
+    el.textContent = text;
+    return el;
+  }
+
+  // Append a built node, wire its close button, and start its dismiss timer.
+  function pushToast(node, timeoutMs) {
+    evictOldest();
+    node.querySelector(".toast-close").addEventListener("click", function () {
+      dismissToast(node);
+    });
+    node._timer = setTimeout(function () {
+      dismissToast(node);
+    }, timeoutMs);
+    stack.appendChild(node);
+  }
+
+  // Show the success variant: an undo offer that clears after SUCCESS_MS.
   function showSuccessToast(detail) {
-    if (!toast || !detail) return;
-    pendingUndo = {
-      root: detail.root,
-      rel: detail.rel,
-      kind: detail.kind,
-      view: detail.view,
-    };
+    if (!stack || !template || !detail) return;
+    var node = newToastNode();
+    node.classList.add("toast--success");
+    node.setAttribute("role", "status");
+    node.setAttribute("aria-live", "polite");
+    node.querySelector(".toast-undo").addEventListener("click", function () {
+      dismissToast(node);
+      htmx.ajax("POST", "/unmark", {
+        target: '[data-root="' + detail.root + '"]',
+        swap: "outerHTML",
+        values: {
+          root: detail.root,
+          rel: detail.rel,
+          kind: detail.kind,
+          view: detail.view,
+        },
+      });
+    });
+    pushToast(node, SUCCESS_MS);
+    // Fill the message after the node is in the DOM so its live region announces
+    // the change.
     var label = KIND_LABEL[detail.kind] || detail.kind;
-    toastMsg.textContent = "Marked " + detail.name + " as " + label;
-    toast.classList.remove("toast--error");
-    toast.classList.add("toast--success");
-    toast.setAttribute("role", "status");
-    toast.setAttribute("aria-live", "polite");
-    toastUndo.hidden = false;
-    toast.hidden = false;
-    if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(hideToast, 8000);
+    node
+      .querySelector(".toast-msg")
+      .append("Marked ", span("toast-chip", detail.name), " as ", span("toast-kind", label));
   }
 
-  // Show the error variant: a message that stays until dismissed or replaced.
+  // Show the error variant: the server message, no undo, cleared after ERROR_MS.
   function showErrorToast(detail) {
-    if (!toast) return;
-    pendingUndo = null;
-    toastMsg.textContent = detail && detail.message ? detail.message : "Something went wrong";
-    toast.classList.remove("toast--success");
-    toast.classList.add("toast--error");
-    toast.setAttribute("role", "alert");
-    toast.setAttribute("aria-live", "assertive");
-    toastUndo.hidden = true;
-    if (toastTimer) {
-      clearTimeout(toastTimer);
-      toastTimer = null;
-    }
-    toast.hidden = false;
+    if (!stack || !template) return;
+    var node = newToastNode();
+    node.classList.add("toast--error");
+    node.setAttribute("role", "alert");
+    node.setAttribute("aria-live", "assertive");
+    node.querySelector(".toast-undo").remove();
+    pushToast(node, ERROR_MS);
+    node.querySelector(".toast-msg").textContent =
+      detail && detail.message ? detail.message : "Something went wrong";
+  }
+
+  // Clear the whole stack (Escape).
+  function clearToasts() {
+    if (!stack) return;
+    while (stack.firstElementChild) dismissToast(stack.firstElementChild);
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    toast = document.getElementById("toast");
-    if (!toast) return;
-    toastUndo = toast.querySelector(".toast-undo");
-    toastMsg = toast.querySelector(".toast-msg");
-    var close = toast.querySelector(".toast-close");
-    if (close) close.addEventListener("click", hideToast);
-    toastUndo.addEventListener("click", function () {
-      if (!pendingUndo) return;
-      var p = pendingUndo;
-      hideToast();
-      htmx.ajax("POST", "/unmark", {
-        target: '[data-root="' + p.root + '"]',
-        swap: "outerHTML",
-        values: { root: p.root, rel: p.rel, kind: p.kind, view: p.view },
-      });
-    });
+    stack = document.getElementById("toast-stack");
+    template = document.getElementById("toast-template");
   });
 
   // htmx dispatches these from the HX-Trigger header on the /mark and /unmark
@@ -594,6 +623,6 @@
     showErrorToast(evt.detail);
   });
   document.addEventListener("keydown", function (evt) {
-    if (evt.key === "Escape") hideToast();
+    if (evt.key === "Escape") clearToasts();
   });
 })();

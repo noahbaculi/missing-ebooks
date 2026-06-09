@@ -1632,6 +1632,9 @@ mod tests {
         assert!(body.contains(r#"addEventListener("marked""#));
         assert!(body.contains(r#"addEventListener("app-error""#));
         assert!(body.contains("/unmark"));
+        // The script drives a stack container and clones a per-toast template.
+        assert!(body.contains("toast-stack"));
+        assert!(body.contains("toast-template"));
     }
 
     #[tokio::test]
