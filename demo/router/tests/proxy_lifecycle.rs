@@ -456,6 +456,42 @@ async fn second_request_reuses_the_sandbox_without_respawning() {
 }
 
 #[tokio::test]
+async fn healthz_returns_ok_without_spawning_a_sandbox() {
+    let config = test_config(9000, 9000);
+    let launcher = FakeLauncher::new(9000);
+    let launches = launcher.launches.clone();
+    let state = build_state(
+        Box::new(launcher),
+        SessionStore::new(config.max_sandboxes, config.max_per_ip),
+        PortPool::new(config.port_low, config.port_high),
+        config,
+    );
+
+    let response = app(state)
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // The container healthcheck must be cheap and side-effect free: a plain 200,
+    // no session cookie, and crucially no sandbox spawned.
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        response.headers().get("set-cookie").is_none(),
+        "the probe must not start a session"
+    );
+    assert_eq!(
+        launches.load(Ordering::SeqCst),
+        0,
+        "the probe must not spawn a sandbox"
+    );
+}
+
+#[tokio::test]
 async fn upstream_set_cookie_is_kept_alongside_the_session_cookie() {
     let stub_port = start_cookie_setting_stub().await;
     let config = test_config(stub_port, stub_port);

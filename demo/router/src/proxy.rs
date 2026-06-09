@@ -127,6 +127,13 @@ fn cookie_header(cookie_name: &str, sid: &SessionId, max_age_secs: u64) -> Heade
     HeaderValue::from_str(&value).expect("ascii cookie")
 }
 
+/// Liveness probe for the container healthcheck. It answers without touching
+/// the session machinery, so probes neither spawn sandboxes nor count against
+/// the per-IP cap the way a request to `/` would.
+pub async fn health() -> StatusCode {
+    StatusCode::OK
+}
+
 /// The handler. `axum` hands us the method, uri, headers, and body of every
 /// request; we resolve the sandbox and forward.
 pub async fn handle(

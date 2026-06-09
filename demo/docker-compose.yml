@@ -18,6 +18,14 @@ services:
       ROUTER_MAX_PER_IP: "2"
       ROUTER_IDLE_SECS: "1200"
       ROUTER_PORT_RANGE: "9000-9100"
+    # /healthz answers without spawning a sandbox, so an unattended host restarts
+    # a wedged router instead of leaving it serving errors.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   cloudflared:
@@ -26,5 +34,6 @@ services:
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
     depends_on:
-      - router
+      router:
+        condition: service_healthy
     restart: unless-stopped

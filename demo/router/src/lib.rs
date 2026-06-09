@@ -13,9 +13,12 @@ use std::sync::Arc;
 
 use proxy::AppState;
 
-/// Build the axum app over shared state.
+/// Build the axum app over shared state. `/healthz` is a dedicated liveness
+/// route so the container healthcheck does not flow through the sandbox-spawning
+/// fallback; every other path is reverse-proxied to the visitor's sandbox.
 pub fn app(state: Arc<AppState>) -> axum::Router {
     axum::Router::new()
+        .route("/healthz", axum::routing::get(proxy::health))
         .fallback(proxy::handle)
         .with_state(state)
 }
