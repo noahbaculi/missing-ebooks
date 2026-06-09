@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{Form, Query, State};
-use axum::http::{HeaderMap, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::{DOCTYPE, Markup, PreEscaped, html};
@@ -120,14 +120,24 @@ async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery
     Html(page(&view, &state.config.search_links, mode).into_string())
 }
 
-async fn mark(State(state): State<Arc<AppState>>, Form(req): Form<MarkRequest>) -> Html<String> {
+async fn mark(
+    State(state): State<Arc<AppState>>,
+    Form(req): Form<MarkRequest>,
+) -> axum::response::Response {
     let links = &state.config.search_links;
     let mode = req.view;
     match service::mark(&state, req.root, &req.rel, req.kind, mode).await {
         Ok(outcome) => {
-            Html(render_section(&outcome.view[req.root], req.root, None, links, mode).into_string())
+            let markup = render_section(&outcome.view[req.root], req.root, None, links, mode);
+            let trigger = outcome.created.then(|| {
+                let name = display_name(&outcome.view[req.root].path, &req.rel);
+                marked_trigger(&req, &name)
+            });
+            section_response(markup, trigger)
         }
         Err(err) => {
+            // The inline alert moves to the toast in Task 6; left as-is here so this
+            // task changes only the success path.
             let message = format!("Could not mark {}: {err}", req.rel);
             let view = service::current_view(&state, mode).await;
             let markup = match view.get(req.root) {
@@ -138,7 +148,7 @@ async fn mark(State(state): State<Arc<AppState>>, Form(req): Form<MarkRequest>) 
                     }
                 },
             };
-            Html(markup.into_string())
+            section_response(markup, None)
         }
     }
 }
@@ -331,6 +341,68 @@ fn roots(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
             (render_section(section, root, None, links, mode))
         }
     }
+}
+
+/// JSON-escape any non-ASCII char to `\uXXXX`, so an `HX-Trigger` header value is
+/// pure ASCII and survives any browser header decoding. The input is valid JSON;
+/// replacing a raw char with its escape keeps it valid JSON. Folder names are
+/// often non-ASCII, so this is the common path, not an edge case.
+fn ascii_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut buf = [0u16; 2];
+    for c in s.chars() {
+        if c.is_ascii() {
+            out.push(c);
+        } else {
+            for unit in c.encode_utf16(&mut buf) {
+                out.push_str(&format!("\\u{unit:04x}"));
+            }
+        }
+    }
+    out
+}
+
+/// Render a section response, optionally carrying an `HX-Trigger` header. A value
+/// that will not encode (a control char in a folder name) is dropped rather than
+/// failing the response: the swap still happens, only the toast is skipped.
+fn section_response(markup: Markup, trigger: Option<String>) -> axum::response::Response {
+    let mut resp = Html(markup.into_string()).into_response();
+    if let Some(value) = trigger
+        && let Ok(header) = HeaderValue::from_str(&value)
+    {
+        resp.headers_mut()
+            .insert(HeaderName::from_static("hx-trigger"), header);
+    }
+    resp
+}
+
+/// The folder's display name for the toast: the last path segment, or the root
+/// label (the section path's last component) when the target is the root itself.
+fn display_name(section_path: &str, rel: &str) -> String {
+    if rel == "." {
+        std::path::Path::new(section_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(section_path)
+            .to_string()
+    } else {
+        rel.rsplit('/').next().unwrap_or(rel).to_string()
+    }
+}
+
+/// The `HX-Trigger` payload for a successful create: a `marked` event carrying
+/// what the toast needs to describe and to undo the write.
+fn marked_trigger(req: &MarkRequest, name: &str) -> String {
+    let payload = serde_json::json!({
+        "marked": {
+            "root": req.root,
+            "rel": req.rel,
+            "kind": req.kind,
+            "view": req.view.as_query(),
+            "name": name,
+        }
+    });
+    ascii_escape(&payload.to_string())
 }
 
 pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
@@ -1505,6 +1577,50 @@ mod tests {
         let body = body_string(response).await;
         assert!(body.contains("No missing ebooks in this root"));
         assert!(dir.path().join("Book/.no_ebook").exists());
+    }
+
+    #[tokio::test]
+    async fn mark_sets_the_marked_trigger_on_a_create_and_omits_it_on_a_remark() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let app = app_for(dir.path());
+
+        // First mark creates the file: the response carries the marked trigger.
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let trigger = first
+            .headers()
+            .get("hx-trigger")
+            .map(|v| v.to_str().unwrap().to_string());
+        let trigger = trigger.expect("a create sets HX-Trigger");
+        assert!(trigger.contains("marked"));
+        assert!(trigger.contains("\"name\":\"Book\""));
+        assert!(trigger.contains("\"kind\":\"no_ebook\""));
+
+        // Second mark of the same folder is a no-op create: no marked trigger.
+        let second = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(second.headers().get("hx-trigger").is_none());
     }
 
     #[tokio::test]
