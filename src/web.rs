@@ -1103,6 +1103,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_neutralizes_native_button_chrome_on_segments() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The theme control renders its segments as <button>, the view toggle as
+        // <span>/<a>. Without an appearance reset the buttons inherit the user
+        // agent's native control chrome (grey fills, beveled borders) while the
+        // view toggle stays flat, so the two diverge. The .segment rule must drop
+        // that chrome so both render identically.
+        assert!(body.contains(".segment"));
+        assert!(body.contains("appearance: none"));
+    }
+
+    #[tokio::test]
     async fn app_script_intercepts_marker_writes() {
         let dir = tempfile::tempdir().unwrap();
         let response = app_for(dir.path())
