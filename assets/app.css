@@ -948,14 +948,23 @@ details[open] > summary .chev {
 .roots-wrap {
   position: relative;
 }
+/* Hidden until a rescan is in flight. htmx adds htmx-request to the skeleton (its
+   hx-indicator) for the request's duration; we show it then and collapse the stale
+   tree via :has, so the loading state is a compact panel sized to its rows rather
+   than a full-height overlay with a large empty area below them. */
 .scan-skeleton {
-  position: absolute;
-  inset: 0;
+  display: none;
   padding: 1rem 1.1rem;
   background: var(--color-base-100);
   border: var(--border) solid var(--color-base-300);
   border-radius: var(--radius-box);
   pointer-events: none;
+}
+.scan-skeleton.htmx-request {
+  display: block;
+}
+.roots-wrap:has(.scan-skeleton.htmx-request) #roots {
+  display: none;
 }
 .sk-row {
   display: flex;
@@ -982,7 +991,24 @@ details[open] > summary .chev {
 .sk-name {
   height: 0.8rem;
   flex: 1;
-  max-width: 18rem;
+}
+/* Vary the placeholder widths so the loading state reads as content rather than a
+   uniform block, while still filling most of the row the way the real result rows
+   do, so the swap to results is not a jarring narrow-to-wide jump. */
+.sk-row:nth-child(1) .sk-name {
+  max-width: 82%;
+}
+.sk-row:nth-child(2) .sk-name {
+  max-width: 64%;
+}
+.sk-row:nth-child(3) .sk-name {
+  max-width: 91%;
+}
+.sk-row:nth-child(4) .sk-name {
+  max-width: 54%;
+}
+.sk-row:nth-child(5) .sk-name {
+  max-width: 73%;
 }
 @keyframes shimmer {
   from {
