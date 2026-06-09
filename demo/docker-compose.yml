@@ -1,33 +1,24 @@
-# The demo stack: the session-router and a Cloudflare Tunnel client. No host
-# ports are published. cloudflared reaches the router over the compose network,
-# and Cloudflare routes demo-missing-ebooks.noahbaculi.com to it through the
-# tunnel. See demo/README.md for the one-time tunnel setup.
+# The demo stack: the in-memory demo server and a Cloudflare Tunnel client. No
+# host ports are published. cloudflared reaches the demo over the compose
+# network, and Cloudflare routes demo-missing-ebooks.noahbaculi.com to it through
+# the tunnel. See demo/README.md for the one-time tunnel setup.
 services:
-  router:
+  demo:
     build:
-      # Build context is the repo root so the image can compile both the core
-      # explore example and the router crate.
+      # Build context is the repo root so the image can compile the crate.
       context: ..
       dockerfile: demo/Dockerfile
     expose:
       - "8080"
     environment:
-      ROUTER_BIND: 0.0.0.0:8080
-      ROUTER_SCENARIO: mixed-forest
-      ROUTER_MAX_SANDBOXES: "50"
-      ROUTER_MAX_PER_IP: "2"
-      ROUTER_IDLE_SECS: "1200"
-      ROUTER_PORT_RANGE: "9000-9100"
-      # Seconds a freshly spawned sandbox has to answer before the spawn fails.
-      ROUTER_READY_TIMEOUT_SECS: "10"
-      # Seconds a single proxied request may take before it returns a 502.
-      ROUTER_FORWARD_TIMEOUT_SECS: "30"
-      # Largest sandbox response the router buffers, in bytes (default 16 MiB).
-      ROUTER_MAX_RESPONSE_BYTES: "16777216"
-      # Name of the cookie that pins a visitor to their sandbox.
-      ROUTER_COOKIE_NAME: me_demo_sid
-    # /healthz answers without spawning a sandbox, so an unattended host restarts
-    # a wedged router instead of leaving it serving errors.
+      DEMO_BIND: 0.0.0.0:8080
+      DEMO_SCENARIO: mixed-forest
+      DEMO_MAX_SESSIONS: "1000"
+      DEMO_IDLE_SECS: "1200"
+      # Name of the cookie that pins a visitor to their in-memory session.
+      DEMO_COOKIE_NAME: me_demo_sid
+    # /healthz answers without touching the session table, so an unattended host
+    # restarts a wedged server instead of leaving it serving errors.
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
       interval: 30s
@@ -42,6 +33,6 @@ services:
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
     depends_on:
-      router:
+      demo:
         condition: service_healthy
     restart: unless-stopped
