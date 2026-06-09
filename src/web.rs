@@ -136,19 +136,15 @@ async fn mark(
             section_response(markup, trigger)
         }
         Err(err) => {
-            // The inline alert moves to the toast in Task 6; left as-is here so this
-            // task changes only the success path.
             let message = format!("Could not mark {}: {err}", req.rel);
             let view = service::current_view(&state, mode).await;
+            // Leave the tree intact: re-render the section with no inline alert and
+            // carry the message to the toast instead.
             let markup = match view.get(req.root) {
-                Some(section) => render_section(section, req.root, Some(&message), links, mode),
-                None => html! {
-                    section.card.root {
-                        div.alert.alert-error { (PreEscaped(ERROR_SVG)) span { (message) } }
-                    }
-                },
+                Some(section) => render_section(section, req.root, None, links, mode),
+                None => html! { section.card.root data-root=(req.root) {} },
             };
-            section_response(markup, None)
+            section_response(markup, Some(error_trigger(&message)))
         }
     }
 }
@@ -405,6 +401,13 @@ fn marked_trigger(req: &MarkRequest, name: &str) -> String {
     ascii_escape(&payload.to_string())
 }
 
+/// The `HX-Trigger` payload for a failed write: an `app-error` event carrying the
+/// message for the error toast.
+fn error_trigger(message: &str) -> String {
+    let payload = serde_json::json!({ "app-error": { "message": message } });
+    ascii_escape(&payload.to_string())
+}
+
 pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         (DOCTYPE)
@@ -496,7 +499,7 @@ pub(crate) fn render_section(
 ) -> Markup {
     let counter = std::cell::Cell::new(0usize);
     html! {
-        section.card.root {
+        section.card.root data-root=(root) {
             details.root-fold open {
                 summary.root-head {
                     (chevron())
@@ -1713,7 +1716,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mark_outside_a_root_shows_an_inline_error() {
+    async fn section_carries_a_data_root_hook() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The toast's Undo targets the section by index, so each section names it.
+        assert!(body.contains(r#"data-root="0""#));
+    }
+
+    #[tokio::test]
+    async fn mark_failure_triggers_an_error_toast_and_keeps_the_tree() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let app = app_for(dir.path());
@@ -1729,16 +1745,22 @@ mod tests {
                     .method("POST")
                     .uri("/mark")
                     .header("content-type", "application/x-www-form-urlencoded")
-                    .body(Body::from("root=0&rel=..&kind=no_ebook"))
+                    .body(Body::from("root=0&rel=..&kind=no_ebook&view=gaps"))
                     .unwrap(),
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        let trigger = response
+            .headers()
+            .get("hx-trigger")
+            .map(|v| v.to_str().unwrap().to_string())
+            .expect("a failed mark sets HX-Trigger");
+        assert!(trigger.contains("app-error"));
+        assert!(trigger.contains("Could not mark"));
         let body = body_string(response).await;
-        assert!(body.contains("Could not mark"));
-        // The failed write leaves the tree intact.
+        // The tree is intact and carries no inline alert.
         assert!(body.contains("Book"));
+        assert!(!body.contains("alert-error"));
     }
 
     #[tokio::test]
