@@ -928,19 +928,6 @@ details[open] > summary .chev {
   }
 }
 
-/* ---- motion: respect reduced-motion ---- */
-/* The mark swap rides the View Transitions API (htmx `transition:true`), and each
-   row carries a stable view-transition-name so survivors slide while the marked
-   row fades. Motion-sensitive users get the instant swap instead, which also makes
-   the inline names inert. */
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation: none !important;
-  }
-}
-
 /* ---- rescan skeleton ---- */
 /* The placeholder overlays #roots while an in-place rescan runs. htmx toggles its
    opacity through the htmx-indicator class (its bundled indicator styles), and the

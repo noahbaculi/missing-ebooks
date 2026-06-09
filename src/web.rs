@@ -464,12 +464,10 @@ fn render_node(
     // Buttons and links appear only where there is a gap to act on. In gaps-only
     // every node qualifies, so the output is unchanged.
     let act = node.has_gap_within();
-    // A stable per-row name so the View Transitions API can slide survivors.
-    let vt = format!("view-transition-name:{}", row_transition_name(root, &node.rel_path));
     html! {
         @if node.children.is_empty() {
             li {
-                div.row.flagged[node.needs_ebook()].covered[covered] style=(vt) {
+                div.row.flagged[node.needs_ebook()].covered[covered] {
                     span.leaf-pad {}
                     (folder_icon())
                     span.name { (node.name) }
@@ -485,7 +483,7 @@ fn render_node(
         } @else {
             li {
                 details open {
-                    summary.row.flagged[node.needs_ebook()].covered[covered] style=(vt) {
+                    summary.row.flagged[node.needs_ebook()].covered[covered] {
                         (chevron())
                         (folder_icon())
                         span.name { (node.name) }
@@ -540,7 +538,7 @@ fn row_actions(
 
 fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup {
     html! {
-        form.mark.actions hx-target="closest section.root" hx-swap="outerHTML transition:true" {
+        form.mark.actions hx-target="closest section.root" hx-swap="outerHTML" {
             input type="hidden" name="root" value=(root);
             input type="hidden" name="rel" value=(rel);
             input type="hidden" name="view" value=(mode.as_query());
@@ -580,23 +578,6 @@ fn next_id(prefix: &str, root: usize, counter: &std::cell::Cell<usize>) -> Strin
     let n = counter.get();
     counter.set(n + 1);
     format!("{prefix}-{root}-{n}")
-}
-
-/// A stable, DOM-safe `view-transition-name` for a folder row. The View
-/// Transitions API matches a name across the mark swap, so a surviving row slides
-/// into place while the marked row, gone from the new render, fades out. Keyed by
-/// `root` index and `rel_path` rather than render order, which would renumber
-/// siblings when a row leaves and break the match; hashed because a rel path holds
-/// slashes and spaces that are not valid in a CSS identifier.
-fn row_transition_name(root: usize, rel: &str) -> String {
-    // FNV-1a over "{root}/{rel}", rendered as hex. Deterministic across renders,
-    // so the same folder gets the same name before and after the swap.
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in format!("{root}/{rel}").into_bytes() {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    format!("vt-{hash:016x}")
 }
 
 fn search_links(
@@ -701,83 +682,6 @@ mod tests {
         assert!(body.contains(r#"id="roots""#));
         // The sections themselves are unchanged.
         assert!(body.contains(r#"class="card root""#));
-    }
-
-    #[tokio::test]
-    async fn marker_form_requests_a_view_transition() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The mark swap opts into the View Transitions API so the folder animates out
-        // instead of snapping.
-        assert!(body.contains("outerHTML transition:true"));
-    }
-
-    #[test]
-    fn row_transition_name_is_stable_and_path_keyed() {
-        // Same root and path: identical, so a surviving row keeps its name across the
-        // swap and the browser slides it into place.
-        assert_eq!(
-            row_transition_name(0, "Author/Book"),
-            row_transition_name(0, "Author/Book")
-        );
-        // Different path, or the same path under a different root: different names, so
-        // two rows never collide during a transition.
-        assert_ne!(
-            row_transition_name(0, "Author/Book"),
-            row_transition_name(0, "Author/Other")
-        );
-        assert_ne!(
-            row_transition_name(0, "Author/Book"),
-            row_transition_name(1, "Author/Book")
-        );
-        // DOM-safe: a path with slashes and spaces still yields a bare CSS ident.
-        let name = row_transition_name(0, "Long Author/The Book (Unabridged)");
-        assert!(name.starts_with("vt-"));
-        assert!(!name.contains('/') && !name.contains(' ') && !name.contains('('));
-    }
-
-    #[tokio::test]
-    async fn rows_carry_a_view_transition_name() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // Every tree row carries a stable name so the surviving rows slide when a
-        // sibling is marked away.
-        assert!(body.contains("view-transition-name:vt-"));
-    }
-
-    #[tokio::test]
-    async fn stylesheet_disables_view_transitions_under_reduced_motion() {
-        let dir = tempfile::tempdir().unwrap();
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(
-                    Request::builder()
-                        .uri("/static/app.css")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap(),
-        )
-        .await;
-        // Motion-sensitive users get the instant swap: the view-transition animations
-        // are switched off under prefers-reduced-motion.
-        assert!(body.contains("prefers-reduced-motion"));
-        assert!(body.contains("view-transition-group"));
     }
 
     #[tokio::test]
