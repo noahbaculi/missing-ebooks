@@ -18,6 +18,10 @@ pub fn inject(html: &str) -> String {
     if html.contains(BANNER_MARKER) {
         return html.to_string();
     }
+    // This literal couples the splice to the bare `<body>` that web.rs renders.
+    // If that tag ever gains a class or attribute the find misses and the banner
+    // silently drops out; the_index_carries_the_demo_banner_but_the_partial_does_not
+    // in handlers.rs is the test that fails when that happens.
     match html.find("<body>") {
         Some(idx) => {
             let cut = idx + "<body>".len();
