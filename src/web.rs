@@ -275,6 +275,16 @@ fn folder_icon() -> Markup {
     html! { (PreEscaped(FOLDER_SVG)) }
 }
 
+/// The root sections in order. Shared by the full page and the htmx rescan
+/// response, which swaps just this list into `#roots`.
+fn roots(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
+    html! {
+        @for (root, section) in view.iter().enumerate() {
+            (render_section(section, root, None, links, mode))
+        }
+    }
+}
+
 pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         (DOCTYPE)
@@ -298,8 +308,10 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                         button.btn.btn-primary type="submit" { "Rescan" }
                     }
                 }
-                @for (root, section) in view.iter().enumerate() {
-                    (render_section(section, root, None, links, mode))
+                div.roots-wrap {
+                    main id="roots" {
+                        (roots(view, links, mode))
+                    }
                 }
                 (confirm_dialog())
                 script src="/static/htmx.min.js" {}
@@ -622,6 +634,25 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_string(response).await;
         assert!(body.contains("Book"));
+    }
+
+    #[tokio::test]
+    async fn index_wraps_the_sections_in_a_roots_container() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The root sections live inside a positioned wrapper so the rescan skeleton
+        // can overlay them, and inside #roots so htmx can swap them in place.
+        assert!(body.contains(r#"class="roots-wrap""#));
+        assert!(body.contains(r#"id="roots""#));
+        // The sections themselves are unchanged.
+        assert!(body.contains(r#"class="card root""#));
     }
 
     #[tokio::test]
