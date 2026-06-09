@@ -148,4 +148,28 @@
     fillDialog(elt);
     dialog.showModal();
   });
+
+  // ---- mark: collapse the leaving row ----
+
+  // The moment a gaps-only mark request goes out, collapse the marked folder's row
+  // and fade it, so the rows below glide up through normal reflow. The section's
+  // swap is delayed (the marker form's hx-swap "swap:" modifier) to let this play,
+  // then it reconciles the fresh section. In show-all the row stays (it flips to
+  // covered in place), so that request carries view=all and we leave it alone.
+  document.body.addEventListener("htmx:beforeRequest", function (evt) {
+    var btn = evt.detail.elt;
+    if (!btn || !btn.matches('[hx-post="/mark"]')) return;
+    var form = btn.closest("form.mark");
+    var view = form && form.querySelector('input[name="view"]');
+    if (view && view.value === "all") return;
+    var li = btn.closest("li");
+    if (!li) return;
+    // Pin the current height, then drop to zero next frame so the transition has a
+    // definite start. The .leaving class owns the timing, fade, and reduced-motion.
+    li.style.maxHeight = li.scrollHeight + "px";
+    li.classList.add("leaving");
+    requestAnimationFrame(function () {
+      li.style.maxHeight = "0";
+    });
+  });
 })();

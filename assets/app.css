@@ -928,6 +928,24 @@ details[open] > summary .chev {
   }
 }
 
+/* ---- mark: collapse the leaving row ---- */
+/* A folder marked in gaps-only leaves the list. app.js pins the row's height and
+   then drops it to zero on the next frame; this rule transitions that collapse and
+   the fade, and the rows below glide up through normal reflow. The marker form
+   delays its section swap (hx-swap "swap:") so this finishes before the fresh
+   section lands. Motion-sensitive users get the instant removal, no slide. */
+li.leaving {
+  overflow: hidden;
+  opacity: 0;
+  margin-block: 0;
+  transition: max-height 250ms ease, opacity 180ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  li.leaving {
+    transition: none;
+  }
+}
+
 /* ---- rescan skeleton ---- */
 /* The placeholder overlays #roots while an in-place rescan runs. htmx toggles its
    opacity through the htmx-indicator class (its bundled indicator styles), and the

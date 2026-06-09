@@ -537,8 +537,15 @@ fn row_actions(
 }
 
 fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup {
+    // In gaps-only the marked folder leaves the list, so app.js collapses its row and
+    // the section swap waits for that to play. In show-all the row stays and flips to
+    // covered in place, so the swap is immediate. The delay matches the CSS transition.
+    let swap = match mode {
+        ViewMode::GapsOnly => "outerHTML swap:250ms",
+        ViewMode::All => "outerHTML",
+    };
     html! {
-        form.mark.actions hx-target="closest section.root" hx-swap="outerHTML" {
+        form.mark.actions hx-target="closest section.root" hx-swap=(swap) {
             input type="hidden" name="root" value=(root);
             input type="hidden" name="rel" value=(rel);
             input type="hidden" name="view" value=(mode.as_query());
@@ -682,6 +689,81 @@ mod tests {
         assert!(body.contains(r#"id="roots""#));
         // The sections themselves are unchanged.
         assert!(body.contains(r#"class="card root""#));
+    }
+
+    #[tokio::test]
+    async fn marker_form_delays_the_swap_only_in_gaps_only() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let app = app_for(dir.path());
+        // Gaps-only: the marked folder leaves the list, so the section swap is delayed
+        // to let app.js play the row's collapse before the fresh section lands.
+        let gaps = body_string(
+            app.clone()
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(gaps.contains(r#"hx-swap="outerHTML swap:250ms""#));
+        // Show-all: the row stays and flips to covered in place, so there is nothing to
+        // collapse and the swap is immediate.
+        let all = body_string(
+            app.oneshot(
+                Request::builder()
+                    .uri("/?view=all")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+        )
+        .await;
+        assert!(all.contains(r#"hx-swap="outerHTML""#));
+        assert!(!all.contains("swap:250ms"));
+    }
+
+    #[tokio::test]
+    async fn app_script_collapses_the_leaving_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.js")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // Before a gaps-only mark request goes out, the script collapses the leaving
+        // row so the rows below glide up; the delayed htmx swap reconciles after.
+        assert!(body.contains("htmx:beforeRequest"));
+        assert!(body.contains("leaving"));
+    }
+
+    #[tokio::test]
+    async fn stylesheet_collapses_the_leaving_row_and_respects_reduced_motion() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.css")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // A leaving row collapses its height and fades; motion-sensitive users get the
+        // instant removal instead.
+        assert!(body.contains(".leaving"));
+        assert!(body.contains("max-height"));
+        assert!(body.contains("prefers-reduced-motion"));
     }
 
     #[tokio::test]
