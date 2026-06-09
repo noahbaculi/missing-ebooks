@@ -95,6 +95,14 @@ impl SessionStore {
         }
     }
 
+    /// Empty a session's marks, leaving the session in place. A no-op when the
+    /// session is gone.
+    pub fn clear_marks(&mut self, sid: &SessionId) {
+        if let Some(session) = self.sessions.get_mut(sid) {
+            session.marks.clear();
+        }
+    }
+
     /// The marks a session has applied, in submission order. Empty when the
     /// session is unknown.
     pub fn marks(&self, sid: &SessionId) -> &[Mark] {
@@ -187,5 +195,25 @@ mod tests {
         assert_eq!(store.len(), 1);
         assert!(store.touch(&SessionId("fresh".into()), now));
         assert!(!store.touch(&SessionId("stale".into()), now));
+    }
+
+    #[test]
+    fn clear_marks_empties_a_session_and_leaves_others() {
+        let mut store = SessionStore::new(10);
+        let a = SessionId("a".into());
+        let b = SessionId("b".into());
+        store.create(a.clone(), Instant::now()).unwrap();
+        store.create(b.clone(), Instant::now()).unwrap();
+        store.append_mark(&a, mark(0, "Book"));
+        store.append_mark(&b, mark(1, "Other"));
+
+        store.clear_marks(&a);
+        // The cleared session is empty; the other is untouched.
+        assert!(store.marks(&a).is_empty());
+        assert_eq!(store.marks(&b).to_vec(), vec![mark(1, "Other")]);
+
+        // Clearing an unknown id is a no-op and does not create a session.
+        store.clear_marks(&SessionId("missing".into()));
+        assert_eq!(store.len(), 2);
     }
 }
