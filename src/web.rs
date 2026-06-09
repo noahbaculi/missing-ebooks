@@ -731,6 +731,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_disables_view_transitions_under_reduced_motion() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.css")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // Motion-sensitive users get the instant swap: the view-transition animations
+        // are switched off under prefers-reduced-motion.
+        assert!(body.contains("prefers-reduced-motion"));
+        assert!(body.contains("view-transition-group"));
+    }
+
+    #[tokio::test]
     async fn index_links_an_inline_favicon() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));

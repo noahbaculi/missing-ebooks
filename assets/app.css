@@ -927,3 +927,16 @@ details[open] > summary .chev {
     background: rgb(0 0 0 / 40%);
   }
 }
+
+/* ---- motion: respect reduced-motion ---- */
+/* The mark swap rides the View Transitions API (htmx `transition:true`), and each
+   row carries a stable view-transition-name so survivors slide while the marked
+   row fades. Motion-sensitive users get the instant swap instead, which also makes
+   the inline names inert. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
