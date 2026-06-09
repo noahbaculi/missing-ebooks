@@ -633,13 +633,15 @@ details[open] > summary .chev {
   .navbar {
     flex-wrap: wrap;
   }
-  /* phone navbar lays out in two rows: the title with the theme toggle and
+  /* phone navbar lays out in two rows: the title with the settings cog and
      rescan on top, the view toggle as a full-width segmented control below.
      flex `order` moves the controls without reordering the markup. each control
-     is matched by class (.spacer, .settings-cog, form, .segmented) so a later
-     navbar addition can't silently inherit a row's order. the leading spacer
-     keeps growing on the top row, so the theme toggle and rescan stay pinned to
-     the right edge instead of stranding a gap on wrap. */
+     is matched by class (.spacer, .settings-cog, form, > .segmented) so a later
+     navbar addition can't silently inherit a row's order. the view toggle uses a
+     child combinator so the settings panel's nested theme segmented control,
+     which lives in the same navbar, is left out of this row layout. the leading
+     spacer keeps growing on the top row, so the cog and rescan stay pinned to the
+     right edge instead of stranding a gap on wrap. */
   .navbar .spacer {
     order: 1;
   }
@@ -649,11 +651,11 @@ details[open] > summary .chev {
   .navbar form {
     order: 3;
   }
-  .navbar .segmented {
+  .navbar > .segmented {
     order: 4;
     flex-basis: 100%;
   }
-  .navbar .segmented .segment {
+  .navbar > .segmented .segment {
     flex: 1;
     text-align: center;
   }

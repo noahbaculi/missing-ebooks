@@ -234,7 +234,7 @@ fn settings_menu() -> Markup {
 /// it. Without JS the dialog never opens and writes proceed as before.
 fn confirm_dialog() -> Markup {
     html! {
-        dialog.confirm-dialog id="confirm-mark" {
+        dialog.confirm-dialog id="confirm-mark" aria-labelledby="confirm-title" {
             h2.confirm-title id="confirm-title" { "Mark this folder?" }
             p.confirm-body {
                 "Writes a "
@@ -904,10 +904,12 @@ mod tests {
             .unwrap();
         let body = body_string(response).await;
         // The segmented view toggle drops to its own row at full width, with the
-        // two segments sharing it as equal-width halves.
-        assert!(body.contains(".navbar .segmented"));
+        // two segments sharing it as equal-width halves. A child combinator scopes
+        // the rule to the navbar's own control, so the settings panel's nested
+        // theme segmented control can't inherit the full-width row layout.
+        assert!(body.contains(".navbar > .segmented"));
         assert!(body.contains("flex-basis: 100%"));
-        assert!(body.contains(".navbar .segmented .segment"));
+        assert!(body.contains(".navbar > .segmented .segment"));
         // The settings cog is ordered by a dedicated class, not a `> button`
         // child selector, so a later navbar button can't drift into its row.
         assert!(body.contains(".navbar .settings-cog"));
