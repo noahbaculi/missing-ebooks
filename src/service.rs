@@ -160,6 +160,55 @@ pub async fn mark(
     Ok(MarkOutcome { view, created })
 }
 
+/// Delete a marker file and refresh the cached view by rescanning the one
+/// affected root (see docs/adr/0002-v1-runtime-write-model.md). The guard and the
+/// delete run off the cache lock; the lock is held only for the per-root rebuild.
+pub async fn unmark(
+    state: &AppState,
+    root: usize,
+    rel: &str,
+    marker: Marker,
+    mode: ViewMode,
+) -> Result<Arc<FlaggedView>, DomainError> {
+    let root_path = state
+        .config
+        .library_roots
+        .get(root)
+        .ok_or(DomainError::RootIndex)?
+        .clone();
+    let rel_owned = rel.to_string();
+    {
+        let delete_path = root_path.clone();
+        tokio::task::spawn_blocking(move || delete_marker(&delete_path, &rel_owned, marker))
+            .await
+            .map_err(|_| {
+                DomainError::WriteFailed(std::io::Error::other("marker delete task failed"))
+            })??;
+    }
+
+    let section_root = root_path.clone();
+    let section_settings = Arc::clone(&state.settings);
+    let build_config = Arc::clone(&state.config);
+    let build_settings = Arc::clone(&state.settings);
+    Ok(state
+        .cache
+        .rebuild_root(
+            root,
+            mode,
+            move |m| {
+                let path = section_root.clone();
+                let settings = Arc::clone(&section_settings);
+                async move { build_section(path, settings, m).await }
+            },
+            move || {
+                let config = Arc::clone(&build_config);
+                let settings = Arc::clone(&build_settings);
+                async move { build_view(config.as_ref(), &settings, mode).await }
+            },
+        )
+        .await)
+}
+
 /// Guard the target and create the marker file. Runs on a blocking task: the
 /// canonicalize calls and the open touch the filesystem. The root base comes
 /// from config, so only `rel` is request-controlled, and it is re-validated by
@@ -678,6 +727,44 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let state = state_for(dir.path(), 600);
         let err = mark(&state, 9, ".", Marker::NoEbook, ViewMode::GapsOnly)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::RootIndex));
+    }
+
+    #[tokio::test]
+    async fn unmark_deletes_the_file_and_re_flags_the_root() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = state_for(dir.path(), 600);
+
+        // Mark, then confirm the root went Clean and the file is on disk.
+        let marked = mark(&state, 0, "Book", Marker::NoEbook, ViewMode::GapsOnly)
+            .await
+            .unwrap();
+        assert!(matches!(marked.view[0].state, RootState::Clean));
+        assert!(dir.path().join("Book/.no_ebook").exists());
+
+        // Undo: the file is gone and the gap is back.
+        let undone = unmark(&state, 0, "Book", Marker::NoEbook, ViewMode::GapsOnly)
+            .await
+            .unwrap();
+        assert!(!dir.path().join("Book/.no_ebook").exists());
+        match &undone[0].state {
+            RootState::Forest(nodes) => {
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0].name, "Book");
+                assert!(nodes[0].needs_ebook());
+            }
+            other => panic!("expected the gap to return, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn unmark_with_a_bad_root_index_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_for(dir.path(), 600);
+        let err = unmark(&state, 9, ".", Marker::NoEbook, ViewMode::GapsOnly)
             .await
             .unwrap_err();
         assert!(matches!(err, DomainError::RootIndex));
