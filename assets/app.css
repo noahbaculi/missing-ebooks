@@ -153,6 +153,14 @@ details > summary::-webkit-details-marker {
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
+  /* the theme control uses <button> segments, the view toggle <span>/<a>. drop
+     the native control chrome so a button renders flat like the others; the
+     active fill still comes from .segment-active below. inert for <span>/<a>,
+     which already have no background or border. */
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
 }
 .segment:hover {
   color: var(--color-base-content);
