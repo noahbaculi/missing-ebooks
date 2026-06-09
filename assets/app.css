@@ -695,12 +695,15 @@ details[open] > summary .chev {
     background: var(--color-base-200);
   }
 
-  /* covering filenames (show-all) drop below the folder name, fully readable */
+  /* covering filenames (show-all) drop below the folder name, fully readable.
+     indented to 3.5rem, a little past where the folder name starts (~2.75rem),
+     so it reads as subordinate to the name above it rather than lining up flush
+     with it. */
   .cover-files {
     flex-basis: 100%;
     max-width: 100%;
     margin-left: 0;
-    padding-left: 1.7rem;
+    padding-left: 3.5rem;
     white-space: normal;
     overflow: visible;
     text-overflow: clip;
