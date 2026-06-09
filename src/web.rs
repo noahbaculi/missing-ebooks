@@ -82,20 +82,20 @@ const EBOOK_ELSEWHERE_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill
 /// lenient `Option<String>` so an absent or unknown value falls back to gaps-only
 /// rather than rejecting the request.
 #[derive(Deserialize)]
-struct ViewQuery {
+pub(crate) struct ViewQuery {
     #[serde(default)]
-    view: Option<String>,
+    pub(crate) view: Option<String>,
 }
 
 /// The body of a marker write: which root, which folder, which marker, and which
 /// view the click came from (so the swapped section comes back in that mode).
 #[derive(Deserialize)]
-struct MarkRequest {
-    root: usize,
-    rel: String,
-    kind: Marker,
+pub(crate) struct MarkRequest {
+    pub(crate) root: usize,
+    pub(crate) rel: String,
+    pub(crate) kind: Marker,
     #[serde(default)]
-    view: ViewMode,
+    pub(crate) view: ViewMode,
 }
 
 /// Build the application router with the shared state attached.
@@ -175,14 +175,14 @@ fn view_toggle(mode: ViewMode) -> Markup {
     }
 }
 
-async fn htmx_script() -> impl IntoResponse {
+pub(crate) async fn htmx_script() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/javascript;charset=utf-8")],
         HTMX_JS,
     )
 }
 
-async fn app_css() -> impl IntoResponse {
+pub(crate) async fn app_css() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/css;charset=utf-8")], APP_CSS)
 }
 
@@ -271,7 +271,7 @@ fn folder_icon() -> Markup {
     html! { (PreEscaped(FOLDER_SVG)) }
 }
 
-fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
+pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -339,7 +339,7 @@ fn root_badge(state: &RootState) -> Markup {
     }
 }
 
-fn render_section(
+pub(crate) fn render_section(
     section: &RootSection,
     root: usize,
     error: Option<&str>,

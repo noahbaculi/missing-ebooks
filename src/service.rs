@@ -174,7 +174,7 @@ fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(), DomainErro
 /// the whole root (see ADR-0005); otherwise remove the marked folder's subtree
 /// from the forest and fall to `Clean` once nothing is left. The forest walk and
 /// container pruning live in `tree::remove_subtree`.
-fn apply_mark(section: &mut RootSection, rel: &str) {
+pub(crate) fn apply_mark(section: &mut RootSection, rel: &str) {
     if rel == "." {
         section.state = RootState::Clean;
         return;
@@ -192,7 +192,7 @@ fn apply_mark(section: &mut RootSection, rel: &str) {
 /// root directory covers the whole root (every node flips to covered); otherwise
 /// the marked folder and its descendants flip to covered and stay visible. The
 /// forest walk lives in `tree::cover_subtree` / `tree::cover_all`.
-fn apply_mark_all(section: &mut RootSection, rel: &str, marker: Marker) {
+pub(crate) fn apply_mark_all(section: &mut RootSection, rel: &str, marker: Marker) {
     let RootState::Forest(forest) = &mut section.state else {
         return;
     };
@@ -205,7 +205,11 @@ fn apply_mark_all(section: &mut RootSection, rel: &str, marker: Marker) {
 
 /// Build the read view for every configured root, in config order. Each root is
 /// scanned on a blocking task so the directory walk does not stall the runtime.
-async fn build_view(config: &Config, settings: &Arc<ScanSettings>, mode: ViewMode) -> FlaggedView {
+pub(crate) async fn build_view(
+    config: &Config,
+    settings: &Arc<ScanSettings>,
+    mode: ViewMode,
+) -> FlaggedView {
     let mut sections = Vec::with_capacity(config.library_roots.len());
     for root in &config.library_roots {
         sections.push(build_section(root.clone(), Arc::clone(settings), mode).await);
