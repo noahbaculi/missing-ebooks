@@ -44,6 +44,11 @@ pub struct AppState {
 pub fn http_client() -> reqwest::Client {
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        // A connect that hangs (a port that accepts SYN but never completes the
+        // handshake) must not stall a request. Loopback connects are instant, so
+        // this ceiling only ever trips on a wedged sandbox. Per-request response
+        // timeouts are set by the callers (forward, wait_ready).
+        .connect_timeout(Duration::from_secs(2))
         .build()
         .expect("build reqwest client")
 }
@@ -323,7 +328,10 @@ async fn forward(
         .unwrap_or("/");
     let url = format!("http://127.0.0.1:{port}{path}");
 
-    let mut req = state.client.request(method.clone(), &url);
+    let mut req = state
+        .client
+        .request(method.clone(), &url)
+        .timeout(state.config.forward_timeout);
     for (name, value) in headers.iter() {
         if !is_hop_by_hop(name.as_str()) {
             req = req.header(name.as_str(), value.as_bytes());

@@ -52,6 +52,21 @@ async fn start_redirecting_stub() -> u16 {
     port
 }
 
+/// A stub that accepts connections and then holds them open without ever
+/// answering, standing in for a sandbox that wedged after binding its socket.
+/// Connecting succeeds; reading a response stalls until a timeout fires.
+async fn start_silent_stub() -> u16 {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((stream, _)) = listener.accept().await {
+            held.push(stream);
+        }
+    });
+    port
+}
+
 /// A launcher that does not run `explore`: it assumes a stub is already listening
 /// on the pooled port and stands in a throwaway `sleep` child so the router has a
 /// real pid and handle to manage. `launches` counts calls so a test can assert a
@@ -157,6 +172,7 @@ fn test_config(port_low: u16, port_high: u16) -> Config {
         max_per_ip: 2,
         idle: Duration::from_secs(1200),
         ready_timeout: Duration::from_secs(5),
+        forward_timeout: Duration::from_secs(30),
         scenario: "mixed-forest".into(),
         explore_bin: "/unused".into(),
         cookie_name: "me_demo_sid".into(),
@@ -371,6 +387,59 @@ async fn second_request_reuses_the_sandbox_without_respawning() {
         1,
         "the sandbox is spawned once and reused"
     );
+}
+
+#[tokio::test]
+async fn forward_times_out_when_the_sandbox_never_responds() {
+    let silent_port = start_silent_stub().await;
+    let mut config = test_config(silent_port, silent_port);
+    config.forward_timeout = Duration::from_secs(1);
+    let state = build_state(
+        Box::new(FakeLauncher::new(silent_port)),
+        SessionStore::new(config.max_sandboxes, config.max_per_ip),
+        PortPool::new(config.port_low, config.port_high),
+        config,
+    );
+
+    // A sandbox that accepts the connection but never answers must not hang the
+    // request: the forward timeout turns it into a 502. The outer bound catches
+    // a regression where no timeout is set and the request hangs.
+    let response = tokio::time::timeout(
+        Duration::from_secs(5),
+        app(state.clone()).oneshot(
+            Request::builder()
+                .uri("/")
+                .header("cf-connecting-ip", "203.0.113.13")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        ),
+    )
+    .await
+    .expect("forward must time out, not hang")
+    .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    // A timed-out forward is a forward failure, so the dead session is evicted.
+    let inner = state.inner.lock().await;
+    assert_eq!(inner.store.live_count(), 0, "wedged session evicted");
+}
+
+#[tokio::test]
+async fn wait_ready_gives_up_when_the_sandbox_never_answers() {
+    use missing_ebooks_demo_router::sandbox::wait_ready;
+
+    let silent_port = start_silent_stub().await;
+    let client = missing_ebooks_demo_router::proxy::http_client();
+
+    // The poll loop must honor its deadline even when a connected sandbox never
+    // sends a response; otherwise a single send() blocks past the ready window.
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        wait_ready(&client, silent_port, Duration::from_secs(1)),
+    )
+    .await
+    .expect("wait_ready must honor its deadline, not hang");
+    assert!(result.is_err(), "a silent sandbox never becomes ready");
 }
 
 #[tokio::test]

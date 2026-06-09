@@ -20,6 +20,9 @@ pub struct Config {
     pub idle: Duration,
     /// How long to wait for a freshly spawned sandbox to answer before giving up.
     pub ready_timeout: Duration,
+    /// Ceiling on a single proxied request to a sandbox, so a wedged sandbox
+    /// surfaces as a 502 instead of hanging the visitor's request forever.
+    pub forward_timeout: Duration,
     /// The scenario name passed to `explore`.
     pub scenario: String,
     /// Path to the compiled `explore` binary.
@@ -63,6 +66,9 @@ impl Config {
             max_per_ip: var_or("ROUTER_MAX_PER_IP", "2").parse()?,
             idle: Duration::from_secs(var_or("ROUTER_IDLE_SECS", "1200").parse()?),
             ready_timeout: Duration::from_secs(var_or("ROUTER_READY_TIMEOUT_SECS", "10").parse()?),
+            forward_timeout: Duration::from_secs(
+                var_or("ROUTER_FORWARD_TIMEOUT_SECS", "30").parse()?,
+            ),
             scenario: var_or("ROUTER_SCENARIO", "mixed-forest"),
             explore_bin: var_or("ROUTER_EXPLORE_BIN", "/usr/local/bin/explore"),
             cookie_name: var_or("ROUTER_COOKIE_NAME", "me_demo_sid"),

@@ -62,11 +62,15 @@ pub async fn wait_ready(client: &reqwest::Client, port: u16, timeout: Duration) 
     let url = format!("http://127.0.0.1:{port}/");
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        if client.get(&url).send().await.is_ok() {
-            return Ok(());
-        }
-        if tokio::time::Instant::now() >= deadline {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
             anyhow::bail!("sandbox on port {port} did not become ready in {timeout:?}");
+        }
+        // Bound each poll by the time left in the ready window, so a sandbox that
+        // accepts the connection but never answers cannot stall a single send()
+        // past the deadline and starve the loop's own timeout check.
+        if client.get(&url).timeout(remaining).send().await.is_ok() {
+            return Ok(());
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
