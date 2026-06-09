@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <rect x="1" y="1" width="22" height="22" rx="6" fill="#605dff"/>
-  <g transform="translate(0.6,0.84) scale(0.95)" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2" stroke-width="1.79"/>
-    <rect x="3" y="13" width="3.2" height="6" rx="1.6" fill="#fff" stroke="none"/>
-    <rect x="17.8" y="13" width="3.2" height="6" rx="1.6" fill="#fff" stroke="none"/>
-    <path d="M12 11.8c-1.2-.85-3-.85-4.2 0v4.8c1.2-.85 3-.85 4.2 0c1.2-.85 3-.85 4.2 0v-4.8c-1.2-.85-3-.85-4.2 0z" stroke-width="1.26"/>
-    <path d="M12 11.8v4.8" stroke-width="1"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+  <style>
+    svg { color: #605dff; }
+    @media (prefers-color-scheme: dark) { svg { color: #c7c5ff; } }
+  </style>
+  <path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2" stroke-width="2"/>
+  <rect x="3" y="13" width="3.2" height="6" rx="1.6" fill="currentColor" stroke="none"/>
+  <rect x="17.8" y="13" width="3.2" height="6" rx="1.6" fill="currentColor" stroke="none"/>
+  <path d="M12 11.8c-1.2-.85-3-.85-4.2 0v4.8c1.2-.85 3-.85 4.2 0c1.2-.85 3-.85 4.2 0v-4.8c-1.2-.85-3-.85-4.2 0z" stroke-width="1.4"/>
+  <path d="M12 11.8v4.8" stroke-width="1.2"/>
 </svg>

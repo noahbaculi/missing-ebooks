@@ -59,11 +59,15 @@ const CHECK_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" st
 const ERROR_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>"##;
 
 /// The favicon as an inline SVG data URI, so the tab gets an identity and the
-/// browser stops requesting `/favicon.ico`. A white "book wearing headphones"
-/// glyph on a filled indigo tile; the tile carries its own background, so this
-/// one value reads on both light and dark tab strips. The source art lives at
-/// `assets/brand/favicon.svg`; keep the two in sync if the mark changes.
-const FAVICON_HREF: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='1' y='1' width='22' height='22' rx='6' fill='%23605dff'/%3E%3Cg transform='translate(0.6,0.84) scale(0.95)' fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 14v-2a7.5 7.5 0 0 1 15 0v2' stroke-width='1.79'/%3E%3Crect x='3' y='13' width='3.2' height='6' rx='1.6' fill='%23fff' stroke='none'/%3E%3Crect x='17.8' y='13' width='3.2' height='6' rx='1.6' fill='%23fff' stroke='none'/%3E%3Cpath d='M12 11.8c-1.2-.85-3-.85-4.2 0v4.8c1.2-.85 3-.85 4.2 0c1.2-.85 3-.85 4.2 0v-4.8c-1.2-.85-3-.85-4.2 0z' stroke-width='1.26'/%3E%3Cpath d='M12 11.8v4.8' stroke-width='1'/%3E%3C/g%3E%3C/svg%3E";
+/// browser stops requesting `/favicon.ico`. The "book wearing headphones" glyph
+/// on its own, no backdrop. It draws in `currentColor`, and an embedded `<style>`
+/// binds that to indigo `%23605dff` on light tab strips and a lighter indigo
+/// `%23c7c5ff` on dark ones via `prefers-color-scheme`, so the mark keeps its
+/// contrast either way. (Chrome, Firefox, and Edge honor the media query inside a
+/// favicon; Safari ignores it and shows the light-mode indigo throughout.) The
+/// source art lives at `assets/brand/favicon.svg`; keep the two in sync if the
+/// mark changes.
+const FAVICON_HREF: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round'%3E%3Cstyle%3Esvg{color:%23605dff}@media(prefers-color-scheme:dark){svg{color:%23c7c5ff}}%3C/style%3E%3Cpath d='M4.5 14v-2a7.5 7.5 0 0 1 15 0v2' stroke-width='2'/%3E%3Crect x='3' y='13' width='3.2' height='6' rx='1.6' fill='currentColor' stroke='none'/%3E%3Crect x='17.8' y='13' width='3.2' height='6' rx='1.6' fill='currentColor' stroke='none'/%3E%3Cpath d='M12 11.8c-1.2-.85-3-.85-4.2 0v4.8c1.2-.85 3-.85 4.2 0c1.2-.85 3-.85 4.2 0v-4.8c-1.2-.85-3-.85-4.2 0z' stroke-width='1.4'/%3E%3Cpath d='M12 11.8v4.8' stroke-width='1.2'/%3E%3C/svg%3E";
 
 /// Vertical three-dot "more actions" glyph for the mobile per-row menu trigger.
 /// Inherits `currentColor`.
@@ -633,9 +637,14 @@ mod tests {
         // /favicon.ico and the tab gets an identity.
         assert!(body.contains(r#"rel="icon""#));
         assert!(body.contains("data:image/svg+xml,"));
-        // Pin the audiobook tile so a revert to the old book glyph is caught:
-        // the filled tile rect is the only place a `fill='#605dff'` appears.
-        assert!(body.contains("fill='%23605dff'"));
+        // A backdrop-less audiobook glyph that recolors with the OS theme: indigo
+        // on light tab strips, a lighter indigo on dark ones. Pin the indigo and
+        // the prefers-color-scheme rule so a revert to the old book glyph or to a
+        // single static color is caught, and assert the rounded tile is gone (its
+        // rect was 22x22).
+        assert!(body.contains("%23605dff"));
+        assert!(body.contains("prefers-color-scheme:dark"));
+        assert!(!body.contains("width='22'"));
     }
 
     #[tokio::test]
