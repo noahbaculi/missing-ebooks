@@ -26,6 +26,9 @@ const HTMX_JS: &str = include_str!("../assets/htmx.min.js");
 /// The hand-rolled stylesheet, embedded at compile time and served from `/static`.
 const APP_CSS: &str = include_str!("../assets/app.css");
 
+/// The client behavior script, embedded at compile time and served from `/static`.
+const APP_JS: &str = include_str!("../assets/app.js");
+
 /// Pre-paint theme bootstrap: sets `data-theme` on <html> before first paint so
 /// there is no flash, and defines `toggleTheme` for the navbar button. Saved
 /// choice wins over the OS preference; the choice persists in localStorage.
@@ -109,6 +112,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/rescan", post(rescan))
         .route("/static/htmx.min.js", get(htmx_script))
         .route("/static/app.css", get(app_css))
+        .route("/static/app.js", get(app_js))
         .with_state(state)
 }
 
@@ -188,6 +192,13 @@ async fn app_css() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/css;charset=utf-8")], APP_CSS)
 }
 
+async fn app_js() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/javascript;charset=utf-8")],
+        APP_JS,
+    )
+}
+
 /// The light/dark toggle button for the navbar. Behavior lives in `THEME_INIT_JS`.
 fn theme_toggle() -> Markup {
     html! {
@@ -235,6 +246,7 @@ fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
                     (render_section(section, root, None, links, mode))
                 }
                 script src="/static/htmx.min.js" {}
+                script src="/static/app.js" {}
             }
         }
     }
@@ -588,6 +600,7 @@ mod tests {
         let body = body_string(response).await;
         assert!(body.contains(r#"hx-post="/mark""#));
         assert!(body.contains(r#"src="/static/htmx.min.js""#));
+        assert!(body.contains(r#"src="/static/app.js""#));
         assert!(body.contains(">None<"));
     }
 
@@ -883,6 +896,23 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/static/htmx.min.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let content_type = response.headers().get("content-type").unwrap();
+        assert!(content_type.to_str().unwrap().contains("javascript"));
+    }
+
+    #[tokio::test]
+    async fn static_route_serves_the_app_script() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.js")
                     .body(Body::empty())
                     .unwrap(),
             )
