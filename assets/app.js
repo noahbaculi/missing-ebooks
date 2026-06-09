@@ -90,4 +90,62 @@
       });
     }
   });
+
+  // ---- marker-write confirmation ----
+
+  var dialog = null;
+  var pending = null;
+
+  // Fill the dialog from the button that fired, and reveal its marker glyph.
+  function fillDialog(btn) {
+    var action = btn.dataset.confirmAction;
+    var file = btn.dataset.confirmFile;
+    document.getElementById("confirm-title").textContent = action + "?";
+    document.getElementById("confirm-folder").textContent = btn.dataset.confirmFolder;
+    document.getElementById("confirm-file").textContent = file;
+    document.getElementById("confirm-accept-label").textContent = action;
+    var icons = dialog.querySelectorAll("[data-confirm-icon]");
+    for (var i = 0; i < icons.length; i++) {
+      icons[i].hidden = icons[i].dataset.confirmIcon !== file;
+    }
+    document.getElementById("confirm-again").checked = false;
+  }
+
+  // Send the held request. Capture it before close(), since the close handler
+  // clears pending.
+  function acceptConfirm() {
+    var held = pending;
+    pending = null;
+    if (document.getElementById("confirm-again").checked) {
+      setConfirmEnabled(false);
+    }
+    dialog.close();
+    if (held) held.issueRequest(true);
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    dialog = document.getElementById("confirm-mark");
+    if (!dialog) return;
+    document.getElementById("confirm-accept").addEventListener("click", acceptConfirm);
+    document.getElementById("confirm-cancel").addEventListener("click", function () {
+      dialog.close();
+    });
+    // Esc, a backdrop click, or Cancel all fire close: drop the held request so
+    // nothing is sent.
+    dialog.addEventListener("close", function () {
+      pending = null;
+    });
+  });
+
+  // htmx fires htmx:confirm before every request. Only /mark uses htmx here, and
+  // we still gate on the button's data, so no other request is ever intercepted.
+  document.body.addEventListener("htmx:confirm", function (evt) {
+    var elt = evt.detail.elt;
+    if (!elt || !elt.dataset || !elt.dataset.confirmAction) return;
+    if (!confirmEnabled() || !dialog) return;
+    evt.preventDefault();
+    pending = evt.detail;
+    fillDialog(elt);
+    dialog.showModal();
+  });
 })();

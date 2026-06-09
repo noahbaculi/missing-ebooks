@@ -228,6 +228,37 @@ fn settings_menu() -> Markup {
     }
 }
 
+/// The marker-write confirmation, rendered once at the page level so it survives
+/// the htmx section swaps. `app.js` fills the title, folder, file chip, confirm
+/// label, and the matching marker glyph from the button that fired, then opens
+/// it. Without JS the dialog never opens and writes proceed as before.
+fn confirm_dialog() -> Markup {
+    html! {
+        dialog.confirm-dialog id="confirm-mark" {
+            h2.confirm-title id="confirm-title" { "Mark this folder?" }
+            p.confirm-body {
+                "Writes a "
+                span.confirm-chip id="confirm-file" { ".no_ebook" }
+                " file to "
+                strong id="confirm-folder" { "this folder" }
+                ", covering this folder and everything beneath it."
+            }
+            label.confirm-again-label {
+                input id="confirm-again" type="checkbox";
+                "Don't ask again on this device"
+            }
+            div.confirm-actions {
+                button.btn.btn-outline id="confirm-cancel" type="button" { "Cancel" }
+                button.btn.btn-primary id="confirm-accept" type="button" {
+                    span.confirm-icon data-confirm-icon=".no_ebook" { (PreEscaped(NO_ENTRY_SVG)) }
+                    span.confirm-icon data-confirm-icon=".ebook_elsewhere" hidden { (PreEscaped(EBOOK_ELSEWHERE_SVG)) }
+                    span id="confirm-accept-label" { "Confirm" }
+                }
+            }
+        }
+    }
+}
+
 /// The rotating folder caret used on collapsible rows.
 fn chevron() -> Markup {
     html! { (PreEscaped(CHEVRON_SVG)) }
@@ -264,6 +295,7 @@ fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
                 @for (root, section) in view.iter().enumerate() {
                     (render_section(section, root, None, links, mode))
                 }
+                (confirm_dialog())
                 script src="/static/htmx.min.js" {}
                 script src="/static/app.js" {}
             }
@@ -451,13 +483,13 @@ fn row_actions(
                 span.sheet-grip aria-hidden="true" {}
                 span.sheet-title { (name) }
             }
-            (marker_buttons(root, rel, mode))
+            (marker_buttons(root, rel, name, mode))
             (search_links(links, name, root, counter))
         }
     }
 }
 
-fn marker_buttons(root: usize, rel: &str, mode: ViewMode) -> Markup {
+fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup {
     html! {
         form.mark.actions hx-target="closest section.root" hx-swap="outerHTML" {
             input type="hidden" name="root" value=(root);
@@ -467,6 +499,9 @@ fn marker_buttons(root: usize, rel: &str, mode: ViewMode) -> Markup {
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"no_ebook"}"#)
+                data-confirm-action="Mark as None"
+                data-confirm-file=".no_ebook"
+                data-confirm-folder=(name)
                 onclick="event.stopPropagation()" {
                     span.sheet-icon { (PreEscaped(NO_ENTRY_SVG)) }
                     span.label-long { "Mark as None" }
@@ -476,6 +511,9 @@ fn marker_buttons(root: usize, rel: &str, mode: ViewMode) -> Markup {
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"ebook_elsewhere"}"#)
+                data-confirm-action="Ebook elsewhere"
+                data-confirm-file=".ebook_elsewhere"
+                data-confirm-folder=(name)
                 onclick="event.stopPropagation()" {
                     span.sheet-icon { (PreEscaped(EBOOK_ELSEWHERE_SVG)) }
                     span.label-long { "Ebook elsewhere" }
@@ -983,6 +1021,55 @@ mod tests {
         assert!(body.contains(r#"id="confirm-toggle""#));
         // The old two-state toggle is gone.
         assert!(!body.contains("toggleTheme()"));
+    }
+
+    #[tokio::test]
+    async fn index_renders_the_confirm_dialog() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // A single page-level dialog the confirm flow fills and opens.
+        assert!(body.contains(r#"id="confirm-mark""#));
+        assert!(body.contains("Don't ask again"));
+        assert!(body.contains(r#"id="confirm-accept""#));
+        assert!(body.contains(r#"id="confirm-cancel""#));
+    }
+
+    #[tokio::test]
+    async fn marker_buttons_carry_confirm_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // Each marker button names its action, file, and folder for the dialog.
+        assert!(body.contains(r#"data-confirm-action="Mark as None""#));
+        assert!(body.contains(r#"data-confirm-file=".no_ebook""#));
+        assert!(body.contains(r#"data-confirm-action="Ebook elsewhere""#));
+        assert!(body.contains(r#"data-confirm-file=".ebook_elsewhere""#));
+        assert!(body.contains(r#"data-confirm-folder="Book""#));
+    }
+
+    #[tokio::test]
+    async fn app_script_intercepts_marker_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        assert!(body.contains("htmx:confirm"));
     }
 
     #[tokio::test]

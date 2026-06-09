@@ -562,6 +562,62 @@ details[open] > summary .chev {
   outline-offset: 2px;
 }
 
+/* marker-write confirmation dialog: a themed centered modal over a dimmed page */
+.confirm-dialog {
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 1.1rem 1.15rem 1rem;
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 28%);
+}
+.confirm-dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+.confirm-title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.confirm-body {
+  margin: 0 0 0.9rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.confirm-chip {
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+  background: var(--color-base-200);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: 0.35rem;
+  padding: 0.05rem 0.3rem;
+}
+.confirm-again-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.95rem;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+.confirm-again-label input {
+  accent-color: var(--color-primary);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+.confirm-icon {
+  display: inline-flex;
+}
+.confirm-icon .icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  color: currentColor;
+}
+
 /* ---- mobile: first-class phone layout ---- */
 /* See docs/superpowers/specs/2026-06-07-mobile-ui-improvements-design.md */
 @media (max-width: 600px) {
@@ -811,6 +867,14 @@ details[open] > summary .chev {
     white-space: normal;
     overflow: visible;
     text-overflow: clip;
+  }
+
+  /* the confirm buttons grow to fill the dialog footer on narrow screens */
+  .confirm-actions .btn {
+    flex: 1;
+    justify-content: center;
+    padding: 0.6rem;
+    font-size: 0.9rem;
   }
 
   /* the settings panel becomes a bottom sheet, matching the action sheet */
