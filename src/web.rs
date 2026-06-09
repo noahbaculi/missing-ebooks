@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{Form, Query, State};
-use axum::http::header;
-use axum::response::{Html, IntoResponse, Redirect};
+use axum::http::{HeaderMap, header};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use serde::Deserialize;
@@ -143,11 +143,23 @@ async fn mark(State(state): State<Arc<AppState>>, Form(req): Form<MarkRequest>) 
     }
 }
 
-async fn rescan(State(state): State<Arc<AppState>>, Form(query): Form<ViewQuery>) -> Redirect {
+async fn rescan(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(query): Form<ViewQuery>,
+) -> Response {
     let mode = ViewMode::from_query(query.view.as_deref());
-    service::rescan(&state, mode).await;
-    // 303 See Other: Post/Redirect/Get, so a refresh does not re-trigger a scan.
-    Redirect::to(mode_path(mode))
+    let view = service::rescan(&state, mode).await;
+    if headers.contains_key("HX-Request") {
+        // htmx path: swap the fresh sections into #roots, and push the mode path so
+        // the address bar tracks the view without ever showing the /rescan POST URL.
+        let markup = roots(&view, &state.config.search_links, mode);
+        ([("HX-Push-Url", mode_path(mode))], Html(markup.into_string())).into_response()
+    } else {
+        // no-JS path: 303 See Other (Post/Redirect/Get), so a refresh does not
+        // re-trigger a scan.
+        Redirect::to(mode_path(mode)).into_response()
+    }
 }
 
 /// The path that renders a given mode, for redirects and links.
@@ -788,6 +800,34 @@ mod tests {
         assert!(body.contains("htmx-indicator"));
         // The plain form action survives for the no-JS path.
         assert!(body.contains(r#"action="/rescan""#));
+    }
+
+    #[tokio::test]
+    async fn rescan_returns_sections_for_an_htmx_request() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/rescan")
+                    .header("HX-Request", "true")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("view=all"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // No redirect: the fresh sections come back to swap into #roots.
+        assert_eq!(response.status(), StatusCode::OK);
+        // The address bar is pushed to the requested view, not the POST URL.
+        assert_eq!(
+            response.headers().get("HX-Push-Url").unwrap(),
+            "/?view=all"
+        );
+        let body = body_string(response).await;
+        assert!(body.contains(r#"class="card root""#));
+        assert!(body.contains("Book"));
     }
 
     #[tokio::test]
