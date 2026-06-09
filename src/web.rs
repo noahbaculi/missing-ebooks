@@ -265,6 +265,20 @@ fn confirm_dialog() -> Markup {
     }
 }
 
+/// The rescan placeholder. It overlays `#roots` while an in-place rescan is in
+/// flight: htmx adds `htmx-request` to it for the duration (its bundled indicator
+/// styles fade it in), and the shimmer reads as work in progress. Hidden
+/// otherwise, and never shown on the no-JS path, which does a full reload.
+fn scan_skeleton() -> Markup {
+    html! {
+        div.scan-skeleton.htmx-indicator id="scan-skeleton" aria-hidden="true" {
+            @for _ in 0..5 {
+                div.sk-row { span.sk.sk-icon {} span.sk.sk-name {} }
+            }
+        }
+    }
+}
+
 /// The rotating folder caret used on collapsible rows.
 fn chevron() -> Markup {
     html! { (PreEscaped(CHEVRON_SVG)) }
@@ -303,7 +317,9 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                     span.spacer {}
                     (view_toggle(mode))
                     (settings_menu())
-                    form method="post" action="/rescan" {
+                    form method="post" action="/rescan"
+                        hx-post="/rescan" hx-target="#roots" hx-swap="innerHTML"
+                        hx-indicator="#scan-skeleton" {
                         input type="hidden" name="view" value=(mode.as_query());
                         button.btn.btn-primary type="submit" { "Rescan" }
                     }
@@ -312,6 +328,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                     main id="roots" {
                         (roots(view, links, mode))
                     }
+                    (scan_skeleton())
                 }
                 (confirm_dialog())
                 script src="/static/htmx.min.js" {}
@@ -749,6 +766,28 @@ mod tests {
         // are switched off under prefers-reduced-motion.
         assert!(body.contains("prefers-reduced-motion"));
         assert!(body.contains("view-transition-group"));
+    }
+
+    #[tokio::test]
+    async fn rescan_is_an_in_place_htmx_swap_with_a_skeleton() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // Rescan posts via htmx and swaps the fresh sections into #roots.
+        assert!(body.contains(r#"hx-post="/rescan""#));
+        assert!(body.contains(r##"hx-target="#roots""##));
+        assert!(body.contains(r##"hx-indicator="#scan-skeleton""##));
+        // The skeleton overlay is present and wired as the htmx indicator.
+        assert!(body.contains(r#"id="scan-skeleton""#));
+        assert!(body.contains("htmx-indicator"));
+        // The plain form action survives for the no-JS path.
+        assert!(body.contains(r#"action="/rescan""#));
     }
 
     #[tokio::test]
