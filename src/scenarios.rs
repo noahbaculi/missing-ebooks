@@ -74,7 +74,7 @@ fn touch(path: &Path) {
 
 /// Flagship nested tree exercising containers, flagged leaves, query cleaning,
 /// and ancestor coverage under one root.
-pub fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
+fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     let root = base.join("Library");
     // Andy Weir: a flagged leaf whose "(Unabridged)" suffix is stripped from the
     // search query, plus a sibling covered by its own epub so it drops out.
@@ -180,7 +180,7 @@ pub fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
 }
 
 /// Two roots side by side: one fully covered (Clean), one never created (Error).
-pub fn build_clean_error(base: &Path) -> Vec<PathBuf> {
+fn build_clean_error(base: &Path) -> Vec<PathBuf> {
     // Root 1: every audio folder has an ebook beside it, so the root is Clean.
     let covered = base.join("Covered Library");
     touch(&covered.join("Author/Book/01 - Book.mp3"));
@@ -193,7 +193,7 @@ pub fn build_clean_error(base: &Path) -> Vec<PathBuf> {
 }
 
 /// Loose audio directly in the root, so the root itself is the gap (ADR-0005).
-pub fn build_root_flagged(base: &Path) -> Vec<PathBuf> {
+fn build_root_flagged(base: &Path) -> Vec<PathBuf> {
     // Audio loose in the root with no author/book folder: the root itself is the
     // gap, surfaced as a single flagged node with rel_path "." (see ADR-0005).
     let root = base.join("Loose Audio");
@@ -203,7 +203,7 @@ pub fn build_root_flagged(base: &Path) -> Vec<PathBuf> {
 }
 
 /// Pre-existing markers hide covered folders while sibling gaps stay actionable.
-pub fn build_pre_marked(base: &Path) -> Vec<PathBuf> {
+fn build_pre_marked(base: &Path) -> Vec<PathBuf> {
     let root = base.join("Marked Library");
     // Covered Book carries its own .no_ebook, so it is absent; Uncovered Book has
     // no marker and stays as a click target.
@@ -220,7 +220,7 @@ pub fn build_pre_marked(base: &Path) -> Vec<PathBuf> {
 }
 
 /// About fifty authors of varying size and nesting, for layout testing at volume.
-pub fn build_big_library(base: &Path) -> Vec<PathBuf> {
+fn build_big_library(base: &Path) -> Vec<PathBuf> {
     let root = base.join("Audiobooks");
 
     // Name pools. Ten first names by seven last names give 70 unique
