@@ -63,6 +63,8 @@ ebook exists or could be sourced; `.ebook_elsewhere` means the ebook lives in
 another folder. Each node row has one button per marker that writes the file
 into that folder, so marking a container covers every folder beneath it through
 ancestor coverage.
+A just-written marker can be reversed from the undo toast that appears after a
+mark; undoing deletes that one marker file and rescans its root.
 _Avoid_: flag file, exception file, sentinel.
 
 **Search link**:

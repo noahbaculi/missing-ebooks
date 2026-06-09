@@ -62,3 +62,14 @@ itself: `get_or_build`, `rebuild`, and `edit_or_build` hold the mutex and carry
 the `stored_at` policy (bumped on a build, left untouched on an edit), so
 `service` no longer touches the lock and the `entry` field is private. The
 behavior described above is unchanged; only its home moved.
+
+Update (2026-06-09): the model now has a second runtime write, a marker delete,
+behind the undo toast (`service::unmark`, `/unmark`). Its refresh is not the
+in-place edit a mark uses: marking discards subtree structure, so a delete that
+re-flags a subtree is reconciled by rescanning the one affected root and
+replacing its section in each warm cache slot under the lock (`Cache::rebuild_root`),
+leaving `stored_at` untouched so the TTL still fires on schedule. The marker write
+also became create-only (`OpenOptions::create_new`), so a re-mark of an
+already-marked folder is a no-op and undo only ever deletes a file its own action
+created. The single in-place-write claim above is therefore scoped to the mark
+write; the delete sits alongside it.
