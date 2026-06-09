@@ -52,6 +52,25 @@ async fn start_redirecting_stub() -> u16 {
     port
 }
 
+/// A stub that answers `/` with a plain-text body of `body_len` bytes, for
+/// exercising the response-size cap.
+async fn start_sized_stub(body_len: usize) -> u16 {
+    let body = "x".repeat(body_len);
+    let app = axum::Router::new().route(
+        "/",
+        axum::routing::get(move || {
+            let body = body.clone();
+            async move { body }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    port
+}
+
 /// A stub that accepts connections and then holds them open without ever
 /// answering, standing in for a sandbox that wedged after binding its socket.
 /// Connecting succeeds; reading a response stalls until a timeout fires.
@@ -173,6 +192,7 @@ fn test_config(port_low: u16, port_high: u16) -> Config {
         idle: Duration::from_secs(1200),
         ready_timeout: Duration::from_secs(5),
         forward_timeout: Duration::from_secs(30),
+        max_response_bytes: 16 * 1024 * 1024,
         scenario: "mixed-forest".into(),
         explore_bin: "/unused".into(),
         cookie_name: "me_demo_sid".into(),
@@ -386,6 +406,41 @@ async fn second_request_reuses_the_sandbox_without_respawning() {
         launches.load(Ordering::SeqCst),
         1,
         "the sandbox is spawned once and reused"
+    );
+}
+
+#[tokio::test]
+async fn oversized_sandbox_response_is_refused_without_eviction() {
+    // The stub answers with a kilobyte; the cap is set well below that.
+    let stub_port = start_sized_stub(1024).await;
+    let mut config = test_config(stub_port, stub_port);
+    config.max_response_bytes = 16;
+    let state = build_state(
+        Box::new(FakeLauncher::new(stub_port)),
+        SessionStore::new(config.max_sandboxes, config.max_per_ip),
+        PortPool::new(config.port_low, config.port_high),
+        config,
+    );
+
+    let response = app(state.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header("cf-connecting-ip", "203.0.113.14")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    // A chatty sandbox is still a healthy one, so the session is kept rather
+    // than evicted the way an unreachable sandbox would be.
+    let inner = state.inner.lock().await;
+    assert_eq!(
+        inner.store.live_count(),
+        1,
+        "an oversized response does not evict the session"
     );
 }
 

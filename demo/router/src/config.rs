@@ -23,6 +23,10 @@ pub struct Config {
     /// Ceiling on a single proxied request to a sandbox, so a wedged sandbox
     /// surfaces as a 502 instead of hanging the visitor's request forever.
     pub forward_timeout: Duration,
+    /// Ceiling on a buffered sandbox response. The banner splice needs the whole
+    /// HTML page in memory, so the body is buffered; this bounds how large that
+    /// buffer can grow before the response is refused.
+    pub max_response_bytes: usize,
     /// The scenario name passed to `explore`.
     pub scenario: String,
     /// Path to the compiled `explore` binary.
@@ -69,6 +73,7 @@ impl Config {
             forward_timeout: Duration::from_secs(
                 var_or("ROUTER_FORWARD_TIMEOUT_SECS", "30").parse()?,
             ),
+            max_response_bytes: var_or("ROUTER_MAX_RESPONSE_BYTES", "16777216").parse()?,
             scenario: var_or("ROUTER_SCENARIO", "mixed-forest"),
             explore_bin: var_or("ROUTER_EXPLORE_BIN", "/usr/local/bin/explore"),
             cookie_name: var_or("ROUTER_COOKIE_NAME", "me_demo_sid"),

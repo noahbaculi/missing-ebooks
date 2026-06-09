@@ -337,7 +337,7 @@ async fn forward(
             req = req.header(name.as_str(), value.as_bytes());
         }
     }
-    let upstream = req.body(body.to_vec()).send().await?;
+    let mut upstream = req.body(body.to_vec()).send().await?;
 
     let status = upstream.status();
     let upstream_headers = upstream.headers().clone();
@@ -347,14 +347,26 @@ async fn forward(
         .map(|ct| ct.contains("text/html"))
         .unwrap_or(false);
     let is_htmx = headers.contains_key("hx-request");
-    let bytes = upstream.bytes().await?;
+
+    // Buffer the body with a ceiling. The banner splice needs the whole HTML page
+    // in hand, so streaming straight through is not an option for full pages;
+    // capping the accumulation keeps a runaway response from ballooning router
+    // memory. An oversized response is the sandbox misbehaving, not dying, so it
+    // becomes a 502 here and the caller leaves the session in place.
+    let mut bytes: Vec<u8> = Vec::new();
+    while let Some(chunk) = upstream.chunk().await? {
+        if bytes.len() + chunk.len() > state.config.max_response_bytes {
+            tracing::warn!(port, cap = state.config.max_response_bytes, "sandbox response exceeded the body cap");
+            return Ok((StatusCode::BAD_GATEWAY, "demo backend response too large").into_response());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
 
     let mut builder = Response::builder().status(status);
     let final_body: Vec<u8> = if is_html && !is_htmx {
-        let injected = banner::inject(&String::from_utf8_lossy(&bytes));
-        injected.into_bytes()
+        banner::inject(&String::from_utf8_lossy(&bytes)).into_bytes()
     } else {
-        bytes.to_vec()
+        bytes
     };
 
     // Copy upstream headers except hop-by-hop and content-length, which we reset
