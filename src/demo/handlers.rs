@@ -143,7 +143,7 @@ async fn index(
     };
     let view = derive_view(state.base(mode), &marks, mode);
     let html = page(&view, &state.search_links, mode).into_string();
-    let mut response = Html(banner::inject(&html)).into_response();
+    let mut response = Html(banner::inject(&html, mode)).into_response();
     if let Some(cookie) = set_cookie {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
