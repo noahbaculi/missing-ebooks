@@ -1226,30 +1226,57 @@ li.leaving {
   }
 }
 
-/* action toast: undo offers and write errors share one fixed element */
-.toast {
+/* action toast stack: undo offers and write errors, up to three at once, fixed
+   at the bottom with the newest closest to the edge and older ones stacked above */
+.toast-stack {
   position: fixed;
   left: 50%;
   bottom: 1.5rem;
   transform: translateX(-50%);
   z-index: 60;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  /* the container spans only its widest toast; let clicks fall through the gaps
+     to the page, and re-enable pointer events on the toasts themselves */
+  pointer-events: none;
+}
+.toast {
+  position: relative;
+  pointer-events: auto;
+  display: flex;
   align-items: center;
   gap: 0.6rem;
   max-width: min(92vw, 30rem);
-  padding: 0.6rem 0.7rem 0.6rem 0.9rem;
+  padding: 0.6rem 0.7rem 0.6rem 0.95rem;
   background: var(--color-base-100);
   color: var(--color-base-content);
   border: var(--border) solid var(--color-base-300);
   border-radius: var(--radius-field);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
 }
-.toast[hidden] {
-  display: none;
+/* a variant-colored spine down the left edge, clipped to the rounded corners by
+   the overflow above */
+.toast::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+.toast--success::before {
+  background: var(--color-success);
+}
+.toast--error::before {
+  background: var(--color-error);
 }
 .toast .toast-msg {
   flex: 1;
   font-size: 0.85rem;
+  line-height: 1.5;
 }
 .toast .toast-icon {
   display: none;
@@ -1263,8 +1290,24 @@ li.leaving {
   display: inline-flex;
   color: var(--color-error);
 }
-.toast--error {
-  border-color: var(--color-error);
+/* folder name: a neutral monospace chip, matching the confirm dialog's .confirm-chip */
+.toast .toast-chip {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  background: var(--color-base-200);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: 0.35rem;
+  padding: 0.05rem 0.3rem;
+}
+/* marker label: a success-tinted pill, matching the .root-badge-clean token pattern */
+.toast .toast-kind {
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  background: color-mix(in srgb, var(--color-success) 18%, var(--color-base-100));
+  color: var(--color-success);
 }
 .toast .toast-close {
   flex: none;
@@ -1280,11 +1323,14 @@ li.leaving {
   color: var(--color-base-content);
 }
 @media (max-width: 600px) {
-  .toast {
+  .toast-stack {
     left: 0.75rem;
     right: 0.75rem;
     bottom: 0.75rem;
     transform: none;
+    align-items: stretch;
+  }
+  .toast {
     max-width: none;
   }
 }

@@ -1548,10 +1548,17 @@ mod tests {
             .await
             .unwrap();
         let body = body_string(response).await;
+        // The stack container and the toast box.
+        assert!(body.contains(".toast-stack"));
         assert!(body.contains(".toast"));
-        // Each variant reveals its own glyph; the others stay hidden.
+        // Each variant reveals its own glyph and colors its left spine.
         assert!(body.contains(".toast--success .toast-icon-success"));
         assert!(body.contains(".toast--error .toast-icon-error"));
+        assert!(body.contains(".toast--success::before"));
+        assert!(body.contains(".toast--error::before"));
+        // The folder chip and the marker-label pill.
+        assert!(body.contains(".toast-chip"));
+        assert!(body.contains(".toast-kind"));
     }
 
     #[tokio::test]
