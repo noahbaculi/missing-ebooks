@@ -1057,6 +1057,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_styles_the_confirm_dialog() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The dialog is themed and dims the page behind it.
+        assert!(body.contains(".confirm-dialog"));
+        assert!(body.contains(".confirm-dialog::backdrop"));
+    }
+
+    #[tokio::test]
+    async fn stylesheet_styles_the_settings_panel_and_switch() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The settings popover, the switch, and the mobile bottom-sheet form.
+        assert!(body.contains(".settings-panel"));
+        assert!(body.contains(".switch-track"));
+        assert!(body.contains(".settings-panel:popover-open"));
+    }
+
+    #[tokio::test]
     async fn app_script_intercepts_marker_writes() {
         let dir = tempfile::tempdir().unwrap();
         let response = app_for(dir.path())
