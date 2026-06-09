@@ -4,4 +4,9 @@
 //! docs/superpowers/specs/2026-06-08-in-memory-demo-sandboxing-design.md.
 
 pub mod banner;
+pub mod handlers;
 pub mod session;
+pub mod state;
+
+pub use handlers::router;
+pub use state::{DemoConfig, DemoState, build_state};
