@@ -64,7 +64,9 @@ another folder. Each node row has one button per marker that writes the file
 into that folder, so marking a container covers every folder beneath it through
 ancestor coverage.
 A just-written marker can be reversed from the undo toast that appears after a
-mark; undoing deletes that one marker file and rescans its root.
+mark; undoing deletes that one marker file and rescans its root. Up to three
+toasts stack at once, so a mark made before the latest one can still be undone;
+the oldest drops off when a fourth arrives.
 _Avoid_: flag file, exception file, sentinel.
 
 **Search link**:
