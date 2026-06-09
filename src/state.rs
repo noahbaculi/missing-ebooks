@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 
 use crate::config::Config;
 use crate::scanner::ScanSettings;
-use crate::service::{FlaggedView, ViewMode};
+use crate::service::{FlaggedView, RootSection, ViewMode};
 
 /// Everything a request handler needs: the immutable config and settings, and
 /// the scan cache. Shared as `Arc<AppState>`.
@@ -122,6 +122,57 @@ impl Cache {
             return Arc::clone(&entry.view);
         }
         let view = Arc::new(build().await);
+        *slots.slot(mode) = Some(CacheEntry {
+            stored_at: Instant::now(),
+            view: Arc::clone(&view),
+        });
+        view
+    }
+
+    /// Rescan one root and replace its section in each warm slot, under one lock,
+    /// leaving `stored_at` untouched so the TTL still fires on schedule. Used by
+    /// undo: a marker delete can re-flag a subtree, and the cached view discarded
+    /// that structure when it marked, so the section is rebuilt by a fresh per-root
+    /// scan rather than edited in place. `rebuild_section` produces the section for
+    /// a given mode; a cold requested slot is built fresh with `build_full`.
+    pub(crate) async fn rebuild_root<RS, RsFut, B, BFut>(
+        &self,
+        root: usize,
+        mode: ViewMode,
+        mut rebuild_section: RS,
+        build_full: B,
+    ) -> Arc<FlaggedView>
+    where
+        RS: FnMut(ViewMode) -> RsFut,
+        RsFut: Future<Output = RootSection>,
+        B: FnOnce() -> BFut,
+        BFut: Future<Output = FlaggedView>,
+    {
+        let mut slots = self.entries.lock().await;
+        if slots.gaps_only.is_some() {
+            let section = rebuild_section(ViewMode::GapsOnly).await;
+            let entry = slots.gaps_only.as_mut().expect("checked is_some above");
+            let mut view = (*entry.view).clone();
+            if root < view.len() {
+                view[root] = section;
+            }
+            entry.view = Arc::new(view);
+        }
+        if slots.all.is_some() {
+            let section = rebuild_section(ViewMode::All).await;
+            let entry = slots.all.as_mut().expect("checked is_some above");
+            let mut view = (*entry.view).clone();
+            if root < view.len() {
+                view[root] = section;
+            }
+            entry.view = Arc::new(view);
+        }
+        // Return the requested slot. If it was cold there is nothing to return, so
+        // build it fresh, the same shape as `get_or_build` / `edit_both_or_build`.
+        if let Some(entry) = slots.slot(mode).as_ref() {
+            return Arc::clone(&entry.view);
+        }
+        let view = Arc::new(build_full().await);
         *slots.slot(mode) = Some(CacheEntry {
             stored_at: Instant::now(),
             view: Arc::clone(&view),
@@ -272,6 +323,39 @@ mod tests {
             .get_or_build(ViewMode::GapsOnly, || async { sample_view("ignored") })
             .await;
         assert_eq!(gaps[0].path, "gaps-g");
+    }
+
+    #[tokio::test]
+    async fn rebuild_root_replaces_one_root_in_each_warm_slot() {
+        let cache = test_cache(Some(Duration::from_secs(600)));
+        // Two roots per slot so we can prove only index 1 is touched.
+        let two = || vec![
+            RootSection { path: "keep".to_string(), state: RootState::Clean },
+            RootSection { path: "old".to_string(), state: RootState::Clean },
+        ];
+        cache.get_or_build(ViewMode::GapsOnly, || async { two() }).await;
+        cache.get_or_build(ViewMode::All, || async { two() }).await;
+
+        let returned = cache
+            .rebuild_root(
+                1,
+                ViewMode::GapsOnly,
+                |mode| async move {
+                    RootSection {
+                        path: format!("new-{}", mode.as_query()),
+                        state: RootState::Clean,
+                    }
+                },
+                || async { two() },
+            )
+            .await;
+
+        // Index 0 untouched, index 1 rebuilt with the gaps-mode section.
+        assert_eq!(returned[0].path, "keep");
+        assert_eq!(returned[1].path, "new-gaps");
+        // The all slot was rebuilt with the all-mode section under the same lock.
+        let all = cache.get_or_build(ViewMode::All, || async { two() }).await;
+        assert_eq!(all[1].path, "new-all");
     }
 
     fn settings() -> ScanSettings {
