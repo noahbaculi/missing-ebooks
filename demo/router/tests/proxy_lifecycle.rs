@@ -152,6 +152,8 @@ async fn first_request_spawns_sets_cookie_and_injects_banner() {
         .to_string();
     assert!(set_cookie.contains("me_demo_sid="));
     assert!(set_cookie.contains("HttpOnly"));
+    // The demo is served over HTTPS at the edge, so the cookie is Secure.
+    assert!(set_cookie.contains("Secure"));
 
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();

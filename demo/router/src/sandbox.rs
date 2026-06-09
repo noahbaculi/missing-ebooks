@@ -94,10 +94,11 @@ pub fn sweep_temp_dirs(tmp_root: &Path) -> anyhow::Result<usize> {
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if name.starts_with("explore-") && entry.path().is_dir() {
-            if std::fs::remove_dir_all(entry.path()).is_ok() {
-                removed += 1;
-            }
+        if name.starts_with("explore-")
+            && entry.path().is_dir()
+            && std::fs::remove_dir_all(entry.path()).is_ok()
+        {
+            removed += 1;
         }
     }
     Ok(removed)

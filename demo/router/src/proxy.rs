@@ -77,6 +77,11 @@ fn is_hop_by_hop(name: &str) -> bool {
 /// The client IP, taken from Cloudflare's `CF-Connecting-IP` header. Behind the
 /// tunnel the socket peer is always cloudflared, so this header is the only
 /// truthful source; it is trusted because the tunnel is the sole ingress.
+///
+/// If the header is ever absent (only a tunnel misconfiguration, since Cloudflare
+/// always sets it), every visitor collapses onto a single "unknown" IP and shares
+/// the per-IP cap. That throttles the demo rather than failing open, which is the
+/// safer direction.
 fn client_ip(headers: &HeaderMap) -> String {
     headers
         .get("cf-connecting-ip")
@@ -90,10 +95,10 @@ fn read_cookie(headers: &HeaderMap, cookie_name: &str) -> Option<SessionId> {
     let raw = headers.get("cookie")?.to_str().ok()?;
     for pair in raw.split(';') {
         let pair = pair.trim();
-        if let Some(value) = pair.strip_prefix(&format!("{cookie_name}=")) {
-            if !value.is_empty() {
-                return Some(SessionId(value.to_string()));
-            }
+        if let Some(value) = pair.strip_prefix(&format!("{cookie_name}="))
+            && !value.is_empty()
+        {
+            return Some(SessionId(value.to_string()));
         }
     }
     None
@@ -107,10 +112,11 @@ fn new_session_id() -> SessionId {
 }
 
 /// Build the `Set-Cookie` value for a new session, scoped to the whole site and
-/// expiring with the idle window.
+/// expiring with the idle window. `Secure` is set because the demo is reached only
+/// over HTTPS at the Cloudflare edge.
 fn cookie_header(cookie_name: &str, sid: &SessionId, max_age_secs: u64) -> HeaderValue {
     let value = format!(
-        "{cookie_name}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age_secs}",
+        "{cookie_name}={}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={max_age_secs}",
         sid.0
     );
     HeaderValue::from_str(&value).expect("ascii cookie")
