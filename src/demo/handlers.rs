@@ -39,6 +39,7 @@ pub fn router(state: Arc<DemoState>) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/mark", post(mark))
+        .route("/reset", post(reset))
         .route("/rescan", post(rescan))
         .route("/healthz", get(healthz))
         .route("/static/htmx.min.js", get(htmx_script))
@@ -186,6 +187,38 @@ async fn mark(
     let view = derive_view(state.base(mode), &marks, mode);
     let markup = render_section(&view[req.root], req.root, None, &state.search_links, mode);
     let mut response = Html(markup.into_string()).into_response();
+    if let Some(cookie) = set_cookie {
+        response.headers_mut().append(header::SET_COOKIE, cookie);
+    }
+    response
+}
+
+async fn reset(
+    State(state): State<Arc<DemoState>>,
+    headers: HeaderMap,
+    Form(query): Form<ViewQuery>,
+) -> Response {
+    let mode = ViewMode::from_query(query.view.as_deref());
+    let now = Instant::now();
+    let existing = read_cookie(&headers, &state.config.cookie_name);
+    let set_cookie = {
+        let mut store = state.sessions.lock().expect("session lock");
+        match resolve_in_store(&mut store, &state.config, existing, now) {
+            Some((sid, set_cookie)) => {
+                store.clear_marks(&sid);
+                set_cookie
+            }
+            // At capacity with no live session: the same soft 503 the others serve.
+            None => return capacity_response(),
+        }
+    };
+    // 303 See Other (Post/Redirect/Get) back to the view the reset came from, so a
+    // refresh does not re-fire the reset.
+    let mut response = Redirect::to(match mode {
+        ViewMode::GapsOnly => "/",
+        ViewMode::All => "/?view=all",
+    })
+    .into_response();
     if let Some(cookie) = set_cookie {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
@@ -408,6 +441,87 @@ mod tests {
         assert_eq!(second.status(), StatusCode::SERVICE_UNAVAILABLE);
         let body = body_string(second).await;
         assert!(body.contains("at capacity"));
+    }
+
+    #[tokio::test]
+    async fn reset_clears_a_sessions_marks() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+
+        let first = router(state.clone())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let cookie = session_cookie(&first);
+
+        // Mark the only book, which drops it from the gaps view.
+        router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("cookie", &cookie)
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Reset clears the mark and redirects to the gaps view.
+        let reset = router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/reset")
+                    .header("cookie", &cookie)
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(reset.status(), StatusCode::SEE_OTHER);
+        assert_eq!(reset.headers().get("location").unwrap(), "/");
+
+        // The book is flagged again on the next load.
+        let after = router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(after).await;
+        assert!(body.contains("Book"));
+        assert!(body.contains(r#"hx-post="/mark""#));
+    }
+
+    #[tokio::test]
+    async fn reset_preserves_the_all_view_and_sets_a_cookie_for_a_new_visitor() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+
+        // A cookie-less reset mints a session and keeps the all view.
+        let reset = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/reset")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("view=all"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(reset.status(), StatusCode::SEE_OTHER);
+        assert_eq!(reset.headers().get("location").unwrap(), "/?view=all");
+        assert!(reset.headers().get(header::SET_COOKIE).is_some());
     }
 
     #[tokio::test]
