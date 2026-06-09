@@ -3,4 +3,5 @@
 //! disk. See
 //! docs/superpowers/specs/2026-06-08-in-memory-demo-sandboxing-design.md.
 
+pub mod banner;
 pub mod session;
