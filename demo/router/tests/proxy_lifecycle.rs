@@ -52,6 +52,29 @@ async fn start_redirecting_stub() -> u16 {
     port
 }
 
+/// A stub that sets its own cookie on `/`, so a test can confirm the router
+/// keeps it rather than overwriting it with the session cookie.
+async fn start_cookie_setting_stub() -> u16 {
+    let app = axum::Router::new().route(
+        "/",
+        axum::routing::get(|| async {
+            (
+                [
+                    ("content-type", "text/html"),
+                    ("set-cookie", "app=1"),
+                ],
+                "<html><body>page</body></html>",
+            )
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    port
+}
+
 /// A stub that answers `/` with an HTML page labeled `content-encoding: gzip`,
 /// standing in for a compressed page the router must not try to rewrite.
 async fn start_encoded_html_stub() -> u16 {
@@ -429,6 +452,45 @@ async fn second_request_reuses_the_sandbox_without_respawning() {
         launches.load(Ordering::SeqCst),
         1,
         "the sandbox is spawned once and reused"
+    );
+}
+
+#[tokio::test]
+async fn upstream_set_cookie_is_kept_alongside_the_session_cookie() {
+    let stub_port = start_cookie_setting_stub().await;
+    let config = test_config(stub_port, stub_port);
+    let state = build_state(
+        Box::new(FakeLauncher::new(stub_port)),
+        SessionStore::new(config.max_sandboxes, config.max_per_ip),
+        PortPool::new(config.port_low, config.port_high),
+        config,
+    );
+
+    let response = app(state)
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header("cf-connecting-ip", "203.0.113.16")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let cookies: Vec<String> = response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .map(|v| v.to_str().unwrap().to_string())
+        .collect();
+    // The session cookie is added without dropping the sandbox's own cookie.
+    assert!(
+        cookies.iter().any(|c| c.contains("me_demo_sid=")),
+        "session cookie is set: {cookies:?}"
+    );
+    assert!(
+        cookies.iter().any(|c| c.contains("app=1")),
+        "upstream cookie is preserved: {cookies:?}"
     );
 }
 

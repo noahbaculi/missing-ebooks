@@ -161,7 +161,9 @@ pub async fn handle(
     match forward(&state, port, method, &uri, &headers, body).await {
         Ok(mut response) => {
             if let Some(cookie) = set_cookie {
-                response.headers_mut().insert("set-cookie", cookie);
+                // append, not insert: a sandbox could set its own cookie, and the
+                // session cookie has to ride alongside it rather than replace it.
+                response.headers_mut().append("set-cookie", cookie);
             }
             response
         }
