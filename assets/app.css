@@ -1248,7 +1248,9 @@ li.leaving {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  max-width: min(92vw, 30rem);
+  /* a fixed width so every toast is the same size; a short message keeps the
+     full box rather than shrinking to a narrower one and looking magnified */
+  width: min(92vw, 30rem);
   padding: 0.6rem 0.7rem 0.6rem 0.95rem;
   background: var(--color-base-100);
   color: var(--color-base-content);
@@ -1331,6 +1333,7 @@ li.leaving {
     align-items: stretch;
   }
   .toast {
-    max-width: none;
+    /* let the stretched stack set the width between its left and right insets */
+    width: auto;
   }
 }
