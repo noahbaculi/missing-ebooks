@@ -58,8 +58,9 @@ In the Cloudflare dashboard for `noahbaculi.com`:
 - **Update after a code change:**
   `docker compose -f demo/docker-compose.yml up -d --build`
 - **Tuning:** edit the `ROUTER_*` environment values in
-  `demo/docker-compose.yml` (idle window, caps, port range, scenario) and
-  re-run the up command.
+  `demo/docker-compose.yml` (idle window, session caps, port range, scenario,
+  the readiness and forward timeouts, the response-size cap, and the cookie
+  name) and re-run the up command.
 - **Reset everything:** `docker compose -f demo/docker-compose.yml down` removes
   the containers; sandboxes are ephemeral, so nothing else needs cleanup.
 

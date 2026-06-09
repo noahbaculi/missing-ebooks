@@ -18,6 +18,14 @@ services:
       ROUTER_MAX_PER_IP: "2"
       ROUTER_IDLE_SECS: "1200"
       ROUTER_PORT_RANGE: "9000-9100"
+      # Seconds a freshly spawned sandbox has to answer before the spawn fails.
+      ROUTER_READY_TIMEOUT_SECS: "10"
+      # Seconds a single proxied request may take before it returns a 502.
+      ROUTER_FORWARD_TIMEOUT_SECS: "30"
+      # Largest sandbox response the router buffers, in bytes (default 16 MiB).
+      ROUTER_MAX_RESPONSE_BYTES: "16777216"
+      # Name of the cookie that pins a visitor to their sandbox.
+      ROUTER_COOKIE_NAME: me_demo_sid
     # /healthz answers without spawning a sandbox, so an unattended host restarts
     # a wedged router instead of leaving it serving errors.
     healthcheck:
