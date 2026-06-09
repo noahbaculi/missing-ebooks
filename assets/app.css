@@ -940,3 +940,60 @@ details[open] > summary .chev {
     animation: none !important;
   }
 }
+
+/* ---- rescan skeleton ---- */
+/* The placeholder overlays #roots while an in-place rescan runs. htmx toggles its
+   opacity through the htmx-indicator class (its bundled indicator styles), and the
+   shimmer sweep reads as work in progress. The wrapper is the positioning context. */
+.roots-wrap {
+  position: relative;
+}
+.scan-skeleton {
+  position: absolute;
+  inset: 0;
+  padding: 1rem 1.1rem;
+  background: var(--color-base-100);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  pointer-events: none;
+}
+.sk-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.5rem;
+}
+.sk {
+  border-radius: 0.4rem;
+  background: linear-gradient(
+    90deg,
+    var(--color-base-200) 25%,
+    var(--color-base-300) 37%,
+    var(--color-base-200) 63%
+  );
+  background-size: 400% 100%;
+  animation: shimmer 1.3s ease infinite;
+}
+.sk-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: none;
+}
+.sk-name {
+  height: 0.8rem;
+  flex: 1;
+  max-width: 18rem;
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk {
+    animation: none;
+  }
+}

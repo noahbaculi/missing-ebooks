@@ -831,6 +831,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_carries_the_scan_skeleton_shimmer() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.css")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The rescan placeholder is a positioned overlay with a shimmer animation.
+        assert!(body.contains(".scan-skeleton"));
+        assert!(body.contains("@keyframes shimmer"));
+        // The wrapper is positioned so the overlay can pin to it.
+        assert!(body.contains(".roots-wrap"));
+    }
+
+    #[tokio::test]
     async fn index_links_an_inline_favicon() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
