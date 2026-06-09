@@ -107,6 +107,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/mark", post(mark))
+        .route("/unmark", post(unmark))
         .route("/rescan", post(rescan))
         .route("/static/htmx.min.js", get(htmx_script))
         .route("/static/app.css", get(app_css))
@@ -140,6 +141,28 @@ async fn mark(
             let view = service::current_view(&state, mode).await;
             // Leave the tree intact: re-render the section with no inline alert and
             // carry the message to the toast instead.
+            let markup = match view.get(req.root) {
+                Some(section) => render_section(section, req.root, None, links, mode),
+                None => html! { section.card.root data-root=(req.root) {} },
+            };
+            section_response(markup, Some(error_trigger(&message)))
+        }
+    }
+}
+
+async fn unmark(
+    State(state): State<Arc<AppState>>,
+    Form(req): Form<MarkRequest>,
+) -> axum::response::Response {
+    let links = &state.config.search_links;
+    let mode = req.view;
+    match service::unmark(&state, req.root, &req.rel, req.kind, mode).await {
+        Ok(view) => {
+            section_response(render_section(&view[req.root], req.root, None, links, mode), None)
+        }
+        Err(err) => {
+            let message = format!("Could not undo {}: {err}", req.rel);
+            let view = service::current_view(&state, mode).await;
             let markup = match view.get(req.root) {
                 Some(section) => render_section(section, req.root, None, links, mode),
                 None => html! { section.card.root data-root=(req.root) {} },
@@ -1761,6 +1784,50 @@ mod tests {
         // The tree is intact and carries no inline alert.
         assert!(body.contains("Book"));
         assert!(!body.contains("alert-error"));
+    }
+
+    #[tokio::test]
+    async fn unmark_route_deletes_the_file_and_swaps_the_section_back() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let app = app_for(dir.path());
+        app.clone()
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        // Mark first so there is a file to remove.
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(dir.path().join("Book/.no_ebook").exists());
+
+        // Undo: the file is gone and the swapped section shows the gap again.
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/unmark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_string(response).await;
+        assert!(!dir.path().join("Book/.no_ebook").exists());
+        assert!(body.contains("Book"));
+        assert!(body.contains("needs ebook"));
     }
 
     #[tokio::test]
