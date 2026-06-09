@@ -343,18 +343,22 @@ fn conn_banner() -> Markup {
     }
 }
 
-/// The page-level toast shared by the undo and error flows, rendered once so it
-/// survives the htmx section swaps. Hidden until `app.js` fills and shows it: the
-/// success variant carries an Undo button, the error variant a message only.
-/// Both marker glyphs are present and shown by variant in the stylesheet.
+/// The page-level action-toast machinery, rendered once so it survives the htmx
+/// section swaps: an empty stack container plus a template. `app.js` clones the
+/// template per toast (success undo offers and write errors), fills it, and
+/// appends it to the stack, keeping at most three. Both marker glyphs are present
+/// on the template and shown by variant in the stylesheet.
 fn toast() -> Markup {
     html! {
-        div.toast id="toast" role="status" aria-live="polite" hidden {
-            span.toast-icon.toast-icon-success { (PreEscaped(CHECK_SVG)) }
-            span.toast-icon.toast-icon-error { (PreEscaped(ERROR_SVG)) }
-            span.toast-msg {}
-            button.btn.btn-outline.btn-xs.toast-undo type="button" { "Undo" }
-            button.toast-close type="button" aria-label="Dismiss" { "\u{00D7}" }
+        div.toast-stack id="toast-stack" {}
+        template id="toast-template" {
+            div.toast {
+                span.toast-icon.toast-icon-success { (PreEscaped(CHECK_SVG)) }
+                span.toast-icon.toast-icon-error { (PreEscaped(ERROR_SVG)) }
+                span.toast-msg {}
+                button.btn.btn-outline.btn-xs.toast-undo type="button" { "Undo" }
+                button.toast-close type="button" aria-label="Dismiss" { "\u{00D7}" }
+            }
         }
     }
 }
@@ -1476,7 +1480,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn index_renders_the_toast_element() {
+    async fn index_renders_the_toast_stack_and_template() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let response = app_for(dir.path())
@@ -1484,9 +1488,11 @@ mod tests {
             .await
             .unwrap();
         let body = body_string(response).await;
-        // A single page-level toast the success and error flows share.
-        assert!(body.contains(r#"id="toast""#));
-        // The Undo button carries the toast-undo class alongside its btn classes.
+        // An empty stack container plus a template the script clones per toast, so
+        // up to three coexist and survive the htmx section swaps.
+        assert!(body.contains(r#"id="toast-stack""#));
+        assert!(body.contains(r#"id="toast-template""#));
+        // The template toast carries the undo button and the message slot.
         assert!(body.contains("toast-undo"));
         assert!(body.contains(r#"class="toast-msg""#));
     }
