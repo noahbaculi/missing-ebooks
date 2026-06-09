@@ -1529,6 +1529,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_styles_the_toast_and_its_variants() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        assert!(body.contains(".toast"));
+        // Each variant reveals its own glyph; the others stay hidden.
+        assert!(body.contains(".toast--success .toast-icon-success"));
+        assert!(body.contains(".toast--error .toast-icon-error"));
+    }
+
+    #[tokio::test]
     async fn stylesheet_styles_the_settings_panel_and_switch() {
         let dir = tempfile::tempdir().unwrap();
         let response = app_for(dir.path())
