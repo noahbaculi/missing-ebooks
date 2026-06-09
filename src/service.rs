@@ -193,6 +193,36 @@ fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<bool, DomainEr
     }
 }
 
+/// Guard the target and delete the marker file. The guarded mirror of
+/// `write_marker`: same canonicalize-and-stay-inside-the-root check. Undo is
+/// tolerant: a missing file or a folder that no longer exists is success, since
+/// the intended end state (no marker) already holds. Runs on a blocking task.
+fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<(), DomainError> {
+    let canonical_root = match std::fs::canonicalize(root) {
+        Ok(path) => path,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err(DomainError::TargetMissing),
+    };
+    let target = if rel == "." {
+        canonical_root.clone()
+    } else {
+        canonical_root.join(rel)
+    };
+    let canonical_target = match std::fs::canonicalize(&target) {
+        Ok(path) => path,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err(DomainError::TargetMissing),
+    };
+    if !canonical_target.starts_with(&canonical_root) {
+        return Err(DomainError::OutsideRoots);
+    }
+    match std::fs::remove_file(canonical_target.join(marker.filename())) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(DomainError::WriteFailed(e)),
+    }
+}
+
 /// Apply a marker write to one root's section. Marking the root directory covers
 /// the whole root (see ADR-0005); otherwise remove the marked folder's subtree
 /// from the forest and fall to `Clean` once nothing is left. The forest walk and
@@ -503,6 +533,40 @@ mod tests {
         touch(&dir.path().join("Book/01.mp3"));
         let err = write_marker(dir.path(), "Book/01.mp3", Marker::NoEbook).unwrap_err();
         assert!(matches!(err, DomainError::NotADirectory));
+    }
+
+    #[test]
+    fn delete_marker_removes_each_marker_file() {
+        for marker in Marker::ALL {
+            let dir = tempfile::tempdir().unwrap();
+            fs::create_dir_all(dir.path().join("Book")).unwrap();
+            let path = dir.path().join("Book").join(marker.filename());
+            fs::write(&path, b"").unwrap();
+            delete_marker(dir.path(), "Book", marker).unwrap();
+            assert!(!path.exists());
+        }
+    }
+
+    #[test]
+    fn delete_marker_rejects_an_escape() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = delete_marker(dir.path(), "..", Marker::NoEbook).unwrap_err();
+        assert!(matches!(err, DomainError::OutsideRoots));
+    }
+
+    #[test]
+    fn delete_marker_is_tolerant_of_a_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("Book")).unwrap();
+        // No marker on disk: deleting it is a success, the intended end state holds.
+        delete_marker(dir.path(), "Book", Marker::NoEbook).unwrap();
+    }
+
+    #[test]
+    fn delete_marker_is_tolerant_of_a_missing_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        // The folder never existed: still a success, nothing to remove.
+        delete_marker(dir.path(), "Gone", Marker::NoEbook).unwrap();
     }
 
     #[test]
