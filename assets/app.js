@@ -137,8 +137,9 @@
     });
   });
 
-  // htmx fires htmx:confirm before every request. Only /mark uses htmx here, and
-  // we still gate on the button's data, so no other request is ever intercepted.
+  // htmx fires htmx:confirm before every request. /mark and /unmark both go
+  // through htmx, and we still gate on the button's confirm data, so the undo
+  // POST and every other request flow through untouched by the dialog.
   document.body.addEventListener("htmx:confirm", function (evt) {
     // A programmatic resend already had the user's intent; don't re-prompt.
     if (suppressConfirm) {
@@ -506,4 +507,93 @@
     if (op === "mark") markTerminalFailure(elt);
     else rescanTerminalFailure();
   }
+
+  // ---- action toast (undo + errors) ----
+
+  var toast = null;
+  var toastUndo = null;
+  var toastMsg = null;
+  var toastTimer = null;
+  var pendingUndo = null;
+
+  // The marker token to the label the buttons use, for the success message.
+  var KIND_LABEL = { no_ebook: "None", ebook_elsewhere: "Ebook elsewhere" };
+
+  function hideToast() {
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+      toastTimer = null;
+    }
+    if (toast) toast.hidden = true;
+    pendingUndo = null;
+  }
+
+  // Show the success variant: an undo offer that clears after a few seconds.
+  function showSuccessToast(detail) {
+    if (!toast || !detail) return;
+    pendingUndo = {
+      root: detail.root,
+      rel: detail.rel,
+      kind: detail.kind,
+      view: detail.view,
+    };
+    var label = KIND_LABEL[detail.kind] || detail.kind;
+    toastMsg.textContent = "Marked " + detail.name + " as " + label;
+    toast.classList.remove("toast--error");
+    toast.classList.add("toast--success");
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    toastUndo.hidden = false;
+    toast.hidden = false;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, 8000);
+  }
+
+  // Show the error variant: a message that stays until dismissed or replaced.
+  function showErrorToast(detail) {
+    if (!toast) return;
+    pendingUndo = null;
+    toastMsg.textContent = detail && detail.message ? detail.message : "Something went wrong";
+    toast.classList.remove("toast--success");
+    toast.classList.add("toast--error");
+    toast.setAttribute("role", "alert");
+    toast.setAttribute("aria-live", "assertive");
+    toastUndo.hidden = true;
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+      toastTimer = null;
+    }
+    toast.hidden = false;
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    toast = document.getElementById("toast");
+    if (!toast) return;
+    toastUndo = toast.querySelector(".toast-undo");
+    toastMsg = toast.querySelector(".toast-msg");
+    var close = toast.querySelector(".toast-close");
+    if (close) close.addEventListener("click", hideToast);
+    toastUndo.addEventListener("click", function () {
+      if (!pendingUndo) return;
+      var p = pendingUndo;
+      hideToast();
+      htmx.ajax("POST", "/unmark", {
+        target: '[data-root="' + p.root + '"]',
+        swap: "outerHTML",
+        values: { root: p.root, rel: p.rel, kind: p.kind, view: p.view },
+      });
+    });
+  });
+
+  // htmx dispatches these from the HX-Trigger header on the /mark and /unmark
+  // responses; they bubble to the body.
+  document.body.addEventListener("marked", function (evt) {
+    showSuccessToast(evt.detail);
+  });
+  document.body.addEventListener("app-error", function (evt) {
+    showErrorToast(evt.detail);
+  });
+  document.addEventListener("keydown", function (evt) {
+    if (evt.key === "Escape") hideToast();
+  });
 })();

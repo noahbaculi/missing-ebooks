@@ -1590,6 +1590,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn app_script_defines_the_toast_handlers() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The success and error listeners and the undo POST to /unmark.
+        assert!(body.contains(r#"addEventListener("marked""#));
+        assert!(body.contains(r#"addEventListener("app-error""#));
+        assert!(body.contains("/unmark"));
+    }
+
+    #[tokio::test]
     async fn rescan_redirects_to_root() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
