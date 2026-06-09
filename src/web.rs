@@ -157,9 +157,10 @@ async fn unmark(
     let links = &state.config.search_links;
     let mode = req.view;
     match service::unmark(&state, req.root, &req.rel, req.kind, mode).await {
-        Ok(view) => {
-            section_response(render_section(&view[req.root], req.root, None, links, mode), None)
-        }
+        Ok(view) => section_response(
+            render_section(&view[req.root], req.root, None, links, mode),
+            None,
+        ),
         Err(err) => {
             let message = format!("Could not undo {}: {err}", req.rel);
             let view = service::current_view(&state, mode).await;

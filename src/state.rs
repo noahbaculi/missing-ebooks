@@ -329,11 +329,21 @@ mod tests {
     async fn rebuild_root_replaces_one_root_in_each_warm_slot() {
         let cache = test_cache(Some(Duration::from_secs(600)));
         // Two roots per slot so we can prove only index 1 is touched.
-        let two = || vec![
-            RootSection { path: "keep".to_string(), state: RootState::Clean },
-            RootSection { path: "old".to_string(), state: RootState::Clean },
-        ];
-        cache.get_or_build(ViewMode::GapsOnly, || async { two() }).await;
+        let two = || {
+            vec![
+                RootSection {
+                    path: "keep".to_string(),
+                    state: RootState::Clean,
+                },
+                RootSection {
+                    path: "old".to_string(),
+                    state: RootState::Clean,
+                },
+            ]
+        };
+        cache
+            .get_or_build(ViewMode::GapsOnly, || async { two() })
+            .await;
         cache.get_or_build(ViewMode::All, || async { two() }).await;
 
         let returned = cache
