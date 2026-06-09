@@ -16,6 +16,10 @@ target
 # Superpowers brainstorming companion scratch files
 .superpowers/
 
+# Demo deploy secret: holds the live Cloudflare Tunnel token. Only the
+# .env.example template is tracked.
+demo/.env
+
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
