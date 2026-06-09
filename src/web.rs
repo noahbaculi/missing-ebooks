@@ -29,27 +29,19 @@ const APP_CSS: &str = include_str!("../assets/app.css");
 /// The client behavior script, embedded at compile time and served from `/static`.
 const APP_JS: &str = include_str!("../assets/app.js");
 
-/// Pre-paint theme bootstrap: sets `data-theme` on <html> before first paint so
-/// there is no flash, and defines `toggleTheme` for the navbar button. Saved
-/// choice wins over the OS preference; the choice persists in localStorage.
-const THEME_INIT_JS: &str = r#"(function () {
-  var KEY = 'theme';
-  function apply(t) { document.documentElement.dataset.theme = t; }
-  function preferred() {
-    var saved = localStorage.getItem(KEY);
-    if (saved === 'light' || saved === 'dark') return saved;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  }
-  apply(preferred());
-  window.toggleTheme = function () {
-    var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-    localStorage.setItem(KEY, next);
-    apply(next);
-  };
+/// Pre-paint theme bootstrap: resolves the saved choice, or the OS preference for
+/// "system" / an unset value, and sets `data-theme` on <html> before first paint
+/// so there is no flash. The interactive theme control lives in `app.js`.
+const PREPAINT_THEME_JS: &str = r#"(function () {
+  var saved = localStorage.getItem('theme');
+  var t = (saved === 'light' || saved === 'dark')
+    ? saved
+    : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.dataset.theme = t;
 })();"#;
 
-/// Half-filled circle marking the light/dark toggle. Inherits `currentColor`.
-const TOGGLE_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2v14a7 7 0 0 1 0-14z"/></svg>"##;
+/// Gear glyph for the settings menu trigger. Inherits `currentColor`.
+const COG_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>"##;
 
 /// Caret that rotates open when its folder is expanded. Inherits `currentColor`.
 const CHEVRON_SVG: &str = r##"<svg class="chev" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>"##;
@@ -199,13 +191,40 @@ async fn app_js() -> impl IntoResponse {
     )
 }
 
-/// The light/dark toggle button for the navbar. Behavior lives in `THEME_INIT_JS`.
-fn theme_toggle() -> Markup {
+/// The navbar settings control: a cog that opens a popover panel holding the
+/// theme choice and the confirm-before-marking toggle. The native popover API
+/// drives open/close; the controls' behavior lives in `app.js`. The theme
+/// segments and the switch render with their default state (System, confirm on);
+/// `app.js` reconciles them against localStorage once it runs.
+fn settings_menu() -> Markup {
     html! {
-        button.btn.btn-ghost.btn-square.theme-toggle type="button"
-            aria-label="Toggle light and dark theme"
-            title="Toggle theme"
-            onclick="toggleTheme()" { (PreEscaped(TOGGLE_SVG)) }
+        button.btn.btn-ghost.btn-square.settings-cog type="button"
+            aria-label="Settings"
+            title="Settings"
+            aria-haspopup="menu"
+            popovertarget="settings-panel" { (PreEscaped(COG_SVG)) }
+        div.settings-panel id="settings-panel" popover="auto" aria-label="Settings" {
+            div.settings-head { "Settings" }
+            div.settings-row.settings-row-theme {
+                span.settings-label { "Theme" }
+                div.segmented role="group" aria-label="Theme" {
+                    button.segment type="button" data-theme-choice="light" { "Light" }
+                    button.segment type="button" data-theme-choice="dark" { "Dark" }
+                    button.segment.segment-active type="button"
+                        data-theme-choice="system" aria-current="true" { "System" }
+                }
+            }
+            div.settings-row {
+                span.settings-label {
+                    "Confirm before marking"
+                    span.settings-sub { "Ask before writing a marker" }
+                }
+                label.switch {
+                    input id="confirm-toggle" type="checkbox" checked;
+                    span.switch-track {}
+                }
+            }
+        }
     }
 }
 
@@ -228,7 +247,7 @@ fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Missing Ebooks" }
                 link rel="icon" href=(FAVICON_HREF);
-                script { (PreEscaped(THEME_INIT_JS)) }
+                script { (PreEscaped(PREPAINT_THEME_JS)) }
                 link rel="stylesheet" href="/static/app.css";
             }
             body {
@@ -236,7 +255,7 @@ fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
                     h1 { "Missing Ebooks" }
                     span.spacer {}
                     (view_toggle(mode))
-                    (theme_toggle())
+                    (settings_menu())
                     form method="post" action="/rescan" {
                         input type="hidden" name="view" value=(mode.as_query());
                         button.btn.btn-primary type="submit" { "Rescan" }
@@ -727,8 +746,10 @@ mod tests {
         assert!(body.contains(r#"href="/static/app.css""#));
         // The pre-paint theme script is present and reads the OS preference.
         assert!(body.contains("prefers-color-scheme"));
-        // The toggle is labelled for assistive tech.
-        assert!(body.contains(r#"aria-label="Toggle light and dark theme""#));
+        // The theme toggle moved into the settings menu: a labelled cog, with the
+        // theme choices inside the panel.
+        assert!(body.contains(r#"aria-label="Settings""#));
+        assert!(body.contains(r#"data-theme-choice="system""#));
     }
 
     #[tokio::test]
@@ -849,9 +870,9 @@ mod tests {
         assert!(body.contains(".navbar .segmented"));
         assert!(body.contains("flex-basis: 100%"));
         assert!(body.contains(".navbar .segmented .segment"));
-        // The theme toggle is ordered by a dedicated class, not a `> button`
+        // The settings cog is ordered by a dedicated class, not a `> button`
         // child selector, so a later navbar button can't drift into its row.
-        assert!(body.contains(".navbar .theme-toggle"));
+        assert!(body.contains(".navbar .settings-cog"));
         assert!(!body.contains(".navbar > button"));
     }
 
@@ -921,6 +942,47 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let content_type = response.headers().get("content-type").unwrap();
         assert!(content_type.to_str().unwrap().contains("javascript"));
+    }
+
+    #[tokio::test]
+    async fn app_script_defines_the_theme_setter() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        assert!(body.contains("setTheme"));
+        assert!(body.contains("confirmMarks"));
+    }
+
+    #[tokio::test]
+    async fn navbar_renders_a_settings_cog_with_theme_and_confirm_controls() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // A labelled cog opens the settings panel via the native popover API.
+        assert!(body.contains(r#"class="btn btn-ghost btn-square settings-cog""#));
+        assert!(body.contains(r#"aria-label="Settings""#));
+        assert!(body.contains(r#"popovertarget="settings-panel""#));
+        assert!(body.contains(r#"id="settings-panel""#));
+        // The theme segmented control offers all three states.
+        assert!(body.contains(r#"data-theme-choice="light""#));
+        assert!(body.contains(r#"data-theme-choice="dark""#));
+        assert!(body.contains(r#"data-theme-choice="system""#));
+        // The confirm-before-marking switch.
+        assert!(body.contains(r#"id="confirm-toggle""#));
+        // The old two-state toggle is gone.
+        assert!(!body.contains("toggleTheme()"));
     }
 
     #[tokio::test]
