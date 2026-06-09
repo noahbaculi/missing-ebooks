@@ -23,7 +23,10 @@ async fn start_stub() -> u16 {
     let app = axum::Router::new().route(
         "/",
         axum::routing::get(|| async {
-            ([("content-type", "text/html")], "<html><body>stub tree</body></html>")
+            (
+                [("content-type", "text/html")],
+                "<html><body>stub tree</body></html>",
+            )
         }),
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -59,10 +62,7 @@ async fn start_cookie_setting_stub() -> u16 {
         "/",
         axum::routing::get(|| async {
             (
-                [
-                    ("content-type", "text/html"),
-                    ("set-cookie", "app=1"),
-                ],
+                [("content-type", "text/html"), ("set-cookie", "app=1")],
                 "<html><body>page</body></html>",
             )
         }),
@@ -82,10 +82,7 @@ async fn start_encoded_html_stub() -> u16 {
         "/",
         axum::routing::get(|| async {
             (
-                [
-                    ("content-type", "text/html"),
-                    ("content-encoding", "gzip"),
-                ],
+                [("content-type", "text/html"), ("content-encoding", "gzip")],
                 "<html><body>real page</body></html>",
             )
         }),

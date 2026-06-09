@@ -249,11 +249,7 @@ async fn resolve_sandbox(
     };
 
     let sid = new_session_id();
-    let cookie = cookie_header(
-        &state.config.cookie_name,
-        &sid,
-        state.config.idle.as_secs(),
-    );
+    let cookie = cookie_header(&state.config.cookie_name, &sid, state.config.idle.as_secs());
     let mut inner = state.inner.lock().await;
     // Park the child handle by pid so the reaper can wait() on it after SIGINT.
     inner.children.insert(spawned.pid, spawned.child);
@@ -331,10 +327,7 @@ async fn forward(
     headers: &HeaderMap,
     body: Bytes,
 ) -> anyhow::Result<Response> {
-    let path = uri
-        .path_and_query()
-        .map(|pq| pq.as_str())
-        .unwrap_or("/");
+    let path = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
     let url = format!("http://127.0.0.1:{port}{path}");
 
     let mut req = state
@@ -370,7 +363,11 @@ async fn forward(
     let mut bytes: Vec<u8> = Vec::new();
     while let Some(chunk) = upstream.chunk().await? {
         if bytes.len() + chunk.len() > state.config.max_response_bytes {
-            tracing::warn!(port, cap = state.config.max_response_bytes, "sandbox response exceeded the body cap");
+            tracing::warn!(
+                port,
+                cap = state.config.max_response_bytes,
+                "sandbox response exceeded the body cap"
+            );
             return Ok((StatusCode::BAD_GATEWAY, "demo backend response too large").into_response());
         }
         bytes.extend_from_slice(&chunk);

@@ -60,8 +60,7 @@ impl Config {
     /// Build a config from the environment, applying spec defaults for anything
     /// unset.
     pub fn load_from_env() -> anyhow::Result<Self> {
-        let (port_low, port_high) =
-            parse_port_range(&var_or("ROUTER_PORT_RANGE", "9000-9100"))?;
+        let (port_low, port_high) = parse_port_range(&var_or("ROUTER_PORT_RANGE", "9000-9100"))?;
         Ok(Self {
             bind: var_or("ROUTER_BIND", "127.0.0.1:8080"),
             port_low,

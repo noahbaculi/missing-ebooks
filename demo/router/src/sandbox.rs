@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::Context;
-use nix::sys::signal::{kill, Signal};
+use nix::sys::signal::{Signal, kill};
 use nix::unistd::Pid;
 
 /// What a successful spawn yields: the child handle (kept so the OS does not
@@ -24,8 +24,12 @@ pub struct Spawned {
 pub trait Launcher: Send + Sync {
     /// Launch a sandbox serving `scenario` on `port`, returning once it answers
     /// on `GET /` or erroring on timeout.
-    async fn launch(&self, scenario: &str, port: u16, ready_timeout: Duration)
-        -> anyhow::Result<Spawned>;
+    async fn launch(
+        &self,
+        scenario: &str,
+        port: u16,
+        ready_timeout: Duration,
+    ) -> anyhow::Result<Spawned>;
 }
 
 /// The production launcher: runs the compiled `explore` binary.
@@ -58,7 +62,11 @@ impl Launcher for RealLauncher {
 
 /// Poll `GET http://127.0.0.1:{port}/` until it returns any HTTP response or the
 /// timeout elapses.
-pub async fn wait_ready(client: &reqwest::Client, port: u16, timeout: Duration) -> anyhow::Result<()> {
+pub async fn wait_ready(
+    client: &reqwest::Client,
+    port: u16,
+    timeout: Duration,
+) -> anyhow::Result<()> {
     let url = format!("http://127.0.0.1:{port}/");
     let deadline = tokio::time::Instant::now() + timeout;
     loop {

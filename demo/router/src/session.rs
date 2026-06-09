@@ -224,10 +224,7 @@ mod tests {
     fn reap_returns_only_idle_sandboxes() {
         let mut store = SessionStore::new(10, 10);
         let now = Instant::now();
-        store.insert(
-            SessionId("fresh".into()),
-            sandbox("1.1.1.1", now),
-        );
+        store.insert(SessionId("fresh".into()), sandbox("1.1.1.1", now));
         store.insert(
             SessionId("stale".into()),
             sandbox("2.2.2.2", now - Duration::from_secs(3600)),
