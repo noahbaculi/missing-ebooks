@@ -31,6 +31,12 @@ pub enum AdmitError {
 /// The session table plus its two ceilings.
 pub struct SessionStore {
     sandboxes: HashMap<SessionId, Sandbox>,
+    /// In-flight spawns by IP, counted alongside committed sandboxes so that a
+    /// burst of first-contact requests cannot all pass the cap check and then
+    /// over-spawn while their launches are still running.
+    reserved: HashMap<String, usize>,
+    /// Total in-flight spawns, the global counterpart to `reserved`.
+    reserved_total: usize,
     max_sandboxes: usize,
     max_per_ip: usize,
 }
@@ -39,6 +45,8 @@ impl SessionStore {
     pub fn new(max_sandboxes: usize, max_per_ip: usize) -> Self {
         Self {
             sandboxes: HashMap::new(),
+            reserved: HashMap::new(),
+            reserved_total: 0,
             max_sandboxes,
             max_per_ip,
         }
@@ -63,19 +71,44 @@ impl SessionStore {
         Some(sandbox.port)
     }
 
-    /// Decide whether `ip` may create another sandbox. Checks the global cap
-    /// first, then the per-IP cap.
-    pub fn admit(&self, ip: &str) -> Result<(), AdmitError> {
-        if self.live_count() >= self.max_sandboxes {
+    /// Reserve an in-flight slot for `ip` before its sandbox is spawned, or
+    /// refuse it under the caps. Counting reservations alongside committed
+    /// sandboxes is what closes the check-then-spawn race: the global cap first,
+    /// then the per-IP cap. Every `Ok` must be paired with exactly one `commit`
+    /// (spawn succeeded) or `release_reservation` (spawn failed).
+    pub fn reserve(&mut self, ip: &str) -> Result<(), AdmitError> {
+        if self.sandboxes.len() + self.reserved_total >= self.max_sandboxes {
             return Err(AdmitError::AtCapacity);
         }
-        if self.ip_count(ip) >= self.max_per_ip {
+        let ip_held = self.ip_count(ip) + self.reserved.get(ip).copied().unwrap_or(0);
+        if ip_held >= self.max_per_ip {
             return Err(AdmitError::PerIpLimit);
         }
+        self.reserved_total += 1;
+        *self.reserved.entry(ip.to_string()).or_insert(0) += 1;
         Ok(())
     }
 
-    /// Record a freshly spawned sandbox under a session id.
+    /// Turn a reservation into a live sandbox: drop the in-flight slot and record
+    /// the sandbox under its session id, both under one lock hold.
+    pub fn commit(&mut self, ip: &str, sid: SessionId, sandbox: Sandbox) {
+        self.release_reservation(ip);
+        self.sandboxes.insert(sid, sandbox);
+    }
+
+    /// Hand back a reservation whose spawn never produced a sandbox.
+    pub fn release_reservation(&mut self, ip: &str) {
+        self.reserved_total = self.reserved_total.saturating_sub(1);
+        if let Some(count) = self.reserved.get_mut(ip) {
+            *count -= 1;
+            if *count == 0 {
+                self.reserved.remove(ip);
+            }
+        }
+    }
+
+    /// Record a freshly spawned sandbox under a session id, without touching the
+    /// reservation counters. Tests use this to seed committed state directly.
     pub fn insert(&mut self, sid: SessionId, sandbox: Sandbox) {
         self.sandboxes.insert(sid, sandbox);
     }
@@ -117,18 +150,62 @@ mod tests {
     }
 
     #[test]
-    fn admit_rejects_at_global_capacity() {
+    fn reserve_rejects_at_global_capacity() {
         let mut store = SessionStore::new(1, 5);
         store.insert(SessionId("a".into()), sandbox("1.1.1.1", Instant::now()));
-        assert_eq!(store.admit("2.2.2.2"), Err(AdmitError::AtCapacity));
+        assert_eq!(store.reserve("2.2.2.2"), Err(AdmitError::AtCapacity));
     }
 
     #[test]
-    fn admit_rejects_over_per_ip_limit() {
+    fn reserve_rejects_over_per_ip_limit() {
         let mut store = SessionStore::new(10, 1);
         store.insert(SessionId("a".into()), sandbox("1.1.1.1", Instant::now()));
-        assert_eq!(store.admit("1.1.1.1"), Err(AdmitError::PerIpLimit));
-        assert!(store.admit("2.2.2.2").is_ok());
+        assert_eq!(store.reserve("1.1.1.1"), Err(AdmitError::PerIpLimit));
+        assert!(store.reserve("2.2.2.2").is_ok());
+    }
+
+    #[test]
+    fn reserve_counts_against_global_capacity() {
+        let mut store = SessionStore::new(1, 5);
+        assert!(store.reserve("1.1.1.1").is_ok());
+        // The one global slot is reserved in-flight, so a second visitor is
+        // refused even though no sandbox has been committed yet. This is the
+        // race the plain admit check missed.
+        assert_eq!(store.reserve("2.2.2.2"), Err(AdmitError::AtCapacity));
+    }
+
+    #[test]
+    fn reserve_counts_against_per_ip_limit() {
+        let mut store = SessionStore::new(10, 1);
+        assert!(store.reserve("1.1.1.1").is_ok());
+        // A concurrent second request from the same IP cannot slip past the
+        // per-IP cap while the first spawn is still in flight.
+        assert_eq!(store.reserve("1.1.1.1"), Err(AdmitError::PerIpLimit));
+        assert!(store.reserve("2.2.2.2").is_ok());
+    }
+
+    #[test]
+    fn committing_a_reservation_frees_the_inflight_slot() {
+        let mut store = SessionStore::new(10, 2);
+        assert!(store.reserve("1.1.1.1").is_ok());
+        store.commit(
+            "1.1.1.1",
+            SessionId("a".into()),
+            sandbox("1.1.1.1", Instant::now()),
+        );
+        // One committed sandbox plus room for one more, so a fresh reservation
+        // still fits; the second one then fills the per-IP cap.
+        assert!(store.reserve("1.1.1.1").is_ok());
+        assert_eq!(store.reserve("1.1.1.1"), Err(AdmitError::PerIpLimit));
+    }
+
+    #[test]
+    fn releasing_a_reservation_returns_the_slot() {
+        let mut store = SessionStore::new(1, 5);
+        assert!(store.reserve("1.1.1.1").is_ok());
+        store.release_reservation("1.1.1.1");
+        // A failed spawn hands its slot back, so the next visitor is admitted.
+        assert!(store.reserve("2.2.2.2").is_ok());
     }
 
     #[test]

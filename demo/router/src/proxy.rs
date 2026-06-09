@@ -194,17 +194,28 @@ async fn resolve_sandbox(
         }
     }
 
-    // Slow path: admit under the caps and take a port while holding the lock,
-    // then spawn outside the lock so a slow seed does not block other requests.
+    // Slow path: reserve an in-flight slot under the caps and take a port while
+    // holding the lock, then spawn outside the lock so a slow seed does not block
+    // other requests. Reserving (not just checking) under the lock is what stops
+    // a burst of first-contact requests from one IP all passing the cap and then
+    // over-spawning while their launches overlap.
     let port = {
         let mut inner = state.inner.lock().await;
-        match inner.store.admit(ip) {
+        match inner.store.reserve(ip) {
             Ok(()) => {}
             Err(AdmitError::AtCapacity) | Err(AdmitError::PerIpLimit) => {
                 return Err(Admit::Capacity);
             }
         }
-        inner.pool.allocate().ok_or(Admit::Capacity)?
+        match inner.pool.allocate() {
+            Some(port) => port,
+            None => {
+                // The cap had room but the port pool did not: hand the
+                // reservation back so it does not pin the slot forever.
+                inner.store.release_reservation(ip);
+                return Err(Admit::Capacity);
+            }
+        }
     };
 
     let spawned = match state
@@ -214,8 +225,11 @@ async fn resolve_sandbox(
     {
         Ok(spawned) => spawned,
         Err(err) => {
-            // Hand the port back so a failed spawn does not leak it.
-            state.inner.lock().await.pool.release(port);
+            // Hand the port and the reservation back so a failed spawn leaks
+            // neither the port nor the in-flight cap slot.
+            let mut inner = state.inner.lock().await;
+            inner.pool.release(port);
+            inner.store.release_reservation(ip);
             return Err(Admit::Spawn(err));
         }
     };
@@ -229,7 +243,9 @@ async fn resolve_sandbox(
     let mut inner = state.inner.lock().await;
     // Park the child handle by pid so the reaper can wait() on it after SIGINT.
     inner.children.insert(spawned.pid, spawned.child);
-    inner.store.insert(
+    // commit drops the reservation and records the live sandbox under one lock.
+    inner.store.commit(
+        ip,
         sid.clone(),
         Sandbox {
             port,

@@ -85,6 +85,49 @@ impl Launcher for FakeLauncher {
     }
 }
 
+/// A launcher that parks each launch on a release gate, so a test can hold
+/// several spawns in flight at once and observe how the caps behave under
+/// concurrency. `entered` is bumped once per launch the moment it parks;
+/// `release` lets parked launches finish.
+struct GatedLauncher {
+    launches: Arc<AtomicUsize>,
+    entered: Arc<tokio::sync::Semaphore>,
+    release: Arc<tokio::sync::Semaphore>,
+}
+
+#[async_trait]
+impl Launcher for GatedLauncher {
+    async fn launch(&self, _scenario: &str, _port: u16, _t: Duration) -> anyhow::Result<Spawned> {
+        let child = tokio::process::Command::new("sleep")
+            .arg("3600")
+            .kill_on_drop(true)
+            .spawn()?;
+        let pid = child.id().unwrap();
+        self.launches.fetch_add(1, Ordering::SeqCst);
+        // The reservation is already recorded (it happens before launch is
+        // called), so announce this launch and park until the test releases it.
+        self.entered.add_permits(1);
+        self.release.acquire().await.unwrap().forget();
+        Ok(Spawned { child, pid })
+    }
+}
+
+/// Drive one first-contact request from `ip` through the app and return its
+/// status. With no cookie, this is the spawn path.
+async fn fire(state: Arc<AppState>, ip: &'static str) -> StatusCode {
+    app(state)
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header("cf-connecting-ip", ip)
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .status()
+}
+
 /// Assemble shared state the way `main` does, including the router's real HTTP
 /// client, so the tests exercise the same request path the binary serves.
 fn build_state(
@@ -328,6 +371,57 @@ async fn second_request_reuses_the_sandbox_without_respawning() {
         1,
         "the sandbox is spawned once and reused"
     );
+}
+
+#[tokio::test]
+async fn concurrent_first_contacts_from_one_ip_respect_the_per_ip_cap() {
+    // Plenty of ports and global headroom, so only the per-IP cap (2) can bite.
+    let config = test_config(9000, 9100);
+    let launches = Arc::new(AtomicUsize::new(0));
+    let entered = Arc::new(tokio::sync::Semaphore::new(0));
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let state = build_state(
+        Box::new(GatedLauncher {
+            launches: launches.clone(),
+            entered: entered.clone(),
+            release: release.clone(),
+        }),
+        SessionStore::new(config.max_sandboxes, config.max_per_ip),
+        PortPool::new(config.port_low, config.port_high),
+        config,
+    );
+
+    // Two concurrent first-contact requests from one IP. Each reserves a slot
+    // and then parks inside launch, holding its reservation.
+    let ip = "203.0.113.20";
+    let r1 = tokio::spawn(fire(state.clone(), ip));
+    let r2 = tokio::spawn(fire(state.clone(), ip));
+
+    // Wait until both launches are in flight: both reservations are now held.
+    let _two = entered.acquire_many(2).await.unwrap();
+
+    // A third request from the same IP, while those two spawns are still in
+    // flight, must be refused at once rather than spawning a third sandbox.
+    // Before in-flight slots counted, all three passed the check and the third
+    // would park inside its own launch, so a timeout here means the bug is back.
+    let third = tokio::time::timeout(Duration::from_secs(2), fire(state.clone(), ip))
+        .await
+        .expect("third request must be refused immediately, not parked in a spawn");
+    assert_eq!(
+        third,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "the per-IP cap must count in-flight spawns, not just committed ones"
+    );
+    assert_eq!(
+        launches.load(Ordering::SeqCst),
+        2,
+        "only two sandboxes were launched"
+    );
+
+    // Let the parked launches finish so the test does not leak tasks.
+    release.add_permits(2);
+    let _ = r1.await;
+    let _ = r2.await;
 }
 
 #[tokio::test]
