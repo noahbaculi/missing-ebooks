@@ -983,6 +983,10 @@ mod tests {
         // row so the rows below glide up; the delayed htmx swap reconciles after.
         assert!(body.contains("htmx:beforeRequest"));
         assert!(body.contains("leaving"));
+        // collapseRow walks up from the marked leaf and collapses each ancestor that is
+        // the sole `:scope > li` in its list, so an emptied author or series row leaves
+        // with the leaf instead of snapping out on the swap.
+        assert!(body.contains(":scope > li"));
     }
 
     #[tokio::test]

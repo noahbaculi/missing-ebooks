@@ -163,12 +163,30 @@
   // timing, fade, and reduced-motion.
   function collapseRow(li) {
     if (!li || li.classList.contains("leaving")) return;
-    // Pin the current height, then drop to zero next frame so the transition has a
-    // definite start.
-    li.style.maxHeight = li.scrollHeight + "px";
-    li.classList.add("leaving");
+    // Walk up from the marked leaf, collecting each row that is the sole `:scope > li`
+    // in its list. Push-then-check means the current row is always collected; the climb
+    // stops at the first list that still has a surviving gap, so that row and its
+    // ancestors stay. The result is the single-child spine above the leaf, up to and
+    // including the highest emptied row, so an author or series row whose last gap is
+    // being marked leaves together with the leaf instead of snapping out on the swap.
+    var rows = [];
+    var node = li;
+    while (node && !node.classList.contains("leaving")) {
+      rows.push(node);
+      var list = node.parentElement;
+      if (!list || list.querySelectorAll(":scope > li").length > 1) break;
+      node = list.parentElement && list.parentElement.closest("li");
+    }
+    // Pin each row's height, then drop them all to zero next frame so the transitions
+    // share a definite start. `.leaving` owns the timing, fade, and reduced-motion.
+    rows.forEach(function (row) {
+      row.style.maxHeight = row.scrollHeight + "px";
+      row.classList.add("leaving");
+    });
     requestAnimationFrame(function () {
-      li.style.maxHeight = "0";
+      rows.forEach(function (row) {
+        row.style.maxHeight = "0";
+      });
     });
   }
 
