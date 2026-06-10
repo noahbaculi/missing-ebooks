@@ -53,7 +53,11 @@ fn read_cookie(headers: &HeaderMap, cookie_name: &str) -> Option<SessionId> {
     let raw = headers.get("cookie")?.to_str().ok()?;
     for pair in raw.split(';') {
         let pair = pair.trim();
-        if let Some(value) = pair.strip_prefix(&format!("{cookie_name}="))
+        // Strip the name then the `=` separately, so a name that only shares a
+        // prefix (for example `me_demo_sidX=`) still fails to match, exactly as the
+        // old single `format!("{cookie_name}=")` strip did.
+        if let Some(rest) = pair.strip_prefix(cookie_name)
+            && let Some(value) = rest.strip_prefix('=')
             && !value.is_empty()
         {
             return Some(SessionId(value.to_string()));
@@ -62,11 +66,19 @@ fn read_cookie(headers: &HeaderMap, cookie_name: &str) -> Option<SessionId> {
     None
 }
 
+/// Lowercase hex digits, indexed by nibble to render a session id.
+const HEX: &[u8; 16] = b"0123456789abcdef";
+
 /// Mint a new random session id as 32 hex characters.
 fn new_session_id() -> SessionId {
     let mut buf = [0u8; 16];
     getrandom::getrandom(&mut buf).expect("OS rng");
-    SessionId(buf.iter().map(|b| format!("{b:02x}")).collect())
+    let mut out = String::with_capacity(32);
+    for &b in &buf {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    SessionId(out)
 }
 
 /// Build the `Set-Cookie` value for a new session, scoped to the whole site and
@@ -601,5 +613,44 @@ mod tests {
         }];
         let owned = derive_view(base, &marks, ViewMode::GapsOnly);
         assert!(matches!(owned, Cow::Owned(_)));
+    }
+
+    #[test]
+    fn new_session_id_is_32_lowercase_hex_chars() {
+        let id = new_session_id().0;
+        assert_eq!(id.len(), 32);
+        assert!(
+            id.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+            "non lowercase-hex char in {id}"
+        );
+    }
+
+    #[test]
+    fn read_cookie_finds_the_session_among_several() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "cookie",
+            HeaderValue::from_static("theme=dark; me_demo_sid=abc123; other=1"),
+        );
+        assert_eq!(
+            read_cookie(&headers, "me_demo_sid"),
+            Some(SessionId("abc123".to_string()))
+        );
+    }
+
+    #[test]
+    fn read_cookie_rejects_a_prefix_collision_name() {
+        let mut headers = HeaderMap::new();
+        // A different cookie that merely starts with the session name must not match.
+        headers.insert("cookie", HeaderValue::from_static("me_demo_sidX=abc123"));
+        assert_eq!(read_cookie(&headers, "me_demo_sid"), None);
+    }
+
+    #[test]
+    fn read_cookie_ignores_an_empty_value() {
+        let mut headers = HeaderMap::new();
+        headers.insert("cookie", HeaderValue::from_static("me_demo_sid="));
+        assert_eq!(read_cookie(&headers, "me_demo_sid"), None);
     }
 }
