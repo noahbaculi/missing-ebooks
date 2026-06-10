@@ -137,15 +137,20 @@ async fn mark(
             section_response(markup, trigger)
         }
         Err(err) => {
+            // A server-side write failure: re-render the section with an inline alert
+            // that names the folder, so the error stays on the page by the row rather
+            // than in a toast. The tree is left intact and the row keeps its buttons.
             let message = format!("Could not mark {}: {err}", req.rel);
             let view = service::current_view(&state, mode).await;
-            // Leave the tree intact: re-render the section with no inline alert and
-            // carry the message to the toast instead.
             let markup = match view.get(req.root) {
-                Some(section) => render_section(section, req.root, None, links, mode),
-                None => html! { section.card.root data-root=(req.root) {} },
+                Some(section) => render_section(section, req.root, Some(&message), links, mode),
+                None => html! {
+                    section.card.root data-root=(req.root) {
+                        div.alert.alert-error { (PreEscaped(ERROR_SVG)) span { (message) } }
+                    }
+                },
             };
-            section_response(markup, Some(error_trigger(&message)))
+            section_response(markup, None)
         }
     }
 }
@@ -162,13 +167,19 @@ async fn unmark(
             None,
         ),
         Err(err) => {
+            // The undo write failed: re-render the section with an inline alert naming
+            // the folder. The marked row stays put, so the user can try undoing again.
             let message = format!("Could not undo {}: {err}", req.rel);
             let view = service::current_view(&state, mode).await;
             let markup = match view.get(req.root) {
-                Some(section) => render_section(section, req.root, None, links, mode),
-                None => html! { section.card.root data-root=(req.root) {} },
+                Some(section) => render_section(section, req.root, Some(&message), links, mode),
+                None => html! {
+                    section.card.root data-root=(req.root) {
+                        div.alert.alert-error { (PreEscaped(ERROR_SVG)) span { (message) } }
+                    }
+                },
             };
-            section_response(markup, Some(error_trigger(&message)))
+            section_response(markup, None)
         }
     }
 }
@@ -343,18 +354,16 @@ fn conn_banner() -> Markup {
     }
 }
 
-/// The page-level action-toast machinery, rendered once so it survives the htmx
-/// section swaps: an empty stack container plus a template. `app.js` clones the
-/// template per toast (success undo offers and write errors), fills it, and
-/// appends it to the stack, keeping at most three. Both marker glyphs are present
-/// on the template and shown by variant in the stylesheet.
+/// The page-level toast machinery, rendered once so it survives the htmx section
+/// swaps: an empty stack container plus a template. `app.js` clones the template
+/// per successful mark, fills it with the undo offer, and appends it to the stack,
+/// keeping at most three. Write failures stay inline by the row, not here.
 fn toast() -> Markup {
     html! {
         div.toast-stack id="toast-stack" {}
         template id="toast-template" {
             div.toast {
                 span.toast-icon.toast-icon-success { (PreEscaped(CHECK_SVG)) }
-                span.toast-icon.toast-icon-error { (PreEscaped(ERROR_SVG)) }
                 div.toast-msg {}
                 button.btn.btn-outline.btn-xs.toast-undo type="button" { "Undo" }
                 button.toast-close type="button" aria-label="Dismiss" { "\u{00D7}" }
@@ -442,13 +451,6 @@ fn marked_trigger(req: &MarkRequest, name: &str) -> String {
             "name": name,
         }
     });
-    ascii_escape(&payload.to_string())
-}
-
-/// The `HX-Trigger` payload for a failed write: an `app-error` event carrying the
-/// message for the error toast.
-fn error_trigger(message: &str) -> String {
-    let payload = serde_json::json!({ "app-error": { "message": message } });
     ascii_escape(&payload.to_string())
 }
 
@@ -1551,11 +1553,10 @@ mod tests {
         // The stack container and the toast box.
         assert!(body.contains(".toast-stack"));
         assert!(body.contains(".toast"));
-        // Each variant reveals its own glyph in a tinted status badge.
+        // The success toast reveals its glyph in a tinted status badge.
         assert!(body.contains(".toast--success .toast-icon-success"));
-        assert!(body.contains(".toast--error .toast-icon-error"));
         // The badge glyph resets the muted `.icon` color so it takes the variant
-        // color; without this both glyphs render grey.
+        // color; without this the glyph renders grey.
         assert!(body.contains(".toast .toast-icon .icon"));
         // The two-line message: the folder name over the outcome and label pill.
         assert!(body.contains(".toast-name"));
@@ -1648,9 +1649,8 @@ mod tests {
             .await
             .unwrap();
         let body = body_string(response).await;
-        // The success and error listeners and the undo POST to /unmark.
+        // The success listener and the undo POST to /unmark.
         assert!(body.contains(r#"addEventListener("marked""#));
-        assert!(body.contains(r#"addEventListener("app-error""#));
         assert!(body.contains("/unmark"));
         // The script drives a stack container and clones a per-toast template.
         assert!(body.contains("toast-stack"));
@@ -1864,7 +1864,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mark_failure_triggers_an_error_toast_and_keeps_the_tree() {
+    async fn mark_failure_renders_an_inline_alert_and_keeps_the_tree() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let app = app_for(dir.path());
@@ -1885,17 +1885,13 @@ mod tests {
             )
             .await
             .unwrap();
-        let trigger = response
-            .headers()
-            .get("hx-trigger")
-            .map(|v| v.to_str().unwrap().to_string())
-            .expect("a failed mark sets HX-Trigger");
-        assert!(trigger.contains("app-error"));
-        assert!(trigger.contains("Could not mark"));
+        // A server-side failure stays on the page: no HX-Trigger toast, just an inline
+        // alert that names the folder, with the tree left intact.
+        assert!(response.headers().get("hx-trigger").is_none());
         let body = body_string(response).await;
-        // The tree is intact and carries no inline alert.
         assert!(body.contains("Book"));
-        assert!(!body.contains("alert-error"));
+        assert!(body.contains("alert-error"));
+        assert!(body.contains("Could not mark"));
     }
 
     #[tokio::test]

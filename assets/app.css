@@ -1262,11 +1262,8 @@ li.leaving {
 .toast--success {
   border-color: color-mix(in srgb, var(--color-success) 35%, var(--color-base-300));
 }
-.toast--error {
-  border-color: color-mix(in srgb, var(--color-error) 40%, var(--color-base-300));
-}
-/* status badge: a filled, tinted circle carrying the variant glyph, so the
-   success/error read lands instantly instead of leaning on a thin spine */
+/* status badge: a filled, tinted circle carrying the success glyph, so the
+   read lands instantly instead of leaning on a thin spine */
 .toast .toast-icon {
   display: none;
   flex: none;
@@ -1287,11 +1284,6 @@ li.leaving {
   display: inline-flex;
   color: var(--color-success);
   background: color-mix(in srgb, var(--color-success) 16%, var(--color-base-100));
-}
-.toast--error .toast-icon-error {
-  display: inline-flex;
-  color: var(--color-error);
-  background: color-mix(in srgb, var(--color-error) 16%, var(--color-base-100));
 }
 /* the message column: a primary line plus a quieter detail line */
 .toast .toast-msg {

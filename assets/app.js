@@ -508,16 +508,14 @@
     else rescanTerminalFailure();
   }
 
-  // ---- action toast stack (undo + errors) ----
+  // ---- success toast stack (undo offers) ----
 
-  // Up to three toasts coexist; a fourth evicts the oldest. A success toast
-  // offers an undo and clears after SUCCESS_MS; an error carries no undo and
-  // lingers longer.
+  // Up to three toasts coexist; a fourth evicts the oldest. Each one offers an undo
+  // and clears after SUCCESS_MS. Write failures are shown inline by the row instead.
   var stack = null;
   var template = null;
   var MAX_TOASTS = 3;
   var SUCCESS_MS = 8000;
-  var ERROR_MS = 15000;
   // The exit animation length. Must match the `toast-out` duration in app.css,
   // since dismissToast removes the node after this delay.
   var EXIT_MS = 480;
@@ -699,19 +697,6 @@
     node.querySelector(".toast-msg").append(name, outcome);
   }
 
-  // Show the error variant: the server message, no undo, cleared after ERROR_MS.
-  function showErrorToast(detail) {
-    if (!stack || !template) return;
-    var node = newToastNode();
-    node.classList.add("toast--error");
-    node.setAttribute("role", "alert");
-    node.setAttribute("aria-live", "assertive");
-    node.querySelector(".toast-undo").remove();
-    pushToast(node, ERROR_MS);
-    node.querySelector(".toast-msg").textContent =
-      detail && detail.message ? detail.message : "Something went wrong";
-  }
-
   // Clear the whole stack at once (Escape) without waiting on exit animations.
   function clearToasts() {
     if (!stack) return;
@@ -723,13 +708,10 @@
     template = document.getElementById("toast-template");
   });
 
-  // htmx dispatches these from the HX-Trigger header on the /mark and /unmark
-  // responses; they bubble to the body.
+  // htmx dispatches `marked` from the HX-Trigger header on a successful /mark
+  // response; it bubbles to the body. Write failures are shown inline by the row.
   document.body.addEventListener("marked", function (evt) {
     showSuccessToast(evt.detail);
-  });
-  document.body.addEventListener("app-error", function (evt) {
-    showErrorToast(evt.detail);
   });
   document.addEventListener("keydown", function (evt) {
     if (evt.key === "Escape") clearToasts();
