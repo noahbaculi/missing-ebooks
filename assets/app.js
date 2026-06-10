@@ -176,4 +176,76 @@
       li.style.maxHeight = "0";
     });
   });
+
+  // ---- connection status: detection + banner ----
+
+  // htmx has no request timeout by default. A generous backstop frees a truly hung
+  // request without aborting a legitimately slow big-library rescan.
+  if (window.htmx && window.htmx.config) window.htmx.config.timeout = 30000;
+
+  var connBanner = null;
+  var reconnectTimer = null;
+
+  // Copy for a state, read from the banner's data-msg-* attributes
+  // (data-msg-offline -> dataset.msgOffline, and so on).
+  function bannerMsg(state) {
+    var key = "msg" + state.charAt(0).toUpperCase() + state.slice(1);
+    return (connBanner && connBanner.dataset[key]) || "";
+  }
+
+  // Reveal the banner in a state, with optional action-specific copy override.
+  function showBanner(state, override) {
+    if (!connBanner) return;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    connBanner.className = "conn-banner is-" + state;
+    // Unhide before setting the message so the change lands while the live region is
+    // in the accessibility tree, where a polite announcement can fire.
+    connBanner.hidden = false;
+    var msg = connBanner.querySelector(".conn-banner-msg");
+    if (msg) msg.textContent = override || bannerMsg(state);
+  }
+
+  function hideBanner() {
+    if (!connBanner) return;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    connBanner.hidden = true;
+    connBanner.className = "conn-banner";
+  }
+
+  // Brief green confirmation, then hide. Shown when connectivity returns after a
+  // problem was on screen.
+  function flashReconnected() {
+    showBanner("reconnected");
+    reconnectTimer = setTimeout(hideBanner, 2000);
+  }
+
+  // True while the banner is showing something the user should see resolve.
+  function bannerShowsProblem() {
+    return (
+      !!connBanner &&
+      !connBanner.hidden &&
+      (connBanner.classList.contains("is-offline") ||
+        connBanner.classList.contains("is-retrying") ||
+        connBanner.classList.contains("is-failed"))
+    );
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    connBanner = document.getElementById("conn-banner");
+    if (navigator.onLine === false) showBanner("offline");
+  });
+
+  window.addEventListener("offline", function () {
+    showBanner("offline");
+  });
+  window.addEventListener("online", function () {
+    if (bannerShowsProblem()) flashReconnected();
+    else hideBanner();
+  });
 })();
