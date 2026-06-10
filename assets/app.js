@@ -521,6 +521,10 @@
   // The exit animation length. Must match the `toast-out` duration in app.css,
   // since dismissToast removes the node after this delay.
   var EXIT_MS = 480;
+  // How long the toasts already in the stack take to slide to their new spot
+  // when one is added. JS-only: the reflow is an inline transition, not a CSS
+  // animation, so it has no stylesheet counterpart to stay in step with.
+  var REFLOW_MS = 350;
 
   // Map each marker kind to the label shown in the success toast. "No ebook"
   // spells out the row's short "None" button, which has no column header to lean
@@ -593,6 +597,47 @@
     armToast(node, Math.max(node._remaining, 0));
   }
 
+  // Whether the viewer asked for less motion. The reflow slide honors it the
+  // same way the CSS animations do (the reduced-motion block already stills the
+  // entry and exit), so a new toast simply appears in place.
+  function prefersReducedMotion() {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  // Add a toast to the stack, sliding the toasts already there from their old
+  // positions to their new ones instead of letting them jump up. FLIP: record
+  // each current top (First), append the newcomer so the layout settles (Last),
+  // offset each existing toast back to where it sat (Invert), then transition
+  // that offset away on the next frame (Play).
+  function reflowStack(node) {
+    if (prefersReducedMotion()) {
+      stack.appendChild(node);
+      return;
+    }
+    var olds = Array.prototype.slice.call(stack.children);
+    var firstTops = olds.map(function (el) {
+      return el.getBoundingClientRect().top;
+    });
+    stack.appendChild(node);
+    olds.forEach(function (el, i) {
+      var dy = firstTops[i] - el.getBoundingClientRect().top;
+      if (!dy) return;
+      // The settled class drops the filled `toast-in` animation, whose pinned
+      // end-state would otherwise win over this inline transform.
+      el.classList.add("toast--settled");
+      el.style.transition = "none";
+      el.style.transform = "translateY(" + dy + "px)";
+    });
+    // Flush the inverted offsets so the browser paints them before they play.
+    void stack.offsetHeight;
+    requestAnimationFrame(function () {
+      olds.forEach(function (el) {
+        el.style.transition = "transform " + REFLOW_MS + "ms ease";
+        el.style.transform = "";
+      });
+    });
+  }
+
   // Append a built node, wire its close button and pause-on-interaction, and
   // start its dismiss timer.
   function pushToast(node, timeoutMs) {
@@ -620,7 +665,7 @@
       resumeToast(node);
     });
     armToast(node, timeoutMs);
-    stack.appendChild(node);
+    reflowStack(node);
   }
 
   // Show the success variant: an undo offer that clears after SUCCESS_MS.

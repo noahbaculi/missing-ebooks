@@ -1569,6 +1569,9 @@ mod tests {
         assert!(body.contains("translateY(1.4rem)"));
         // The matching slower exit.
         assert!(body.contains("toast-out 480ms ease-in"));
+        // A settled toast drops its filled entry animation so the script can
+        // slide it to a new position when another toast pushes in.
+        assert!(body.contains(".toast--settled"));
     }
 
     #[tokio::test]
@@ -1658,6 +1661,11 @@ mod tests {
         // The auto-dismiss pauses while the toast is hovered or keyboard-focused.
         assert!(body.contains(r#"addEventListener("mouseenter""#));
         assert!(body.contains(r#"addEventListener("focusin""#));
+        // Adding a toast slides the existing ones to their new spot (FLIP, via
+        // getBoundingClientRect) over a shared reflow duration rather than
+        // letting them jump.
+        assert!(body.contains("REFLOW_MS"));
+        assert!(body.contains("getBoundingClientRect"));
     }
 
     #[tokio::test]

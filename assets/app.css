@@ -1379,6 +1379,12 @@ li.leaving {
 .toast.toast--out {
   animation: toast-out 480ms ease-in both;
 }
+/* once a toast has finished arriving, app.js adds this to drop the entry
+   animation, whose filled end-state would otherwise pin the transform and block
+   the FLIP slide it runs when another toast pushes in */
+.toast--settled {
+  animation: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .toast,
   .toast.toast--out {
