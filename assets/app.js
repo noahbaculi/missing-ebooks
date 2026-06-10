@@ -154,35 +154,71 @@
     dialog.showModal();
   });
 
-  // ---- mark: collapse the leaving row ----
+  // ---- mark: hold the row in place while saving, collapse only once confirmed ----
 
-  // The moment a gaps-only mark request goes out, collapse the marked folder's row
-  // and fade it, so the rows below glide up through normal reflow. The section's
-  // swap is delayed (the marker form's hx-swap "swap:" modifier) to let this play,
-  // then it reconciles the fresh section. In show-all the row stays (it flips to
-  // covered in place), so that request carries view=all and we leave it alone.
-  document.body.addEventListener("htmx:beforeRequest", function (evt) {
-    var btn = evt.detail.elt;
-    if (!btn || !btn.matches('[hx-post="/mark"]')) return;
-    // The section swap removes this button. If it still holds focus when that
-    // happens, the browser jumps the scroll to the document bottom (in both views),
-    // so drop focus first. Focus would end up on <body> after the swap regardless.
-    if (document.activeElement === btn) btn.blur();
-    var form = btn.closest("form.mark");
-    var view = form && form.querySelector('input[name="view"]');
-    if (view && view.value === "all") return;
-    var li = btn.closest("li");
-    if (!li) return;
-    // A resend (retry) fires beforeRequest again; the row is already collapsing, so
-    // don't re-pin its height or restart the transition.
-    if (li.classList.contains("leaving")) return;
+  // Collapse a row's <li> and fade it so the rows below glide up through normal
+  // reflow. The section swap is delayed (the marker form's hx-swap "swap:" modifier)
+  // to let this play, then it reconciles the fresh section. li.leaving owns the
+  // timing, fade, and reduced-motion.
+  function collapseRow(li) {
+    if (!li || li.classList.contains("leaving")) return;
     // Pin the current height, then drop to zero next frame so the transition has a
-    // definite start. The .leaving class owns the timing, fade, and reduced-motion.
+    // definite start.
     li.style.maxHeight = li.scrollHeight + "px";
     li.classList.add("leaving");
     requestAnimationFrame(function () {
       li.style.maxHeight = "0";
     });
+  }
+
+  // Toggle a gaps-only row's in-flight "saving" state: dim it, hide its actions, and
+  // show a spinner with a "Saving…" label. Idempotent, so a retry's beforeRequest is a
+  // no-op rather than a second spinner.
+  function setSaving(row, on) {
+    if (!row) return;
+    row.classList.toggle("is-saving", on);
+    var existing = row.querySelector(":scope > .row-saving");
+    if (on && !existing) {
+      var s = document.createElement("span");
+      s.className = "row-saving";
+      s.setAttribute("aria-hidden", "true");
+      s.innerHTML = '<span class="row-saving-spinner"></span>Saving…';
+      row.appendChild(s);
+    } else if (!on && existing) {
+      existing.remove();
+    }
+  }
+
+  // True for a gaps-only mark request (the kind whose row should collapse on success).
+  // A show-all mark carries view=all and stays put, flipping to covered in place.
+  function isCollapsingMark(btn) {
+    if (!btn || !btn.matches || !btn.matches('[hx-post="/mark"]')) return false;
+    var form = btn.closest("form.mark");
+    var view = form && form.querySelector('input[name="view"]');
+    return !(view && view.value === "all");
+  }
+
+  // The moment a gaps-only mark goes out, hold its row in place in the "saving" state.
+  // The row must not look handled before the write lands, so it stays visible and only
+  // collapses once the server confirms (htmx:beforeOnLoad below).
+  document.body.addEventListener("htmx:beforeRequest", function (evt) {
+    var btn = evt.detail.elt;
+    if (!isCollapsingMark(btn)) return;
+    // The section swap removes this button. If it still holds focus when that happens,
+    // the browser jumps the scroll to the document bottom, so drop focus first.
+    if (document.activeElement === btn) btn.blur();
+    setSaving(btn.closest(".row"), true);
+  });
+
+  // A confirmed save (2xx) is the only thing that may hide the row: collapse it now and
+  // let the delayed section swap reconcile after the glide. Transient failures never
+  // reach here, so a folder is never hidden before its mark is actually written.
+  document.body.addEventListener("htmx:beforeOnLoad", function (evt) {
+    var btn = evt.detail.elt;
+    if (!isCollapsingMark(btn)) return;
+    var xhr = evt.detail.xhr;
+    if (!xhr || xhr.status < 200 || xhr.status >= 300) return;
+    collapseRow(btn.closest("li"));
   });
 
   // ---- connection status: detection + banner ----
@@ -356,8 +392,11 @@
   function markTerminalFailure(elt) {
     var li = elt.closest("li");
     if (li) {
+      // The row was held in the "saving" state (never collapsed), so just release it;
+      // the defensive .leaving cleanup covers a manual retry that did collapse first.
       li.classList.remove("leaving");
       li.style.maxHeight = "";
+      setSaving(rowOf(li), false);
       clearMarkFailed(elt);
       var folder = elt.dataset.confirmFolder || "this folder";
       var box = document.createElement("div");

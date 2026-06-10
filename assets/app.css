@@ -1190,3 +1190,38 @@ li.leaving {
   border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
   color: var(--color-error);
 }
+
+/* ---- saving: a gaps-only row waits in place until the write is confirmed ---- */
+/* The row stays visible while its mark is in flight, so a folder never looks handled
+   before the write lands. It dims, hides its actions, and shows a spinner; it
+   collapses (li.leaving) only on a confirmed save, when the section swap reconciles. */
+.row.is-saving > :not(.row-saving) {
+  opacity: 0.5;
+}
+.row.is-saving .actions-group,
+.row.is-saving .actions-trigger {
+  display: none;
+}
+.row-saving {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-base-content);
+}
+.row-saving-spinner {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--color-muted) 35%, transparent);
+  border-top-color: var(--color-base-content);
+  animation: conn-spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .row-saving-spinner {
+    animation: none;
+  }
+}
