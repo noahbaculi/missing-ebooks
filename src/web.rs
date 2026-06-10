@@ -154,7 +154,11 @@ async fn rescan(
         // htmx path: swap the fresh sections into #roots, and push the mode path so
         // the address bar tracks the view without ever showing the /rescan POST URL.
         let markup = roots(&view, &state.config.search_links, mode);
-        ([("HX-Push-Url", mode_path(mode))], Html(markup.into_string())).into_response()
+        (
+            [("HX-Push-Url", mode_path(mode))],
+            Html(markup.into_string()),
+        )
+            .into_response()
     } else {
         // no-JS path: 303 See Other (Post/Redirect/Get), so a refresh does not
         // re-trigger a scan.
@@ -291,6 +295,24 @@ fn scan_skeleton() -> Markup {
     }
 }
 
+/// The connection-status banner: a polite live region pinned to the top of the
+/// page, hidden until app.js reveals it and sets a state class. The state copy is
+/// carried as data attributes so it is defined (and tested) here in one place; the
+/// client only chooses which message to show.
+fn conn_banner() -> Markup {
+    html! {
+        div.conn-banner id="conn-banner" role="status" aria-live="polite" hidden
+            data-msg-offline="You're offline. Changes can't be saved."
+            data-msg-retrying="Lost connection. Retrying…"
+            data-msg-failed="Couldn't reach the server. Your change wasn't saved."
+            data-msg-failed-rescan="Couldn't reach the server. The library wasn't rescanned."
+            data-msg-reconnected="Reconnected." {
+            span.conn-banner-spinner aria-hidden="true" {}
+            span.conn-banner-msg {}
+        }
+    }
+}
+
 /// The rotating folder caret used on collapsible rows.
 fn chevron() -> Markup {
     html! { (PreEscaped(CHEVRON_SVG)) }
@@ -324,6 +346,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                 link rel="stylesheet" href="/static/app.css";
             }
             body {
+                (conn_banner())
                 nav.navbar {
                     h1 { "Missing Ebooks" }
                     span.spacer {}
@@ -842,10 +865,7 @@ mod tests {
         // No redirect: the fresh sections come back to swap into #roots.
         assert_eq!(response.status(), StatusCode::OK);
         // The address bar is pushed to the requested view, not the POST URL.
-        assert_eq!(
-            response.headers().get("HX-Push-Url").unwrap(),
-            "/?view=all"
-        );
+        assert_eq!(response.headers().get("HX-Push-Url").unwrap(), "/?view=all");
         let body = body_string(response).await;
         assert!(body.contains(r#"class="card root""#));
         assert!(body.contains("Book"));
@@ -1288,6 +1308,39 @@ mod tests {
         assert!(body.contains(r#"id="confirm-toggle""#));
         // The old two-state toggle is gone.
         assert!(!body.contains("toggleTheme()"));
+    }
+
+    #[tokio::test]
+    async fn index_renders_the_hidden_connection_banner() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // A polite live region, hidden until the connection JS reveals it. The
+        // `hidden` check is anchored to the banner's own attributes so it can't pass
+        // on an unrelated `aria-hidden` elsewhere on the page.
+        assert!(body.contains(r#"id="conn-banner""#));
+        assert!(body.contains(r#"role="status""#));
+        assert!(body.contains(r#"role="status" aria-live="polite" hidden"#));
+        // Copy lives in data attributes so it is locked here and read by app.js.
+        assert!(body.contains(r#"data-msg-offline="You're offline. Changes can't be saved.""#));
+        assert!(body.contains(r#"data-msg-retrying="Lost connection. Retrying…""#));
+        assert!(
+            body.contains(
+                r#"data-msg-failed="Couldn't reach the server. Your change wasn't saved.""#
+            )
+        );
+        assert!(body.contains(
+            r#"data-msg-failed-rescan="Couldn't reach the server. The library wasn't rescanned.""#
+        ));
+        assert!(body.contains(r#"data-msg-reconnected="Reconnected.""#));
+        // The message slot the JS fills.
+        assert!(body.contains(r#"class="conn-banner-msg""#));
     }
 
     #[tokio::test]
