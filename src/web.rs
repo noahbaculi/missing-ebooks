@@ -252,8 +252,10 @@ fn view_toggle(mode: ViewMode) -> Markup {
     }
 }
 
-/// A strong ETag for an asset: a quoted hash of its bytes. The content is fixed
-/// per build, so the hash is stable for the life of the process.
+/// A strong ETag for an asset: a quoted hash of its bytes. It depends only on the
+/// content, so it is fixed for the life of the process and identical across restarts
+/// built from the same bytes; a client's cached validator then survives any redeploy
+/// that left the asset unchanged.
 fn asset_etag(body: &str) -> String {
     let mut hasher = DefaultHasher::new();
     body.hash(&mut hasher);
