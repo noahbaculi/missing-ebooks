@@ -4,6 +4,7 @@
 //! cookie; their marks are replayed on top of the shared base view per request.
 //! The full index page carries the demo banner; the `/mark` partial does not.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -104,10 +105,15 @@ fn resolve_in_store(
     }
 }
 
-/// Derive one session's view for a mode: clone the shared base and replay the
-/// session's marks. A mark naming an out-of-range root is skipped defensively;
-/// an unmatched `rel` is a no-op inside the overlay functions.
-fn derive_view(base: &FlaggedView, marks: &[Mark], mode: ViewMode) -> FlaggedView {
+/// Derive one session's view for a mode: replay the session's marks on top of the
+/// shared base. With no marks there is nothing to replay, so the base is borrowed
+/// rather than cloned; otherwise the base is cloned and the overlay mutates the
+/// clone. A mark naming an out-of-range root is skipped defensively; an unmatched
+/// `rel` is a no-op inside the overlay functions.
+fn derive_view<'a>(base: &'a FlaggedView, marks: &[Mark], mode: ViewMode) -> Cow<'a, FlaggedView> {
+    if marks.is_empty() {
+        return Cow::Borrowed(base);
+    }
     let mut view = base.to_vec();
     for mark in marks {
         let Some(section) = view.get_mut(mark.root) else {
@@ -118,7 +124,7 @@ fn derive_view(base: &FlaggedView, marks: &[Mark], mode: ViewMode) -> FlaggedVie
             ViewMode::All => apply_mark_all(section, &mark.rel, mark.kind),
         }
     }
-    view
+    Cow::Owned(view)
 }
 
 /// The 503 at-capacity response.
@@ -257,6 +263,7 @@ mod tests {
 
     use crate::config::Config;
     use crate::demo::state::build_state;
+    use crate::marker::Marker;
     use crate::scanner::ScanSettings;
 
     fn touch(path: &Path) {
@@ -573,5 +580,26 @@ mod tests {
         let future = Instant::now() + idle + Duration::from_secs(1);
         assert_eq!(state.reap_idle(future), 1);
         assert_eq!(state.reap_idle(future), 0);
+    }
+
+    #[tokio::test]
+    async fn derive_view_borrows_when_there_are_no_marks() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+        let base = state.base(ViewMode::GapsOnly);
+
+        // No marks means nothing to replay, so the base is borrowed, not cloned.
+        let empty = derive_view(base, &[], ViewMode::GapsOnly);
+        assert!(matches!(empty, Cow::Borrowed(_)));
+
+        // One mark forces a clone so the overlay has something of its own to mutate.
+        let marks = [Mark {
+            root: 0,
+            rel: "Book".to_string(),
+            kind: Marker::NoEbook,
+        }];
+        let owned = derive_view(base, &marks, ViewMode::GapsOnly);
+        assert!(matches!(owned, Cow::Owned(_)));
     }
 }
