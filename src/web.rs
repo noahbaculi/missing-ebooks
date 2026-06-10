@@ -331,9 +331,17 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                     (settings_menu())
                     form method="post" action="/rescan"
                         hx-post="/rescan" hx-target="#roots" hx-swap="innerHTML"
-                        hx-indicator="#scan-skeleton" {
+                        hx-indicator="#scan-skeleton, #rescan-btn"
+                        hx-disabled-elt="#rescan-btn" {
                         input type="hidden" name="view" value=(mode.as_query());
-                        button.btn.btn-primary type="submit" { "Rescan" }
+                        // The button sits in the nav, outside the swapped #roots, so htmx
+                        // keeps it across the request: it adds htmx-request for the busy
+                        // relabel and disables it so a second click cannot double-scan,
+                        // clearing both once the swap settles.
+                        button.btn.btn-primary id="rescan-btn" type="submit" {
+                            span.btn-idle { "Rescan" }
+                            span.btn-busy { "Rescanning…" }
+                        }
                     }
                 }
                 div.roots-wrap {
@@ -801,10 +809,16 @@ mod tests {
         // Rescan posts via htmx and swaps the fresh sections into #roots.
         assert!(body.contains(r#"hx-post="/rescan""#));
         assert!(body.contains(r##"hx-target="#roots""##));
-        assert!(body.contains(r##"hx-indicator="#scan-skeleton""##));
+        // The skeleton and the button both light up as indicators, and the button
+        // is disabled for the request so a second click cannot fire a second scan.
+        assert!(body.contains(r##"hx-indicator="#scan-skeleton, #rescan-btn""##));
+        assert!(body.contains(r##"hx-disabled-elt="#rescan-btn""##));
         // The skeleton overlay is present and wired as the htmx indicator.
         assert!(body.contains(r#"id="scan-skeleton""#));
         assert!(body.contains("htmx-indicator"));
+        // The button carries both labels and relabels itself while the scan runs.
+        assert!(body.contains(r#"id="rescan-btn""#));
+        assert!(body.contains("Rescanning"));
         // The plain form action survives for the no-JS path.
         assert!(body.contains(r#"action="/rescan""#));
     }
@@ -857,6 +871,8 @@ mod tests {
         assert!(body.contains("@keyframes shimmer"));
         // The wrapper is positioned so the overlay can pin to it.
         assert!(body.contains(".roots-wrap"));
+        // The rescan button carries its in-flight relabel styles.
+        assert!(body.contains("#rescan-btn.htmx-request .btn-busy"));
     }
 
     #[tokio::test]

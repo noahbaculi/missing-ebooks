@@ -953,6 +953,32 @@ li.leaving {
   }
 }
 
+/* ---- rescan button ---- */
+/* The button relabels itself to "Rescanning…" while a scan is in flight. It is in
+   the hx-indicator set, so htmx toggles htmx-request on it for the request, and
+   hx-disabled-elt disables it for the duration; both clear when the swap settles.
+   Both labels share one grid cell so the button is always sized to the wider busy
+   label, and toggling visibility (not display) keeps the navbar from reflowing. */
+#rescan-btn {
+  display: inline-grid;
+  justify-items: center;
+}
+#rescan-btn > span {
+  grid-area: 1 / 1;
+}
+#rescan-btn .btn-busy {
+  visibility: hidden;
+}
+#rescan-btn.htmx-request .btn-idle {
+  visibility: hidden;
+}
+#rescan-btn.htmx-request .btn-busy {
+  visibility: visible;
+}
+#rescan-btn.htmx-request {
+  opacity: 0.92;
+}
+
 /* ---- rescan skeleton ---- */
 /* The placeholder overlays #roots while an in-place rescan runs. htmx toggles its
    opacity through the htmx-indicator class (its bundled indicator styles), and the
