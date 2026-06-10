@@ -260,14 +260,17 @@ fn asset_etag(body: &str) -> String {
     format!("\"{:016x}\"", hasher.finish())
 }
 
-/// Whether an `If-None-Match` value revalidates against `etag`. The value can be a
-/// comma list and can carry a `W/` weak prefix the edge added, so each candidate
-/// is trimmed and unwrapped before the compare.
+/// Whether an `If-None-Match` value revalidates against `etag`. A bare `*` matches
+/// any current representation (RFC 9110 §13.1.2), and the asset always exists, so
+/// it always revalidates. Otherwise the value is a comma list whose candidates may
+/// carry the `W/` weak prefix an edge added; `If-None-Match` uses the weak
+/// comparison, which treats `W/"x"` and `"x"` as equal, so each candidate is
+/// trimmed and unwrapped before the compare.
 fn if_none_match_hit(value: Option<&str>, etag: &str) -> bool {
     let Some(value) = value else { return false };
     value.split(',').any(|candidate| {
         let candidate = candidate.trim();
-        candidate.strip_prefix("W/").unwrap_or(candidate) == etag
+        candidate == "*" || candidate.strip_prefix("W/").unwrap_or(candidate) == etag
     })
 }
 
@@ -2441,5 +2444,42 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_string(response).await;
         assert!(body.contains("--color-base-100"));
+    }
+
+    #[test]
+    fn if_none_match_handles_stars_lists_and_weak_tags() {
+        let etag = "\"abc123\"";
+        // No header at all never revalidates.
+        assert!(!if_none_match_hit(None, etag));
+        // A bare `*` matches any current representation.
+        assert!(if_none_match_hit(Some("*"), etag));
+        // An exact strong match.
+        assert!(if_none_match_hit(Some("\"abc123\""), etag));
+        // The same tag carried with the weak prefix an edge may add.
+        assert!(if_none_match_hit(Some("W/\"abc123\""), etag));
+        // One of several candidates in a comma list matches.
+        assert!(if_none_match_hit(Some("\"other\", W/\"abc123\""), etag));
+        // None of the candidates match.
+        assert!(!if_none_match_hit(Some("\"stale\", \"older\""), etag));
+    }
+
+    #[tokio::test]
+    async fn a_star_if_none_match_gets_a_304() {
+        let dir = tempfile::tempdir().unwrap();
+        // `If-None-Match: *` means "if any current representation exists", and the
+        // asset always exists, so the conditional GET revalidates to a 304.
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .header("if-none-match", "*")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
+        let body = body_string(response).await;
+        assert!(body.is_empty());
     }
 }
