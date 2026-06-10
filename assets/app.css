@@ -246,6 +246,13 @@ details > summary::-webkit-details-marker {
 .row:hover {
   background: var(--color-base-200);
 }
+/* Folder rows render as a <summary> and toggle their <details> on click, so they
+   get a pointer like the root header does. Leaf rows are a plain <div> and do
+   nothing on click, so they keep the default cursor; the buttons inside any row
+   carry their own pointer. */
+details > summary.row {
+  cursor: pointer;
+}
 
 .chev {
   width: 0.7rem;
