@@ -1256,7 +1256,7 @@ li.leaving {
   border: var(--border) solid var(--color-base-300);
   border-radius: var(--radius-field);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
-  animation: toast-in 700ms ease both;
+  animation: toast-in 380ms ease both;
 }
 /* a faint variant-tinted border ties the card to its status without a heavy fill */
 .toast--success {
