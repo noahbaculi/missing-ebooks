@@ -1237,82 +1237,117 @@ li.leaving {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
   /* the container spans only its widest toast; let clicks fall through the gaps
      to the page, and re-enable pointer events on the toasts themselves */
   pointer-events: none;
 }
 .toast {
-  position: relative;
   pointer-events: auto;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.7rem;
   /* a fixed width so every toast is the same size; a short message keeps the
      full box rather than shrinking to a narrower one and looking magnified */
-  width: min(92vw, 30rem);
-  padding: 0.6rem 0.7rem 0.6rem 0.95rem;
+  width: min(92vw, 26rem);
+  padding: 0.7rem 0.8rem;
   background: var(--color-base-100);
   color: var(--color-base-content);
   border: var(--border) solid var(--color-base-300);
   border-radius: var(--radius-field);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
-  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+  animation: toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-/* a variant-colored spine down the left edge, clipped to the rounded corners by
-   the overflow above */
-.toast::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
+/* a faint variant-tinted border ties the card to its status without a heavy fill */
+.toast--success {
+  border-color: color-mix(in srgb, var(--color-success) 35%, var(--color-base-300));
 }
-.toast--success::before {
-  background: var(--color-success);
+.toast--error {
+  border-color: color-mix(in srgb, var(--color-error) 40%, var(--color-base-300));
 }
-.toast--error::before {
-  background: var(--color-error);
-}
-.toast .toast-msg {
-  flex: 1;
-  font-size: 0.85rem;
-  line-height: 1.5;
-}
+/* status badge: a filled, tinted circle carrying the variant glyph, so the
+   success/error read lands instantly instead of leaning on a thin spine */
 .toast .toast-icon {
   display: none;
   flex: none;
+  width: 1.7rem;
+  height: 1.7rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+/* the global `.icon` rule paints the svg muted; reset it so the glyph takes the
+   badge's variant color (the confirm dialog resets the same way) */
+.toast .toast-icon .icon {
+  width: 1rem;
+  height: 1rem;
+  color: currentColor;
 }
 .toast--success .toast-icon-success {
   display: inline-flex;
   color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 16%, var(--color-base-100));
 }
 .toast--error .toast-icon-error {
   display: inline-flex;
   color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 16%, var(--color-base-100));
 }
-/* folder name: a neutral monospace chip, matching the confirm dialog's .confirm-chip */
-.toast .toast-chip {
+/* the message column: a primary line plus a quieter detail line */
+.toast .toast-msg {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+/* folder name: the primary line, monospace to echo how names read in the tree,
+   truncated so a long title never wraps the card */
+.toast .toast-name {
   font-family: ui-monospace, monospace;
-  font-size: 0.8rem;
-  background: var(--color-base-200);
-  border: var(--border) solid var(--color-base-300);
-  border-radius: 0.35rem;
-  padding: 0.05rem 0.3rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* the quieter outcome line under the name */
+.toast .toast-detail {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--color-muted);
 }
 /* marker label: a success-tinted pill, matching the .root-badge-clean token pattern */
 .toast .toast-kind {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
   white-space: nowrap;
   border-radius: 999px;
-  padding: 0.1rem 0.45rem;
+  padding: 0.05rem 0.4rem;
   background: color-mix(in srgb, var(--color-success) 18%, var(--color-base-100));
   color: var(--color-success);
 }
+/* undo: an accent text action, lighter than an outlined button */
+.toast .toast-undo {
+  flex: none;
+  align-self: center;
+  background: none;
+  border: none;
+  padding: 0.1rem 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+.toast .toast-undo:hover {
+  text-decoration: underline;
+}
 .toast .toast-close {
   flex: none;
+  align-self: center;
   background: none;
   border: none;
   cursor: pointer;
@@ -1323,6 +1358,33 @@ li.leaving {
 }
 .toast .toast-close:hover {
   color: var(--color-base-content);
+}
+/* slide-up and fade on arrival; reverse on the way out (the leaving class is set
+   by app.js just before it removes the node) */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.6rem) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(0.4rem) scale(0.98);
+  }
+}
+.toast.toast--out {
+  animation: toast-out 180ms ease-in both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .toast.toast--out {
+    animation: none;
+  }
 }
 @media (max-width: 600px) {
   .toast-stack {

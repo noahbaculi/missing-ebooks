@@ -355,7 +355,7 @@ fn toast() -> Markup {
             div.toast {
                 span.toast-icon.toast-icon-success { (PreEscaped(CHECK_SVG)) }
                 span.toast-icon.toast-icon-error { (PreEscaped(ERROR_SVG)) }
-                span.toast-msg {}
+                div.toast-msg {}
                 button.btn.btn-outline.btn-xs.toast-undo type="button" { "Undo" }
                 button.toast-close type="button" aria-label="Dismiss" { "\u{00D7}" }
             }
@@ -1551,14 +1551,18 @@ mod tests {
         // The stack container and the toast box.
         assert!(body.contains(".toast-stack"));
         assert!(body.contains(".toast"));
-        // Each variant reveals its own glyph and colors its left spine.
+        // Each variant reveals its own glyph in a tinted status badge.
         assert!(body.contains(".toast--success .toast-icon-success"));
         assert!(body.contains(".toast--error .toast-icon-error"));
-        assert!(body.contains(".toast--success::before"));
-        assert!(body.contains(".toast--error::before"));
-        // The folder chip and the marker-label pill.
-        assert!(body.contains(".toast-chip"));
+        // The badge glyph resets the muted `.icon` color so it takes the variant
+        // color; without this both glyphs render grey.
+        assert!(body.contains(".toast .toast-icon .icon"));
+        // The two-line message: the folder name over the outcome and label pill.
+        assert!(body.contains(".toast-name"));
+        assert!(body.contains(".toast-detail"));
         assert!(body.contains(".toast-kind"));
+        // The arrival animation.
+        assert!(body.contains("@keyframes toast-in"));
     }
 
     #[tokio::test]

@@ -522,16 +522,29 @@
   // The marker token to the label the buttons use, for the success message.
   var KIND_LABEL = { no_ebook: "None", ebook_elsewhere: "Ebook elsewhere" };
 
-  // Remove one toast node and clear its dismiss timer.
-  function dismissToast(node) {
+  // Remove a toast immediately, clearing its dismiss timer. Used when the stack
+  // evicts to stay within MAX_TOASTS and when Escape clears everything at once.
+  function hardRemove(node) {
     if (node._timer) clearTimeout(node._timer);
     node.remove();
+  }
+
+  // Animate a toast out, then remove it. Guards against a second trigger, e.g. a
+  // close click landing while the auto-dismiss is already playing.
+  function dismissToast(node) {
+    if (node._leaving) return;
+    node._leaving = true;
+    if (node._timer) clearTimeout(node._timer);
+    node.classList.add("toast--out");
+    setTimeout(function () {
+      node.remove();
+    }, 180);
   }
 
   // Drop the oldest toasts until appending one more stays within MAX_TOASTS.
   function evictOldest() {
     while (stack.children.length >= MAX_TOASTS) {
-      dismissToast(stack.firstElementChild);
+      hardRemove(stack.firstElementChild);
     }
   }
 
@@ -540,13 +553,12 @@
     return template.content.firstElementChild.cloneNode(true);
   }
 
-  // A small inline element carrying text: the monospace folder chip or the
-  // tinted marker-label pill.
-  function span(cls, text) {
-    var el = document.createElement("span");
-    el.className = cls;
-    el.textContent = text;
-    return el;
+  // A fresh element with a class and optional text.
+  function el(tag, cls, text) {
+    var node = document.createElement(tag);
+    node.className = cls;
+    if (text != null) node.textContent = text;
+    return node;
   }
 
   // Append a built node, wire its close button, and start its dismiss timer.
@@ -583,11 +595,13 @@
     });
     pushToast(node, SUCCESS_MS);
     // Fill the message after the node is in the DOM so its live region announces
-    // the change.
+    // the change: the folder name on top, the outcome and marker label beneath.
     var label = KIND_LABEL[detail.kind] || detail.kind;
-    node
-      .querySelector(".toast-msg")
-      .append("Marked ", span("toast-chip", detail.name), " as ", span("toast-kind", label));
+    var name = el("div", "toast-name", detail.name);
+    name.title = detail.name;
+    var outcome = el("div", "toast-detail");
+    outcome.append("Marked as ", el("span", "toast-kind", label));
+    node.querySelector(".toast-msg").append(name, outcome);
   }
 
   // Show the error variant: the server message, no undo, cleared after ERROR_MS.
@@ -603,10 +617,10 @@
       detail && detail.message ? detail.message : "Something went wrong";
   }
 
-  // Clear the whole stack (Escape).
+  // Clear the whole stack at once (Escape) without waiting on exit animations.
   function clearToasts() {
     if (!stack) return;
-    while (stack.firstElementChild) dismissToast(stack.firstElementChild);
+    while (stack.firstElementChild) hardRemove(stack.firstElementChild);
   }
 
   document.addEventListener("DOMContentLoaded", function () {
