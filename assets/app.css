@@ -1256,7 +1256,7 @@ li.leaving {
   border: var(--border) solid var(--color-base-300);
   border-radius: var(--radius-field);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
-  animation: toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: toast-in 700ms ease both;
 }
 /* a faint variant-tinted border ties the card to its status without a heavy fill */
 .toast--success {
@@ -1363,7 +1363,7 @@ li.leaving {
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(0.6rem) scale(0.98);
+    transform: translateY(1.4rem) scale(0.98);
   }
   to {
     opacity: 1;

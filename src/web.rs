@@ -1563,6 +1563,10 @@ mod tests {
         assert!(body.contains(".toast-kind"));
         // The arrival animation.
         assert!(body.contains("@keyframes toast-in"));
+        // The gentler arrival: the soft `ease` curve over 700ms, sliding the
+        // longer 1.4rem distance.
+        assert!(body.contains("toast-in 700ms ease"));
+        assert!(body.contains("translateY(1.4rem)"));
     }
 
     #[tokio::test]
