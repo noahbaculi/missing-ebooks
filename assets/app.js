@@ -519,8 +519,10 @@
   var SUCCESS_MS = 8000;
   var ERROR_MS = 15000;
 
-  // The marker token to the label the buttons use, for the success message.
-  var KIND_LABEL = { no_ebook: "None", ebook_elsewhere: "Ebook elsewhere" };
+  // Map each marker kind to the label shown in the success toast. "No ebook"
+  // spells out the row's short "None" button, which has no column header to lean
+  // on once it is lifted into a toast.
+  var KIND_LABEL = { no_ebook: "No ebook", ebook_elsewhere: "Ebook elsewhere" };
 
   // Remove a toast immediately, clearing its dismiss timer. Used when the stack
   // evicts to stay within MAX_TOASTS and when Escape clears everything at once.
