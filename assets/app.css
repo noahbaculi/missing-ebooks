@@ -1061,3 +1061,114 @@ li.leaving {
     animation: none;
   }
 }
+
+/* ---- connection-status banner ---- */
+/* Pinned to the top, full-bleed past the body's 1.5rem padding, in normal flow so
+   it pushes the app down while visible. Hidden via the `hidden` attribute until the
+   connection JS reveals it and sets a state class. */
+.conn-banner[hidden] {
+  display: none;
+}
+.conn-banner {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: -1.5rem -1.5rem 1.25rem;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-bottom: var(--border) solid transparent;
+}
+.conn-banner.is-offline {
+  background: color-mix(in srgb, var(--color-muted) 14%, var(--color-base-100));
+  color: var(--color-base-content);
+  border-bottom-color: color-mix(in srgb, var(--color-muted) 30%, transparent);
+}
+.conn-banner.is-retrying {
+  background: color-mix(in srgb, var(--color-warning) 16%, var(--color-base-100));
+  color: var(--color-base-content);
+  border-bottom-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
+}
+.conn-banner.is-failed {
+  background: color-mix(in srgb, var(--color-error) 14%, var(--color-base-100));
+  color: var(--color-error);
+  border-bottom-color: color-mix(in srgb, var(--color-error) 35%, transparent);
+}
+.conn-banner.is-reconnected {
+  background: color-mix(in srgb, var(--color-success) 15%, var(--color-base-100));
+  color: var(--color-base-content);
+  border-bottom-color: color-mix(in srgb, var(--color-success) 35%, transparent);
+}
+/* The spinner shows only while retrying. */
+.conn-banner-spinner {
+  display: none;
+}
+.conn-banner.is-retrying .conn-banner-spinner {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
+  border-top-color: var(--color-warning);
+  animation: conn-spin 0.9s linear infinite;
+}
+@keyframes conn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .conn-banner.is-retrying .conn-banner-spinner {
+    animation: none;
+  }
+}
+
+/* ---- retry-held states ---- */
+/* While a rescan auto-retry runs across backoff gaps, the connection JS holds the
+   skeleton and the busy button label with .is-retrying, independent of htmx's
+   per-attempt htmx-request toggling, so neither flickers between tries. Mirrors the
+   .scan-skeleton and #rescan-btn rules above (app.css:972-1006). */
+.scan-skeleton.is-retrying {
+  display: block;
+}
+.roots-wrap:has(.scan-skeleton.is-retrying) #roots {
+  display: none;
+}
+#rescan-btn.is-retrying .btn-idle {
+  visibility: hidden;
+}
+#rescan-btn.is-retrying .btn-busy {
+  visibility: visible;
+}
+#rescan-btn.is-retrying {
+  opacity: 0.92;
+}
+/* After a rescan fails for good, the Rescan button itself is the retry: a focus
+   ring draws the eye to it. */
+#rescan-btn.conn-retry-hl {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+
+/* ---- mark failure: the row springs back with an inline error and a retry ---- */
+.mark-failed {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-field);
+  background: color-mix(in srgb, var(--color-error) 8%, var(--color-base-100));
+  font-size: 0.75rem;
+  color: var(--color-error);
+}
+.mark-failed-msg {
+  font-weight: 500;
+}
+.mark-retry {
+  margin-left: auto;
+  border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
+  color: var(--color-error);
+}
