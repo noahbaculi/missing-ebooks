@@ -566,15 +566,60 @@
     return node;
   }
 
-  // Append a built node, wire its close button, and start its dismiss timer.
+  // Arm (or re-arm) a toast's auto-dismiss for `ms` from now, remembering when
+  // it started and how much time is left so a pause can bank the remainder.
+  function armToast(node, ms) {
+    node._remaining = ms;
+    node._start = Date.now();
+    node._timer = setTimeout(function () {
+      dismissToast(node);
+    }, ms);
+  }
+
+  // Pause the auto-dismiss and bank the time left on the clock. Hover and focus
+  // each pause; a second pause while already paused is a no-op.
+  function pauseToast(node) {
+    if (node._leaving || !node._timer) return;
+    clearTimeout(node._timer);
+    node._timer = null;
+    node._remaining -= Date.now() - node._start;
+  }
+
+  // Resume from the banked remainder, but only once the toast is neither hovered
+  // nor focused, so releasing one hold while the other still stands keeps it
+  // paused.
+  function resumeToast(node) {
+    if (node._leaving || node._timer || node._hovered || node._focused) return;
+    armToast(node, Math.max(node._remaining, 0));
+  }
+
+  // Append a built node, wire its close button and pause-on-interaction, and
+  // start its dismiss timer.
   function pushToast(node, timeoutMs) {
     evictOldest();
     node.querySelector(".toast-close").addEventListener("click", function () {
       dismissToast(node);
     });
-    node._timer = setTimeout(function () {
-      dismissToast(node);
-    }, timeoutMs);
+    node.addEventListener("mouseenter", function () {
+      node._hovered = true;
+      pauseToast(node);
+    });
+    node.addEventListener("mouseleave", function () {
+      node._hovered = false;
+      resumeToast(node);
+    });
+    node.addEventListener("focusin", function () {
+      node._focused = true;
+      pauseToast(node);
+    });
+    // focusout also fires when focus moves between controls inside the toast;
+    // only treat it as leaving when focus has actually left the node.
+    node.addEventListener("focusout", function (evt) {
+      if (node.contains(evt.relatedTarget)) return;
+      node._focused = false;
+      resumeToast(node);
+    });
+    armToast(node, timeoutMs);
     stack.appendChild(node);
   }
 

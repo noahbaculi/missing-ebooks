@@ -1655,6 +1655,9 @@ mod tests {
         // The exit-removal delay is a named constant kept in step with the CSS
         // `toast-out` duration.
         assert!(body.contains("EXIT_MS"));
+        // The auto-dismiss pauses while the toast is hovered or keyboard-focused.
+        assert!(body.contains(r#"addEventListener("mouseenter""#));
+        assert!(body.contains(r#"addEventListener("focusin""#));
     }
 
     #[tokio::test]
