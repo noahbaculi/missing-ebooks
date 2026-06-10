@@ -140,6 +140,11 @@
   // htmx fires htmx:confirm before every request. Only /mark uses htmx here, and
   // we still gate on the button's data, so no other request is ever intercepted.
   document.body.addEventListener("htmx:confirm", function (evt) {
+    // A programmatic resend already had the user's intent; don't re-prompt.
+    if (suppressConfirm) {
+      suppressConfirm = false;
+      return;
+    }
     var elt = evt.detail.elt;
     if (!elt || !elt.dataset || !elt.dataset.confirmAction) return;
     if (!confirmEnabled() || !dialog) return;
@@ -168,6 +173,9 @@
     if (view && view.value === "all") return;
     var li = btn.closest("li");
     if (!li) return;
+    // A resend (retry) fires beforeRequest again; the row is already collapsing, so
+    // don't re-pin its height or restart the transition.
+    if (li.classList.contains("leaving")) return;
     // Pin the current height, then drop to zero next frame so the transition has a
     // definite start. The .leaving class owns the timing, fade, and reduced-motion.
     li.style.maxHeight = li.scrollHeight + "px";
@@ -247,5 +255,131 @@
   window.addEventListener("online", function () {
     if (bannerShowsProblem()) flashReconnected();
     else hideBanner();
+  });
+
+  // ---- connection failures: classify, roll back a mark, offer a retry ----
+
+  var KIND_LABEL = { no_ebook: "None", ebook_elsewhere: "Elsewhere" };
+  var suppressConfirm = false;
+
+  // The op a request belongs to ("mark" / "rescan"), or null if we don't manage it.
+  function opOf(elt) {
+    var post = elt && elt.getAttribute && elt.getAttribute("hx-post");
+    if (post === "/mark") return "mark";
+    if (post === "/rescan") return "rescan";
+    return null;
+  }
+
+  // A failure worth retrying: a dropped connection, a timeout, or a gateway error
+  // from a proxy / restarting server. A plain 4xx/5xx is a real server error.
+  function isRetryable(kind, xhr) {
+    if (kind === "sendError" || kind === "timeout") return true;
+    if (kind === "responseError" && xhr) {
+      return xhr.status === 502 || xhr.status === 503 || xhr.status === 504;
+    }
+    return false;
+  }
+
+  function formValues(form) {
+    var v = {};
+    form.querySelectorAll("input[name]").forEach(function (i) {
+      v[i.name] = i.value;
+    });
+    return v;
+  }
+
+  // Re-send a request htmx already sent, reusing its verb, target, swap, and values.
+  // suppressConfirm keeps the mark confirm dialog from re-prompting on a resend.
+  function reissue(elt, op) {
+    if (op === "mark") {
+      // elt is the mark button; its form holds the hidden fields and the hx-swap.
+      var form = elt.closest("form.mark");
+      // Bail before arming suppressConfirm if the form is gone, so a stray failure
+      // on a detached button can't leave the flag stuck and mute the next confirm.
+      if (!form) return;
+      suppressConfirm = true;
+      var values = formValues(form);
+      var hv = JSON.parse(elt.getAttribute("hx-vals") || "{}");
+      Object.keys(hv).forEach(function (k) {
+        values[k] = hv[k];
+      });
+      window.htmx.ajax("POST", "/mark", {
+        source: elt,
+        target: elt.closest("section.root"),
+        swap: form.getAttribute("hx-swap"),
+        values: values
+      });
+    } else {
+      // elt IS the rescan form (hx-post="/rescan" lives on the form, not a button),
+      // so its own hx-swap and inputs drive the resend.
+      suppressConfirm = true;
+      window.htmx.ajax("POST", "/rescan", {
+        source: elt,
+        target: document.getElementById("roots"),
+        swap: elt.getAttribute("hx-swap"),
+        values: formValues(elt)
+      });
+    }
+  }
+
+  // Re-send a failed action after the user clicks its inline Retry.
+  function manualRetry(elt, op) {
+    var li = elt.closest("li");
+    if (li) {
+      var box = li.querySelector(":scope > .mark-failed");
+      if (box) box.remove();
+    }
+    reissue(elt, op);
+  }
+
+  // Roll a failed mark back: undo the optimistic collapse and show an inline error
+  // with a Retry that re-sends the same mark.
+  function markTerminalFailure(elt) {
+    var li = elt.closest("li");
+    if (li) {
+      li.classList.remove("leaving");
+      li.style.maxHeight = "";
+      var existing = li.querySelector(":scope > .mark-failed");
+      if (existing) existing.remove();
+      var kind = JSON.parse(elt.getAttribute("hx-vals") || "{}").kind;
+      var box = document.createElement("div");
+      box.className = "mark-failed";
+      var msg = document.createElement("span");
+      msg.className = "mark-failed-msg";
+      msg.textContent = 'Couldn’t save “' + (KIND_LABEL[kind] || "this") + '”.';
+      var retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn btn-outline btn-xs mark-retry";
+      retry.textContent = "↻ Retry";
+      retry.addEventListener("click", function () {
+        manualRetry(elt, "mark");
+      });
+      box.appendChild(msg);
+      box.appendChild(retry);
+      li.appendChild(box);
+    }
+    showBanner("failed");
+  }
+
+  // Task 5 replaces this with bounded auto-retry. For now a failure is terminal.
+  function handleFailure(elt, op, retryable) {
+    if (op === "mark") markTerminalFailure(elt);
+  }
+
+  ["htmx:sendError", "htmx:timeout", "htmx:responseError"].forEach(function (type) {
+    document.body.addEventListener(type, function (evt) {
+      var elt = evt.detail.elt;
+      var op = opOf(elt);
+      if (!op) return;
+      var kind = type.slice("htmx:".length);
+      handleFailure(elt, op, isRetryable(kind, evt.detail.xhr));
+    });
+  });
+
+  // A successful request clears a problem banner (with a brief Reconnected flash).
+  document.body.addEventListener("htmx:afterRequest", function (evt) {
+    if (!evt.detail.successful) return;
+    if (!opOf(evt.detail.elt)) return;
+    if (bannerShowsProblem()) flashReconnected();
   });
 })();
