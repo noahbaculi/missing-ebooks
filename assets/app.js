@@ -518,6 +518,9 @@
   var MAX_TOASTS = 3;
   var SUCCESS_MS = 8000;
   var ERROR_MS = 15000;
+  // The exit animation length. Must match the `toast-out` duration in app.css,
+  // since dismissToast removes the node after this delay.
+  var EXIT_MS = 480;
 
   // Map each marker kind to the label shown in the success toast. "No ebook"
   // spells out the row's short "None" button, which has no column header to lean
@@ -540,7 +543,7 @@
     node.classList.add("toast--out");
     setTimeout(function () {
       node.remove();
-    }, 180);
+    }, EXIT_MS);
   }
 
   // Drop the oldest toasts until appending one more stays within MAX_TOASTS.

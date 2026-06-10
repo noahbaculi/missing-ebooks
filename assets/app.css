@@ -1373,11 +1373,11 @@ li.leaving {
 @keyframes toast-out {
   to {
     opacity: 0;
-    transform: translateY(0.4rem) scale(0.98);
+    transform: translateY(0.5rem) scale(0.98);
   }
 }
 .toast.toast--out {
-  animation: toast-out 180ms ease-in both;
+  animation: toast-out 480ms ease-in both;
 }
 @media (prefers-reduced-motion: reduce) {
   .toast,

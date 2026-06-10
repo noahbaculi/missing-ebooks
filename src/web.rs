@@ -1567,6 +1567,8 @@ mod tests {
         // longer 1.4rem distance.
         assert!(body.contains("toast-in 700ms ease"));
         assert!(body.contains("translateY(1.4rem)"));
+        // The matching slower exit.
+        assert!(body.contains("toast-out 480ms ease-in"));
     }
 
     #[tokio::test]
@@ -1650,6 +1652,9 @@ mod tests {
         // The script drives a stack container and clones a per-toast template.
         assert!(body.contains("toast-stack"));
         assert!(body.contains("toast-template"));
+        // The exit-removal delay is a named constant kept in step with the CSS
+        // `toast-out` duration.
+        assert!(body.contains("EXIT_MS"));
     }
 
     #[tokio::test]
