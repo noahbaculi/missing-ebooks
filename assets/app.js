@@ -322,8 +322,10 @@
     }
   }
 
-  // Re-send a failed action after the user clicks its inline Retry.
+  // Re-send a failed action after the user clicks its inline Retry. Starts a fresh
+  // retry sequence.
   function manualRetry(elt, op) {
+    retryState.delete(elt);
     var li = elt.closest("li");
     if (li) {
       var box = li.querySelector(":scope > .mark-failed");
@@ -361,9 +363,22 @@
     showBanner("failed");
   }
 
-  // Task 5 replaces this with bounded auto-retry. For now a failure is terminal.
+  // Retry a transient failure a bounded number of times with backoff; once exhausted
+  // (or for a non-retryable failure) fall through to the terminal handler.
   function handleFailure(elt, op, retryable) {
-    if (op === "mark") markTerminalFailure(elt);
+    var st = retryState.get(elt) || { attempts: 0 };
+    if (retryable && st.attempts < MAX_RETRIES) {
+      var delay = BACKOFFS[st.attempts];
+      st.attempts += 1;
+      retryState.set(elt, st);
+      showBanner("retrying");
+      if (op === "rescan") rescanRetryHold(true);
+      setTimeout(function () {
+        reissue(elt, op);
+      }, delay);
+    } else {
+      terminalFailure(elt, op);
+    }
   }
 
   ["htmx:sendError", "htmx:timeout", "htmx:responseError"].forEach(function (type) {
@@ -376,10 +391,56 @@
     });
   });
 
-  // A successful request clears a problem banner (with a brief Reconnected flash).
+  // A successful request ends any retry sequence: clear the held indicators and the
+  // button highlight, and clear a problem banner with a brief Reconnected flash.
   document.body.addEventListener("htmx:afterRequest", function (evt) {
     if (!evt.detail.successful) return;
-    if (!opOf(evt.detail.elt)) return;
+    var op = opOf(evt.detail.elt);
+    if (!op) return;
+    retryState.delete(evt.detail.elt);
+    // The rescan retry-highlight only clears when a rescan itself succeeds; an
+    // unrelated successful mark must not strip the "still needs rescanning" cue.
+    if (op === "rescan") {
+      rescanRetryHold(false);
+      var btn = document.getElementById("rescan-btn");
+      if (btn) btn.classList.remove("conn-retry-hl");
+    }
     if (bannerShowsProblem()) flashReconnected();
   });
+  // ---- bounded auto-retry for both idempotent endpoints ----
+
+  var MAX_RETRIES = 3;
+  var BACKOFFS = [500, 1500, 3000];
+  var retryState = new WeakMap(); // request element -> { attempts }
+
+  // Hold (or release) the rescan skeleton and busy button across backoff gaps, so
+  // the loading state does not flicker between attempts.
+  function rescanRetryHold(on) {
+    var sk = document.getElementById("scan-skeleton");
+    var btn = document.getElementById("rescan-btn");
+    if (sk) sk.classList.toggle("is-retrying", on);
+    if (btn) {
+      btn.classList.toggle("is-retrying", on);
+      btn.disabled = on;
+    }
+  }
+
+  // A rescan that failed for good: drop the skeleton, re-enable the Rescan button,
+  // and highlight it as the retry.
+  function rescanTerminalFailure() {
+    rescanRetryHold(false);
+    var btn = document.getElementById("rescan-btn");
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("htmx-request");
+      btn.classList.add("conn-retry-hl");
+    }
+    showBanner("failed", connBanner ? connBanner.dataset.msgFailedRescan : null);
+  }
+
+  function terminalFailure(elt, op) {
+    retryState.delete(elt);
+    if (op === "mark") markTerminalFailure(elt);
+    else rescanTerminalFailure();
+  }
 })();
