@@ -259,7 +259,6 @@
 
   // ---- connection failures: classify, roll back a mark, offer a retry ----
 
-  var KIND_LABEL = { no_ebook: "None", ebook_elsewhere: "Elsewhere" };
   var suppressConfirm = false;
 
   // The op a request belongs to ("mark" / "rescan"), or null if we don't manage it.
@@ -322,33 +321,55 @@
     }
   }
 
+  // A small warning glyph for the inline mark-failure strip, in the row's error color.
+  var MARK_WARN_SVG =
+    '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  // A folder renders as a leaf <div.row> or a <summary.row> inside <details>; return
+  // whichever this <li> has, so the failure strip can sit right under the folder's own
+  // line rather than after its whole child subtree.
+  function rowOf(li) {
+    return li.querySelector(":scope > .row") || li.querySelector(":scope > details > .row");
+  }
+
+  // Remove the failure strip belonging to this element's row (its immediate next
+  // sibling), if one is showing.
+  function clearMarkFailed(elt) {
+    var li = elt.closest("li");
+    var row = li && rowOf(li);
+    var box = row && row.nextElementSibling;
+    if (box && box.classList.contains("mark-failed")) box.remove();
+  }
+
   // Re-send a failed action after the user clicks its inline Retry. Starts a fresh
   // retry sequence.
   function manualRetry(elt, op) {
     retryState.delete(elt);
-    var li = elt.closest("li");
-    if (li) {
-      var box = li.querySelector(":scope > .mark-failed");
-      if (box) box.remove();
-    }
+    clearMarkFailed(elt);
     reissue(elt, op);
   }
 
-  // Roll a failed mark back: undo the optimistic collapse and show an inline error
-  // with a Retry that re-sends the same mark.
+  // Roll a failed mark back: undo the optimistic collapse and attach an inline error
+  // directly under the folder's own row, naming the folder, with a Retry that re-sends
+  // the same mark. The original mark buttons stay on the row (the section never
+  // swapped), so the user can also just pick again.
   function markTerminalFailure(elt) {
     var li = elt.closest("li");
     if (li) {
       li.classList.remove("leaving");
       li.style.maxHeight = "";
-      var existing = li.querySelector(":scope > .mark-failed");
-      if (existing) existing.remove();
-      var kind = JSON.parse(elt.getAttribute("hx-vals") || "{}").kind;
+      clearMarkFailed(elt);
+      var folder = elt.dataset.confirmFolder || "this folder";
       var box = document.createElement("div");
       box.className = "mark-failed";
+      box.setAttribute("role", "alert");
+      var icon = document.createElement("span");
+      icon.className = "mark-failed-icon";
+      icon.setAttribute("aria-hidden", "true");
+      icon.innerHTML = MARK_WARN_SVG;
       var msg = document.createElement("span");
       msg.className = "mark-failed-msg";
-      msg.textContent = 'Couldn’t save “' + (KIND_LABEL[kind] || "this") + '”.';
+      msg.textContent = 'Couldn’t save “' + folder + '”.';
       var retry = document.createElement("button");
       retry.type = "button";
       retry.className = "btn btn-outline btn-xs mark-retry";
@@ -356,9 +377,12 @@
       retry.addEventListener("click", function () {
         manualRetry(elt, "mark");
       });
+      box.appendChild(icon);
       box.appendChild(msg);
       box.appendChild(retry);
-      li.appendChild(box);
+      var row = rowOf(li);
+      if (row) row.insertAdjacentElement("afterend", box);
+      else li.appendChild(box);
     }
     showBanner("failed");
   }

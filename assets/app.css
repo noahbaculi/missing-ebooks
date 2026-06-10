@@ -1153,21 +1153,39 @@ li.leaving {
 }
 
 /* ---- mark failure: the row springs back with an inline error and a retry ---- */
+/* The strip attaches to the folder's own row (it is inserted as the row's next
+   sibling), so it reads as part of that folder. The row above it gets a faint error
+   wash and the strip a matching left rule, tying the two together as one unit. */
+.row:has(+ .mark-failed) {
+  background: color-mix(in srgb, var(--color-error) 7%, transparent);
+}
 .mark-failed {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.35rem;
-  padding: 0.3rem 0.5rem;
+  gap: 0.45rem;
+  margin: 0.1rem 0 0.4rem;
+  padding: 0.32rem 0.6rem;
   border-radius: var(--radius-field);
-  background: color-mix(in srgb, var(--color-error) 8%, var(--color-base-100));
-  font-size: 0.75rem;
+  border-left: 2px solid color-mix(in srgb, var(--color-error) 50%, transparent);
+  background: color-mix(in srgb, var(--color-error) 9%, var(--color-base-100));
+  font-size: 0.78rem;
   color: var(--color-error);
+}
+.mark-failed-icon {
+  flex: none;
+  width: 0.9rem;
+  height: 0.9rem;
+  display: inline-flex;
 }
 .mark-failed-msg {
   font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .mark-retry {
+  flex: none;
   margin-left: auto;
   border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
   color: var(--color-error);
