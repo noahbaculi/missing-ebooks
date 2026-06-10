@@ -46,3 +46,8 @@ perf = "warn"
 
 [lints.rust]
 missing_docs = "warn"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
