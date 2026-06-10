@@ -3,11 +3,12 @@
 //! decoupled from the axum version. Marker writes use htmx to swap just the
 //! affected root's section; the script is vendored and served from `/static`.
 
-use std::sync::Arc;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::{Arc, OnceLock};
 
 use axum::Router;
 use axum::extract::{Form, Query, State};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::{DOCTYPE, Markup, PreEscaped, html};
@@ -28,6 +29,21 @@ const APP_CSS: &str = include_str!("../assets/app.css");
 
 /// The client behavior script, embedded at compile time and served from `/static`.
 const APP_JS: &str = include_str!("../assets/app.js");
+
+/// Cache lifetimes for the static assets. htmx is vendored and changes only on a
+/// deliberate version bump, so it gets a week; the stylesheet and the client
+/// script change often, so they get an hour. None carry `immutable`: the URLs are
+/// not fingerprinted, so the ETag must stay free to revalidate a changed asset
+/// once the window passes.
+const HTMX_CACHE_CONTROL: &str = "public, max-age=604800";
+const APP_CSS_CACHE_CONTROL: &str = "public, max-age=3600";
+const APP_JS_CACHE_CONTROL: &str = "public, max-age=3600";
+
+/// Per-asset ETag cells, each filled once from the embedded bytes on the first
+/// request.
+static HTMX_ETAG: OnceLock<String> = OnceLock::new();
+static APP_CSS_ETAG: OnceLock<String> = OnceLock::new();
+static APP_JS_ETAG: OnceLock<String> = OnceLock::new();
 
 /// Pre-paint theme bootstrap: resolves the saved choice, or the OS preference for
 /// "system" / an unset value, and sets `data-theme` on <html> before first paint
@@ -236,21 +252,88 @@ fn view_toggle(mode: ViewMode) -> Markup {
     }
 }
 
-pub(crate) async fn htmx_script() -> impl IntoResponse {
+/// A strong ETag for an asset: a quoted hash of its bytes. The content is fixed
+/// per build, so the hash is stable for the life of the process.
+fn asset_etag(body: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    body.hash(&mut hasher);
+    format!("\"{:016x}\"", hasher.finish())
+}
+
+/// Whether an `If-None-Match` value revalidates against `etag`. The value can be a
+/// comma list and can carry a `W/` weak prefix the edge added, so each candidate
+/// is trimmed and unwrapped before the compare.
+fn if_none_match_hit(value: Option<&str>, etag: &str) -> bool {
+    let Some(value) = value else { return false };
+    value.split(',').any(|candidate| {
+        let candidate = candidate.trim();
+        candidate.strip_prefix("W/").unwrap_or(candidate) == etag
+    })
+}
+
+/// Serve one embedded asset with revalidation. The ETag is computed once into
+/// `etag_cell`; a matching `If-None-Match` gets a `304` carrying `ETag` and
+/// `Cache-Control` and no body, and every other request gets a `200` with the body
+/// and all three headers.
+fn serve_asset(
+    headers: &HeaderMap,
+    body: &'static str,
+    content_type: &'static str,
+    cache_control: &'static str,
+    etag_cell: &'static OnceLock<String>,
+) -> Response {
+    let etag = etag_cell.get_or_init(|| asset_etag(body));
+    let requested = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok());
+    if if_none_match_hit(requested, etag) {
+        return (
+            StatusCode::NOT_MODIFIED,
+            [
+                (header::ETAG, etag.as_str()),
+                (header::CACHE_CONTROL, cache_control),
+            ],
+        )
+            .into_response();
+    }
     (
-        [(header::CONTENT_TYPE, "text/javascript;charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, cache_control),
+            (header::ETAG, etag.as_str()),
+        ],
+        body,
+    )
+        .into_response()
+}
+
+pub(crate) async fn htmx_script(headers: HeaderMap) -> Response {
+    serve_asset(
+        &headers,
         HTMX_JS,
+        "text/javascript;charset=utf-8",
+        HTMX_CACHE_CONTROL,
+        &HTMX_ETAG,
     )
 }
 
-pub(crate) async fn app_css() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "text/css;charset=utf-8")], APP_CSS)
+pub(crate) async fn app_css(headers: HeaderMap) -> Response {
+    serve_asset(
+        &headers,
+        APP_CSS,
+        "text/css;charset=utf-8",
+        APP_CSS_CACHE_CONTROL,
+        &APP_CSS_ETAG,
+    )
 }
 
-async fn app_js() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/javascript;charset=utf-8")],
+async fn app_js(headers: HeaderMap) -> Response {
+    serve_asset(
+        &headers,
         APP_JS,
+        "text/javascript;charset=utf-8",
+        APP_JS_CACHE_CONTROL,
+        &APP_JS_ETAG,
     )
 }
 
@@ -2244,5 +2327,119 @@ mod tests {
         // No gap under this branch, so no trigger and no group are emitted.
         assert!(!body.contains(r#"class="actions-trigger""#));
         assert!(!body.contains(r#"class="actions-group""#));
+    }
+
+    #[tokio::test]
+    async fn static_assets_carry_cache_control_and_a_strong_etag() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app_for(dir.path());
+        for path in ["/static/htmx.min.js", "/static/app.css", "/static/app.js"] {
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let cache_control = response
+                .headers()
+                .get("cache-control")
+                .unwrap()
+                .to_str()
+                .unwrap();
+            assert!(
+                cache_control.contains("max-age="),
+                "{path} cache-control: {cache_control}"
+            );
+            let etag = response.headers().get("etag").unwrap().to_str().unwrap();
+            // A strong validator: quoted, with no weak `W/` prefix.
+            assert!(
+                etag.starts_with('"') && etag.ends_with('"'),
+                "{path} etag: {etag}"
+            );
+            assert!(!etag.starts_with("W/"), "{path} etag: {etag}");
+        }
+    }
+
+    #[tokio::test]
+    async fn htmx_is_cached_for_a_finite_window_and_is_not_immutable() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/htmx.min.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let cache_control = response
+            .headers()
+            .get("cache-control")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        // A long but finite window for the vendored runtime, never immutable, so a
+        // version bump still revalidates once the window passes.
+        assert!(cache_control.contains("max-age=604800"));
+        assert!(!cache_control.contains("immutable"));
+    }
+
+    #[tokio::test]
+    async fn a_matching_if_none_match_gets_a_304_with_no_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app_for(dir.path());
+        // First request reads the asset's ETag.
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let etag = first
+            .headers()
+            .get("etag")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        // Sending it back as If-None-Match revalidates: 304, the headers, no body.
+        let revalidated = app
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .header("if-none-match", &etag)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED);
+        assert!(revalidated.headers().get("etag").is_some());
+        assert!(revalidated.headers().get("cache-control").is_some());
+        let body = body_string(revalidated).await;
+        assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_non_matching_if_none_match_gets_the_full_200() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .header("if-none-match", "\"stale\"")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_string(response).await;
+        assert!(body.contains("--color-base-100"));
     }
 }
