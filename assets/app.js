@@ -208,25 +208,29 @@
     }
   }
 
+  // True for any mark button, in either view.
+  function isMark(btn) {
+    return !!(btn && btn.matches && btn.matches('[hx-post="/mark"]'));
+  }
+
   // True for a gaps-only mark request (the kind whose row should collapse on success).
   // A show-all mark carries view=all and stays put, flipping to covered in place.
   function isCollapsingMark(btn) {
-    if (!btn || !btn.matches || !btn.matches('[hx-post="/mark"]')) return false;
+    if (!isMark(btn)) return false;
     var form = btn.closest("form.mark");
     var view = form && form.querySelector('input[name="view"]');
     return !(view && view.value === "all");
   }
 
-  // The moment a gaps-only mark goes out, hold its row in place in the "saving" state.
-  // The row must not look handled before the write lands, so it stays visible and only
-  // collapses once the server confirms (htmx:beforeOnLoad below).
+  // The moment a mark goes out, drop focus from its button: the section swap removes it,
+  // and a focused element vanishing jumps the scroll to the document bottom in either
+  // view. A gaps-only mark also holds its row in the "saving" state so it stays visible
+  // until the server confirms, never looking handled before the write lands.
   document.body.addEventListener("htmx:beforeRequest", function (evt) {
     var btn = evt.detail.elt;
-    if (!isCollapsingMark(btn)) return;
-    // The section swap removes this button. If it still holds focus when that happens,
-    // the browser jumps the scroll to the document bottom, so drop focus first.
+    if (!isMark(btn)) return;
     if (document.activeElement === btn) btn.blur();
-    setSaving(btn.closest(".row"), true);
+    if (isCollapsingMark(btn)) setSaving(btn.closest(".row"), true);
   });
 
   // A confirmed save (2xx) is the only thing that may hide the row: collapse it now and
