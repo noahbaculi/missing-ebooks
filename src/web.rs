@@ -1315,6 +1315,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn app_script_toggles_the_summary_end_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The recompute shows the all-clear line and hides the hero-and-bar head once
+        // the live total reaches zero, and reverses it when an undo brings a gap back,
+        // so the live strip lands on the same end-state a reload would render.
+        assert!(body.contains(r#"getElementById("gap-summary-clear")"#));
+        assert!(body.contains(r#"getElementById("gap-summary-head")"#));
+        assert!(body.contains("clear.hidden = total !== 0"));
+        assert!(body.contains("head.hidden = total === 0"));
+    }
+
+    #[tokio::test]
     async fn rescan_redirects_to_root() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
@@ -2050,6 +2072,8 @@ mod tests {
         assert!(body.contains(r#"id="gap-pct""#));
         assert!(body.contains("audiobooks"));
         assert!(body.contains("Coverage in"));
+        // The all-clear line renders too, hidden until the live total reaches zero.
+        assert!(body.contains(r#"id="gap-summary-clear" hidden"#));
     }
 
     #[tokio::test]
@@ -2064,10 +2088,13 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // Total zero: the all-clear message, the zero baseline, and no session bar.
+        // Total zero: the all-clear line shows and the zero baseline rides the strip.
+        // The hero-and-bar head still renders so an undo back from the last mark can
+        // bring it back, but it loads hidden.
         assert!(body.contains(r#"data-gaps-at-load="0""#));
         assert!(body.contains("All clear"));
-        assert!(!body.contains(r#"role="progressbar""#));
+        assert!(body.contains(r#"id="gap-summary-clear">"#));
+        assert!(body.contains(r#"id="gap-summary-head" hidden"#));
     }
 
     #[tokio::test]

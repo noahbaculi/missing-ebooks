@@ -906,6 +906,12 @@
   function recomputeSummary() {
     if (!summary) return;
     var total = currentGapTotal();
+    // Converge on the end-state a reload shows: the all-clear line once the live
+    // total hits zero, the hero-and-bar head otherwise (an undo can bring it back).
+    var clear = document.getElementById("gap-summary-clear");
+    var head = document.getElementById("gap-summary-head");
+    if (clear) clear.hidden = total !== 0;
+    if (head) head.hidden = total === 0;
     setText("gap-total", String(total));
     var chips = document.querySelectorAll("#gap-chips .gap-chip");
     for (var i = 0; i < chips.length; i++) {

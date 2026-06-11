@@ -1570,6 +1570,12 @@ li.leaving {
   width: 1.15rem;
   height: 1.15rem;
 }
+/* the display:flex above outranks the user-agent `[hidden] { display: none }`, so
+   restore it: app.js toggles whichever end-state the live total calls for. */
+.gap-summary-head[hidden],
+.gap-summary-clear[hidden] {
+  display: none;
+}
 
 /* per-root chips */
 .gap-chips {

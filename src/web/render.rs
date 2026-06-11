@@ -377,19 +377,19 @@ fn gap_summary(view: &FlaggedView) -> Markup {
     let total = total_gaps(view);
     html! {
         section.gap-summary id="gap-summary" data-gaps-at-load=(total) {
-            @if total == 0 {
-                p.gap-summary-clear {
-                    (PreEscaped(CHECK_SVG))
-                    span { "All clear. No gaps in your library." }
+            // Both end-states render; `app.js` toggles `hidden` as the live total
+            // crosses zero so the strip converges on what a reload would show, and so
+            // an undo back from the last mark can bring the hero and bar back.
+            p.gap-summary-clear id="gap-summary-clear" hidden[total != 0] {
+                (PreEscaped(CHECK_SVG))
+                span { "All clear. No gaps in your library." }
+            }
+            div.gap-summary-head id="gap-summary-head" hidden[total == 0] {
+                div.gap-hero {
+                    span.gap-hero-num id="gap-total" { (total) }
+                    span.gap-hero-label { (gap_word(total)) " to fill" }
                 }
-            } @else {
-                div.gap-summary-head {
-                    div.gap-hero {
-                        span.gap-hero-num id="gap-total" { (total) }
-                        span.gap-hero-label { (gap_word(total)) " to fill" }
-                    }
-                    (session_bar(view, total))
-                }
+                (session_bar(view, total))
             }
             @if view.len() > 1 {
                 div.gap-chips id="gap-chips" {
