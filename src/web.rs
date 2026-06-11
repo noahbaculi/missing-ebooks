@@ -2005,4 +2005,44 @@ mod tests {
         let body = body_string(response).await;
         assert!(body.is_empty());
     }
+
+    #[tokio::test]
+    async fn index_renders_the_gap_summary_strip() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The strip renders server-side, between the navbar and the roots.
+        assert!(body.contains(r#"id="gap-summary""#));
+        // The hero gap total has its own hook, and the session bar's load-time
+        // baseline rides on the strip as a data attribute. One gap here (Book).
+        assert!(body.contains(r#"id="gap-total""#));
+        assert!(body.contains(r#"data-gaps-at-load="1""#));
+        // "Authors affected" is the count of top-level folders that still hold a gap.
+        assert!(body.contains(r#"id="gap-authors""#));
+        assert!(body.contains("affected"));
+    }
+
+    #[tokio::test]
+    async fn gap_summary_shows_all_clear_for_a_covered_library() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        touch(&dir.path().join("Book/Book.epub"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // Total zero: the all-clear message, the zero baseline, and no session bar.
+        assert!(body.contains(r#"data-gaps-at-load="0""#));
+        assert!(body.contains("All clear"));
+        assert!(!body.contains(r#"role="progressbar""#));
+    }
 }

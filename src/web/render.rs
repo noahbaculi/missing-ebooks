@@ -259,6 +259,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                         }
                     }
                 }
+                (gap_summary(view))
                 div.roots-wrap {
                     main id="roots" {
                         (roots(view, links, mode))
@@ -281,6 +282,84 @@ fn count_gaps(nodes: &[Node]) -> usize {
         .iter()
         .map(|n| usize::from(n.needs_ebook()) + count_gaps(&n.children))
         .sum()
+}
+
+/// Total gaps across all roots: the sum of `count_gaps` over each forest. `Clean`
+/// and `Error` roots contribute nothing. Feeds the summary hero and the session
+/// bar's load-time baseline.
+fn total_gaps(view: &FlaggedView) -> usize {
+    view.iter()
+        .map(|section| match &section.state {
+            RootState::Forest(nodes) => count_gaps(nodes),
+            RootState::Clean | RootState::Error(_) => 0,
+        })
+        .sum()
+}
+
+/// The forest behind a section, or `None` for a `Clean` / `Error` root.
+fn forest_nodes(section: &RootSection) -> Option<&[Node]> {
+    match &section.state {
+        RootState::Forest(nodes) => Some(nodes.as_slice()),
+        RootState::Clean | RootState::Error(_) => None,
+    }
+}
+
+/// Top-level forest nodes that still hold a gap, across every root. In gaps-only
+/// every top-level node qualifies; in show-all a fully covered one is excluded.
+/// The loose-root `.` node counts as one. This is "authors affected".
+fn authors_affected(view: &FlaggedView) -> usize {
+    view.iter()
+        .filter_map(forest_nodes)
+        .flatten()
+        .filter(|node| node.has_gap_within())
+        .count()
+}
+
+/// "gap" / "gaps".
+fn gap_word(n: usize) -> &'static str {
+    if n == 1 { "gap" } else { "gaps" }
+}
+
+/// "author" / "authors".
+fn author_word(n: usize) -> &'static str {
+    if n == 1 { "author" } else { "authors" }
+}
+
+/// The gap summary strip, rendered between the navbar and the roots and computed
+/// from the `FlaggedView` already on hand, so it needs no scanner change. The hero
+/// gap total, the authors-affected count, an optional "most gaps" line, optional
+/// per-root chips for a multi-root setup, and a session progress bar. `app.js`
+/// keeps these current from the DOM as marks land; this render is the first paint
+/// and the no-JS view. `data-gaps-at-load` seeds the session bar's baseline.
+fn gap_summary(view: &FlaggedView) -> Markup {
+    let total = total_gaps(view);
+    let authors = authors_affected(view);
+    html! {
+        section.gap-summary id="gap-summary" data-gaps-at-load=(total) {
+            @if total == 0 {
+                p.gap-summary-clear {
+                    (PreEscaped(CHECK_SVG))
+                    span { "All clear. No gaps in your library." }
+                }
+            } @else {
+                div.gap-summary-head {
+                    div.gap-hero {
+                        span.gap-hero-num id="gap-total" { (total) }
+                        span.gap-hero-label { (gap_word(total)) " to fill" }
+                    }
+                    div.gap-stat {
+                        span.gap-stat-num id="gap-authors" { (authors) }
+                        span.gap-stat-label { (author_word(authors)) " affected" }
+                    }
+                    // The "most gaps" line is added in Task 2.
+                }
+                // The session bar is added in Task 3 (inside this @else: shown only
+                // when there is a gap to resolve).
+            }
+            // Per-root chips are added in Task 2, at this section level so a
+            // multi-root all-clear library still shows them.
+        }
+    }
 }
 
 /// The badge shown on a root's summary: the gap count, a clean check, or a scan
