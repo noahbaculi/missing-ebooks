@@ -12,6 +12,8 @@ use std::net::Ipv4Addr;
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use axum::http::{HeaderValue, header};
+use axum::response::Response;
 use missing_ebooks::config::Config;
 use missing_ebooks::scanner::ScanSettings;
 use missing_ebooks::scenarios;
@@ -127,6 +129,17 @@ async fn bind_harness_listener(
     }
 }
 
+/// Stamp a harness response `no-store` so the browser never caches it. Layered
+/// over the whole router in dev, it overrides the production `Cache-Control` on
+/// every response (asset or page) so each reload fetches the freshly rebuilt
+/// bytes, with no hard reload or port change.
+async fn no_store(mut response: Response) -> Response {
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
@@ -186,7 +199,12 @@ async fn main() -> ExitCode {
         }
     };
     let state = Arc::new(AppState::new(config, settings));
-    let app = web::router(state);
+    // Dev convenience only: the production asset handlers cache the stylesheet and
+    // script for an hour, so after an edit-and-rebuild a browser serves the stale
+    // copy until a hard reload or a fresh port. This harness exists to eyeball live
+    // edits, so override every response to `no-store`. The production server keeps
+    // its real cache policy (see src/web/assets.rs).
+    let app = web::router(state).layer(axum::middleware::map_response(no_store));
 
     // Bind 127.0.0.1. With no --port, prefer the app's default so the printed
     // URL matches a real deployment, falling back to an OS-assigned port only if
