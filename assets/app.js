@@ -872,42 +872,17 @@
     return document.querySelectorAll("#roots .row.flagged:not(.leaving)").length;
   }
 
-  // Each top-level item (author) that still holds a gap, with its gap count, for
-  // the authors-affected number and the top-gaps line.
-  function authorGapCounts() {
-    var tops = document.querySelectorAll("#roots .menu > li");
-    var out = [];
-    for (var i = 0; i < tops.length; i++) {
-      var gaps = tops[i].querySelectorAll(".row.flagged:not(.leaving)").length;
-      if (gaps > 0) {
-        var nameEl = tops[i].querySelector(".row .name");
-        out.push({ name: nameEl ? nameEl.textContent : "", gaps: gaps });
-      }
-    }
-    return out;
-  }
-
   function setText(id, text) {
     var el = document.getElementById(id);
     if (el) el.textContent = text;
   }
 
-  // Repaint the strip from the DOM: hero total, authors-affected count, the
-  // top-gaps line when it is present, the per-root chips, and the session bar.
+  // Repaint the strip from the DOM: the hero total, the per-root chips, and the
+  // session coverage readout and bar.
   function recomputeSummary() {
     if (!summary) return;
     var total = currentGapTotal();
     setText("gap-total", String(total));
-    var authors = authorGapCounts();
-    setText("gap-authors", String(authors.length));
-    var top = document.getElementById("gap-top");
-    if (top && authors.length) {
-      var worst = authors.reduce(function (a, b) {
-        return b.gaps > a.gaps ? b : a;
-      });
-      setText("gap-top-name", worst.name);
-      setText("gap-top-num", String(worst.gaps));
-    }
     var chips = document.querySelectorAll("#gap-chips .gap-chip");
     for (var i = 0; i < chips.length; i++) {
       if (chips[i].classList.contains("gap-chip-error")) continue;
@@ -934,6 +909,11 @@
     fill.style.width = pct + "%";
     bar.setAttribute("aria-valuenow", String(resolved));
     bar.setAttribute("aria-valuemax", String(sessionBaseline));
+    // The readout is the bar in words: resolved of baseline audiobooks, rounded
+    // percent. The baseline updates too, since a rescan reseeds it.
+    setText("gap-resolved", String(resolved));
+    setText("gap-baseline", String(sessionBaseline));
+    setText("gap-pct", String(Math.round(pct)));
   }
 
   // A fresh tree (rescan) resets the baseline to the new total, so the bar measures

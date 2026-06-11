@@ -2336,6 +2336,9 @@ mod tests {
         // It runs on a confirmed mark, on an undo/section swap, and on a rescan.
         assert!(body.contains(r#"addEventListener("marked""#));
         assert!(body.contains("htmx:afterSwap"));
+        // The readout numbers track the bar: resolved of baseline, and the percent.
+        assert!(body.contains("gap-resolved"));
+        assert!(body.contains("gap-pct"));
     }
 
     #[tokio::test]
