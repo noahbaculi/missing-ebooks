@@ -204,6 +204,9 @@ pub struct ScannedFolder {
     /// on its own. Ebooks first, then markers, each natural-sorted. Empty for gaps,
     /// plain containers, and folders covered only through an ancestor.
     pub cover_files: Vec<String>,
+    /// Audio filenames that physically sit in this folder, natural-sorted. Empty on
+    /// a folder with no direct audio. Collected the same way as `cover_files`.
+    pub audio_files: Vec<String>,
 }
 
 /// Walk `root` and return every folder with both facts, relative to `root`.
@@ -234,7 +237,7 @@ fn visit_all(
     };
 
     let mut subdirs: Vec<PathBuf> = Vec::new();
-    let mut has_audio = false;
+    let mut audio_files: Vec<String> = Vec::new();
     let mut ebooks: Vec<String> = Vec::new();
     let mut markers: Vec<String> = Vec::new();
 
@@ -249,7 +252,7 @@ fn visit_all(
             match classify_file(&file_name, settings) {
                 FileKind::Ebook => ebooks.push(file_name.to_string_lossy().into_owned()),
                 FileKind::Marker => markers.push(file_name.to_string_lossy().into_owned()),
-                FileKind::Audio => has_audio = true,
+                FileKind::Audio => audio_files.push(file_name.to_string_lossy().into_owned()),
                 FileKind::Other => {}
             }
         }
@@ -265,12 +268,15 @@ fn visit_all(
     let mut cover_files = ebooks;
     cover_files.extend(markers);
 
+    audio_files.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
+
     if let Ok(rel) = dir.strip_prefix(root) {
         out.push(ScannedFolder {
             rel_path: rel.to_path_buf(),
-            directly_holds_audio: has_audio,
+            directly_holds_audio: !audio_files.is_empty(),
             missing_ebook: !covered,
             cover_files,
+            audio_files,
         });
     }
     // Coverage does not stop the descent here; only exclusion does.
@@ -625,5 +631,28 @@ mod tests {
         assert!(got["Book"][..2].contains(&"Book.epub".to_string()));
         assert!(got["Book"][..2].contains(&"Book (2016).pdf".to_string()));
         assert_eq!(got["Book"][2], ".no_ebook".to_string());
+    }
+
+    #[test]
+    fn scan_all_collects_natural_sorted_audio_filenames() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/02 - Two.mp3"));
+        touch(&dir.path().join("Book/10 - Ten.mp3"));
+        touch(&dir.path().join("Book/01 - One.mp3"));
+        let folders = scan_all(dir.path(), &default_settings(&[]));
+        let book = folders
+            .iter()
+            .find(|f| f.rel_path == Path::new("Book"))
+            .unwrap();
+        assert_eq!(
+            book.audio_files,
+            vec!["01 - One.mp3", "02 - Two.mp3", "10 - Ten.mp3"]
+        );
+        // The root container holds no direct audio here, so its list is empty.
+        let root = folders
+            .iter()
+            .find(|f| f.rel_path == Path::new(""))
+            .unwrap();
+        assert!(root.audio_files.is_empty());
     }
 }

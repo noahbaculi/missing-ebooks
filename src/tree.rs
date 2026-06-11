@@ -141,7 +141,7 @@ pub fn build_all(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> 
                 missing_ebook: entry.missing_ebook,
                 children: Vec::new(),
                 cover_files: entry.cover_files.clone(),
-                audio_files: Vec::new(),
+                audio_files: entry.audio_files.clone(),
             },
         );
     }
@@ -180,6 +180,7 @@ fn insert_all(
         siblings[idx].directly_holds_audio = folder.directly_holds_audio;
         siblings[idx].missing_ebook = folder.missing_ebook;
         siblings[idx].cover_files = folder.cover_files.clone();
+        siblings[idx].audio_files = folder.audio_files.clone();
     } else {
         insert_all(&mut siblings[idx].children, tail, &rel_path, folder);
     }
@@ -477,6 +478,17 @@ mod tests {
             directly_holds_audio: audio,
             missing_ebook: missing,
             cover_files: Vec::new(),
+            audio_files: Vec::new(),
+        }
+    }
+
+    fn sf_audio(rel: &str, audio_files: &[&str]) -> ScannedFolder {
+        ScannedFolder {
+            rel_path: PathBuf::from(rel),
+            directly_holds_audio: true,
+            missing_ebook: true,
+            cover_files: Vec::new(),
+            audio_files: audio_files.iter().map(|s| s.to_string()).collect(),
         }
     }
 
@@ -543,6 +555,7 @@ mod tests {
             directly_holds_audio: audio,
             missing_ebook: missing,
             cover_files: cover_files.iter().map(|s| s.to_string()).collect(),
+            audio_files: Vec::new(),
         }
     }
 
@@ -562,6 +575,16 @@ mod tests {
                 .unwrap()
                 .cover_files
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn build_all_carries_audio_files_onto_the_node() {
+        let folders = vec![sf_audio("Book", &["01 - One.mp3", "02 - Two.mp3"])];
+        let forest = build_all("Audiobooks", &folders);
+        assert_eq!(
+            find(&forest, "Book").unwrap().audio_files,
+            vec!["01 - One.mp3".to_string(), "02 - Two.mp3".to_string()]
         );
     }
 
