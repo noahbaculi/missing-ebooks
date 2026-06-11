@@ -2287,6 +2287,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_styles_the_title_home_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.css")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The title link carries the brand-mark spacing, underlines on hover, and
+        // shows a focus ring for keyboard users.
+        assert!(body.contains(".navbar h1 a"));
+        assert!(body.contains(".navbar h1 a:hover"));
+        assert!(body.contains(".navbar h1 a:focus-visible"));
+    }
+
+    #[tokio::test]
     async fn index_renders_the_shortcuts_cheatsheet_and_trigger() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
