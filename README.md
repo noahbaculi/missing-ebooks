@@ -141,7 +141,7 @@ Scenarios:
 
 | Scenario       | Shows                                                                      |
 | -------------- | -------------------------------------------------------------------------- |
-| `mixed-forest` | Nested tree: containers, flagged leaves, query cleaning, ancestor coverage |
+| `mixed-forest` | Three roots: a nested showcase forest, a smaller forest with cross-root `.ebook_elsewhere` markers, and a fully covered Clean root |
 | `messy-shelf`  | Inconsistent organization: standalone books, author-only/series-only folders, a half-sorted author, a dumping folder, beside one tidy author>series>book pocket |
 | `clean-error`  | Two roots side by side: one fully covered (Clean), one uncreated (Error)   |
 | `root-flagged` | Loose audio in the root, so the root itself is flagged                     |
