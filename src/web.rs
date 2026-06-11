@@ -2319,4 +2319,31 @@ mod tests {
         assert!(body.contains("search-empty"));
         assert!(body.contains("clearFilter"));
     }
+
+    #[tokio::test]
+    async fn app_script_recomputes_the_summary_and_session_bar() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.js")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The summary is recomputed from the DOM as marks land, and the session bar
+        // tracks resolved-over-baseline, with the baseline seeded from the strip's
+        // data hook and reset on a rescan.
+        assert!(body.contains("recomputeSummary"));
+        assert!(body.contains("sessionBaseline"));
+        assert!(body.contains("gap-bar-fill"));
+        assert!(body.contains("gapsAtLoad"));
+        // It runs on a confirmed mark, on an undo/section swap, and on a rescan.
+        assert!(body.contains(r#"addEventListener("marked""#));
+        assert!(body.contains("htmx:afterSwap"));
+    }
 }

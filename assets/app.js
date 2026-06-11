@@ -858,4 +858,110 @@
     searchEmpty = document.getElementById("search-empty");
     if (searchInput) searchInput.addEventListener("input", applyFilter);
   });
+
+  // ---- gap summary recompute ----
+
+  // The summary always reflects the whole library, not the active filter, so the
+  // recompute counts flagged rows regardless of visibility, excluding only rows
+  // mid-collapse (already resolved) so the count leads the delayed section swap.
+  var summary = null;
+  var sessionBaseline = 0;
+
+  // Every gap row in the tree, mid-collapse rows excluded.
+  function currentGapTotal() {
+    return document.querySelectorAll("#roots .row.flagged:not(.leaving)").length;
+  }
+
+  // Each top-level item (author) that still holds a gap, with its gap count, for
+  // the authors-affected number and the top-gaps line.
+  function authorGapCounts() {
+    var tops = document.querySelectorAll("#roots .menu > li");
+    var out = [];
+    for (var i = 0; i < tops.length; i++) {
+      var gaps = tops[i].querySelectorAll(".row.flagged:not(.leaving)").length;
+      if (gaps > 0) {
+        var nameEl = tops[i].querySelector(".row .name");
+        out.push({ name: nameEl ? nameEl.textContent : "", gaps: gaps });
+      }
+    }
+    return out;
+  }
+
+  function setText(id, text) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  // Repaint the strip from the DOM: hero total, authors-affected count, the
+  // top-gaps line when it is present, the per-root chips, and the session bar.
+  function recomputeSummary() {
+    if (!summary) return;
+    var total = currentGapTotal();
+    setText("gap-total", String(total));
+    var authors = authorGapCounts();
+    setText("gap-authors", String(authors.length));
+    var top = document.getElementById("gap-top");
+    if (top && authors.length) {
+      var worst = authors.reduce(function (a, b) {
+        return b.gaps > a.gaps ? b : a;
+      });
+      setText("gap-top-name", worst.name);
+      setText("gap-top-num", String(worst.gaps));
+    }
+    var chips = document.querySelectorAll("#gap-chips .gap-chip");
+    for (var i = 0; i < chips.length; i++) {
+      if (chips[i].classList.contains("gap-chip-error")) continue;
+      var root = chips[i].getAttribute("data-root");
+      var section = document.querySelector('section.root[data-root="' + root + '"]');
+      var num = chips[i].querySelector(".gap-chip-num");
+      if (section && num) {
+        num.textContent = String(
+          section.querySelectorAll(".row.flagged:not(.leaving)").length
+        );
+      }
+    }
+    updateSessionBar(total);
+  }
+
+  // The session bar: gaps resolved this sitting (baseline minus what is left) over
+  // the baseline, clamped so it never reads negative or past full.
+  function updateSessionBar(total) {
+    var bar = summary.querySelector(".gap-bar");
+    var fill = document.getElementById("gap-bar-fill");
+    if (!bar || !fill) return;
+    var resolved = Math.max(sessionBaseline - total, 0);
+    var pct = sessionBaseline > 0 ? (resolved / sessionBaseline) * 100 : 0;
+    fill.style.width = pct + "%";
+    bar.setAttribute("aria-valuenow", String(resolved));
+    bar.setAttribute("aria-valuemax", String(sessionBaseline));
+  }
+
+  // A fresh tree (rescan) resets the baseline to the new total, so the bar measures
+  // the new sitting from empty.
+  function resetSessionBaseline() {
+    sessionBaseline = currentGapTotal();
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    summary = document.getElementById("gap-summary");
+    if (summary) {
+      sessionBaseline = parseInt(summary.dataset.gapsAtLoad, 10) || 0;
+    }
+  });
+
+  // A confirmed mark fires `marked`; recompute now that the resolved row is
+  // mid-collapse and excluded, so the count is right before the delayed swap.
+  document.body.addEventListener("marked", function () {
+    recomputeSummary();
+  });
+
+  // An undo and the delayed mark swap both land as a section swap; a rescan swaps
+  // all of #roots. Recompute after any of them; on a rescan reset the baseline, and
+  // re-apply an active filter to the fresh rows so the new tree respects the query.
+  document.body.addEventListener("htmx:afterSwap", function (evt) {
+    var target = evt.detail && evt.detail.target;
+    if (target && target.id === "roots") resetSessionBaseline();
+    recomputeSummary();
+    if (searchInput && searchInput.value.trim() !== "") applyFilter();
+  });
 })();
