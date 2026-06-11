@@ -1239,6 +1239,8 @@ mod tests {
         // @supports position-area rule keeps the panel pinned under the cog at
         // partial width instead of spanning the full bottom of the viewport.
         assert!(body.contains("position-area: none"));
+        // The shortcuts reference is styled inside the panel and hidden on mobile.
+        assert!(body.contains(".settings-shortcuts"));
     }
 
     #[tokio::test]
@@ -2359,27 +2361,6 @@ mod tests {
         // The mark shortcuts were removed, so the list no longer mentions them.
         assert!(!body.contains("Mark as no ebook"));
         assert!(!body.contains("Mark ebook elsewhere"));
-    }
-
-    #[tokio::test]
-    async fn stylesheet_styles_the_cheatsheet_and_hides_its_trigger_on_mobile() {
-        let dir = tempfile::tempdir().unwrap();
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(
-                    Request::builder()
-                        .uri("/static/app.css")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap(),
-        )
-        .await;
-        assert!(body.contains(".cheatsheet"));
-        assert!(body.contains(".cheatsheet::backdrop"));
-        // The trigger is desktop-only: a touch device has no keys to press.
-        assert!(body.contains(".cheatsheet-trigger"));
     }
 
     #[tokio::test]

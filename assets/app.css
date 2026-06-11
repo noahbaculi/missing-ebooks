@@ -617,6 +617,39 @@ details[open] > summary .chev {
   margin-top: 0.1rem;
 }
 
+/* settings shortcuts: the read-only hotkey reference folded into the panel,
+   below the live controls and divided from them by a hairline. hidden on mobile,
+   where there is no keyboard (see the navbar media query). */
+.settings-shortcuts {
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+  border-top: var(--border) solid var(--color-base-300);
+}
+.settings-shortcuts-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 0.9rem;
+  margin: 0;
+  padding: 0.2rem 0.5rem 0.4rem;
+}
+.settings-shortcuts-list dt,
+.settings-shortcuts-list dd {
+  margin: 0;
+}
+.settings-shortcuts-list dd {
+  color: var(--color-muted);
+  align-self: center;
+}
+.settings-shortcuts kbd {
+  padding: 0.1rem 0.4rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--color-base-200);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: 0.3rem;
+}
+
 /* switch: a styled checkbox for on/off settings */
 .switch {
   position: relative;
@@ -761,7 +794,9 @@ details[open] > summary .chev {
     order: 5;
     flex-basis: 100%;
   }
-  .cheatsheet-trigger {
+  /* no keyboard on a touch device, so the shortcuts reference is hidden; the
+     theme and confirm controls still reach the small screen. */
+  .settings-shortcuts {
     display: none;
   }
   .gap-summary-head {
@@ -1705,45 +1740,6 @@ li.leaving {
   background: var(--color-base-100);
   border: var(--border) solid var(--color-base-300);
   border-radius: var(--radius-box);
-}
-
-/* ---- shortcuts cheatsheet ---- */
-.cheatsheet {
-  max-width: 22rem;
-  padding: 1.25rem 1.4rem;
-  color: var(--color-base-content);
-  background: var(--color-base-100);
-  border: var(--border) solid var(--color-base-300);
-  border-radius: var(--radius-box);
-}
-.cheatsheet::backdrop {
-  background: rgba(0, 0, 0, 0.4);
-}
-.cheatsheet-title {
-  margin: 0 0 0.75rem;
-  font-size: 1.05rem;
-}
-.cheatsheet-list {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.4rem 0.9rem;
-  margin: 0 0 1rem;
-}
-.cheatsheet-list dt,
-.cheatsheet-list dd {
-  margin: 0;
-}
-.cheatsheet-list dd {
-  color: var(--color-muted);
-}
-.cheatsheet kbd {
-  padding: 0.1rem 0.4rem;
-  font: inherit;
-  font-size: 0.75rem;
-  font-weight: 700;
-  background: var(--color-base-200);
-  border: var(--border) solid var(--color-base-300);
-  border-radius: 0.3rem;
 }
 
 /* ---- keyboard highlight ---- */
