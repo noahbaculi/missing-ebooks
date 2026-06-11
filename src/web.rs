@@ -2296,4 +2296,27 @@ mod tests {
         assert!(body.contains("openCheatsheet"));
         assert!(body.contains("showModal"));
     }
+
+    #[tokio::test]
+    async fn app_script_reveals_and_runs_the_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.js")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The filter reveals the hidden input, recurses the tree, toggles the
+        // collapse class on non-matching branches, and shows the "no matches" line.
+        assert!(body.contains("filterTree"));
+        assert!(body.contains("filter-hidden"));
+        assert!(body.contains("search-empty"));
+        assert!(body.contains("clearFilter"));
+    }
 }

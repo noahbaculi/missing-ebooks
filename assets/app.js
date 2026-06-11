@@ -762,4 +762,100 @@
     var close = document.getElementById("cheatsheet-close");
     if (close) close.addEventListener("click", closeCheatsheet);
   });
+
+  // ---- search / filter ----
+
+  // The whole tree filters client-side over the DOM already present. A node stays
+  // visible when its own name matches the query or any descendant matches, so the
+  // path to a match reads correctly; non-matching branches collapse. The summary is
+  // never touched here: filtering changes what is visible, not how many gaps exist.
+  var searchInput = null;
+  var searchEmpty = null;
+
+  // Reveal the navbar filter once JS is running, the hidden-until-ready pattern the
+  // connection banner uses.
+  function revealSearch() {
+    var box = document.getElementById("search");
+    if (box) box.hidden = false;
+  }
+
+  // The visible name on a row's own line (leaf div.row or folder summary.row),
+  // lowercased for a case-insensitive compare.
+  function rowName(li) {
+    var row = li.querySelector(":scope > .row, :scope > details > summary.row");
+    var name = row && row.querySelector(".name");
+    return name ? name.textContent.toLowerCase() : "";
+  }
+
+  // The child <li> nodes under a node, whether it is a leaf (none) or a folder.
+  function childItems(li) {
+    var list = li.querySelector(":scope > details > ul, :scope > ul");
+    return list ? list.querySelectorAll(":scope > li") : [];
+  }
+
+  // Filter one <li> against the lowercased query, recursing into its children.
+  // Force a folder on the path to a deeper match open, tagging it so clearFilter
+  // can re-close only the folds the filter forced. Returns whether the <li> stays.
+  function filterItem(li, query) {
+    var selfMatch = rowName(li).indexOf(query) !== -1;
+    var kids = childItems(li);
+    var descendantMatch = false;
+    for (var i = 0; i < kids.length; i++) {
+      if (filterItem(kids[i], query)) descendantMatch = true;
+    }
+    var visible = selfMatch || descendantMatch;
+    li.classList.toggle("filter-hidden", !visible);
+    var details = li.querySelector(":scope > details");
+    if (details && descendantMatch && !details.open) {
+      details.open = true;
+      details.dataset.filterOpened = "1";
+    }
+    return visible;
+  }
+
+  // Run the filter across every root; return how many top-level items stay visible,
+  // so the caller can decide whether to show the "no matches" line.
+  function filterTree(query) {
+    var q = query.toLowerCase();
+    var tops = document.querySelectorAll("#roots .menu > li");
+    var visible = 0;
+    for (var i = 0; i < tops.length; i++) {
+      if (filterItem(tops[i], q)) visible++;
+    }
+    return visible;
+  }
+
+  // Restore the full tree: drop every collapse mark and re-close the folders the
+  // filter forced open, leaving the user's own folds untouched, and hide the line.
+  function clearFilter() {
+    var hidden = document.querySelectorAll("#roots .filter-hidden");
+    for (var i = 0; i < hidden.length; i++) {
+      hidden[i].classList.remove("filter-hidden");
+    }
+    var opened = document.querySelectorAll("#roots details[data-filter-opened]");
+    for (var j = 0; j < opened.length; j++) {
+      opened[j].open = false;
+      delete opened[j].dataset.filterOpened;
+    }
+    if (searchEmpty) searchEmpty.hidden = true;
+  }
+
+  // Apply the current query, restoring the tree on empty and toggling the line.
+  function applyFilter() {
+    if (!searchInput) return;
+    var query = searchInput.value.trim();
+    if (query === "") {
+      clearFilter();
+      return;
+    }
+    var visible = filterTree(query);
+    if (searchEmpty) searchEmpty.hidden = visible > 0;
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    revealSearch();
+    searchInput = document.getElementById("search-input");
+    searchEmpty = document.getElementById("search-empty");
+    if (searchInput) searchInput.addEventListener("input", applyFilter);
+  });
 })();
