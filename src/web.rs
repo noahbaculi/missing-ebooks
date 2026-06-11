@@ -76,7 +76,8 @@ async fn mark(
     let mode = req.view;
     match service::mark(&state, req.root, &req.rel, req.kind, mode).await {
         Ok(outcome) => {
-            let markup = render::render_section(&outcome.view[req.root], req.root, None, links, mode);
+            let markup =
+                render::render_section(&outcome.view[req.root], req.root, None, links, mode);
             let trigger = outcome.created.then(|| {
                 let name = display_name(&outcome.view[req.root].path, &req.rel);
                 marked_trigger(&req, &name)
