@@ -2263,6 +2263,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_themes_the_clear_button_and_hides_the_native_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.css")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // Our themed clear button replaces the browser's native, un-themed cancel
+        // control, which we hide.
+        assert!(body.contains("::-webkit-search-cancel-button"));
+        assert!(body.contains(".search-clear"));
+        // It darkens on hover and drops out of the layout while the box is empty.
+        assert!(body.contains(".search-clear:hover"));
+        assert!(body.contains(".search-clear[hidden]"));
+    }
+
+    #[tokio::test]
     async fn index_renders_the_shortcuts_cheatsheet_and_trigger() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));

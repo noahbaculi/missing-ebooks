@@ -1633,6 +1633,40 @@ li.leaving {
   outline: none;
 }
 
+/* hide the browser's native search clear control; we draw our own themed × so it
+   is consistent across browsers (Firefox renders none at all). */
+.search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+/* the themed clear button: a borderless ghost in the muted color that darkens to
+   the base content on hover, sized to match the leading magnifier. */
+.search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  color: var(--color-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.search-clear svg {
+  width: 100%;
+  height: 100%;
+}
+.search-clear:hover {
+  color: var(--color-base-content);
+}
+/* hidden while the box is empty; stays out of the flex layout */
+.search-clear[hidden] {
+  display: none;
+}
+
 /* a branch hidden by the filter collapses; ancestors of a match stay shown */
 .filter-hidden {
   display: none;
