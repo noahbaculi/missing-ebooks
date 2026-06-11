@@ -531,6 +531,7 @@ mod tests {
             missing_ebook: true,
             children: Vec::new(),
             cover_files: Vec::new(),
+            audio_files: Vec::new(),
         }
     }
 
@@ -629,6 +630,7 @@ mod tests {
                 missing_ebook: true,
                 children: vec![gap_leaf("Book", "Author/Book")],
                 cover_files: Vec::new(),
+                audio_files: Vec::new(),
             }]),
         };
         apply_mark(&mut section, "Author/Book");
@@ -646,6 +648,7 @@ mod tests {
                 missing_ebook: true,
                 children: vec![gap_leaf("Book", "Author/Book")],
                 cover_files: Vec::new(),
+                audio_files: Vec::new(),
             }]),
         };
         apply_mark(&mut section, "Author/Book");
@@ -781,6 +784,7 @@ mod tests {
                 missing_ebook: true,
                 children: vec![gap_leaf("Book", "Author/Book")],
                 cover_files: Vec::new(),
+                audio_files: Vec::new(),
             }]),
         };
         apply_mark_all(&mut section, "Author", Marker::NoEbook);

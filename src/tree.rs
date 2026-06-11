@@ -33,6 +33,9 @@ pub struct Node {
     /// Ebook and marker filenames that physically sit in this folder. Mirrors
     /// `scanner::ScannedFolder::cover_files`; empty in gaps-only.
     pub cover_files: Vec<String>,
+    /// Audio filenames that physically sit in this folder, natural-sorted. Non-empty
+    /// only where the folder directly holds audio; the file display reads it.
+    pub audio_files: Vec<String>,
 }
 
 impl Node {
@@ -91,6 +94,7 @@ pub fn build(root_name: &str, flagged: &[PathBuf]) -> Vec<Node> {
                 missing_ebook: true,
                 children: Vec::new(),
                 cover_files: Vec::new(),
+                audio_files: Vec::new(),
             },
         );
     }
@@ -137,6 +141,7 @@ pub fn build_all(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> 
                 missing_ebook: entry.missing_ebook,
                 children: Vec::new(),
                 cover_files: entry.cover_files.clone(),
+                audio_files: Vec::new(),
             },
         );
     }
@@ -166,6 +171,7 @@ fn insert_all(
                 missing_ebook: true,
                 children: Vec::new(),
                 cover_files: Vec::new(),
+                audio_files: Vec::new(),
             });
             siblings.len() - 1
         }
@@ -207,6 +213,7 @@ fn insert(siblings: &mut Vec<Node>, components: &[String], parent_rel: &str) {
                 missing_ebook: true,
                 children: Vec::new(),
                 cover_files: Vec::new(),
+                audio_files: Vec::new(),
             });
             siblings.len() - 1
         }
@@ -340,6 +347,7 @@ mod tests {
                 missing_ebook: missing,
                 children: Vec::new(),
                 cover_files: Vec::new(),
+                audio_files: Vec::new(),
             };
             assert_eq!(node.needs_ebook(), want, "audio={audio} missing={missing}");
         }
@@ -398,6 +406,7 @@ mod tests {
             missing_ebook: true,
             children: Vec::new(),
             cover_files: Vec::new(),
+            audio_files: Vec::new(),
         }
     }
 
@@ -410,6 +419,7 @@ mod tests {
             missing_ebook: true,
             children: vec![gap_leaf("Book", "Author/Book")],
             cover_files: Vec::new(),
+            audio_files: Vec::new(),
         }];
         remove_subtree(&mut forest, "Author/Book");
         assert!(
@@ -430,6 +440,7 @@ mod tests {
                 gap_leaf("Book 2", "Author/Book 2"),
             ],
             cover_files: Vec::new(),
+            audio_files: Vec::new(),
         }];
         remove_subtree(&mut forest, "Author");
         assert!(forest.is_empty());
@@ -444,6 +455,7 @@ mod tests {
             missing_ebook: true,
             children: vec![gap_leaf("Book", "Author/Book")],
             cover_files: Vec::new(),
+            audio_files: Vec::new(),
         }];
         remove_subtree(&mut forest, "Author/Book");
         assert_eq!(forest.len(), 1);
@@ -576,6 +588,7 @@ mod tests {
                 gap_leaf("Book 2", "Series/Book 2"),
             ],
             cover_files: Vec::new(),
+            audio_files: Vec::new(),
         }];
         cover_subtree(&mut forest, "Series", Marker::NoEbook);
         let series = find(&forest, "Series").unwrap();
@@ -598,6 +611,7 @@ mod tests {
                 gap_leaf("Other", "Author/Other"),
             ],
             cover_files: Vec::new(),
+            audio_files: Vec::new(),
         }];
         cover_subtree(&mut forest, "Author/Marked", Marker::NoEbook);
         assert!(!find(&forest, "Author/Marked").unwrap().missing_ebook);
@@ -624,6 +638,7 @@ mod tests {
                 missing_ebook: true,
                 children: vec![gap_leaf("B", "A/B")],
                 cover_files: Vec::new(),
+                audio_files: Vec::new(),
             },
             gap_leaf("C", "C"),
         ];
@@ -642,6 +657,7 @@ mod tests {
             missing_ebook: true,
             children: vec![gap_leaf("Book", "Series/Book")],
             cover_files: Vec::new(),
+            audio_files: Vec::new(),
         }];
         cover_subtree(&mut forest, "Series", Marker::NoEbook);
         let series = find(&forest, "Series").unwrap();
@@ -674,6 +690,7 @@ mod tests {
                 missing_ebook: true,
                 children: Vec::new(),
                 cover_files: Vec::new(),
+                audio_files: Vec::new(),
             },
             gap_leaf("Author", "Author"),
         ];
@@ -694,6 +711,7 @@ mod tests {
             missing_ebook: true,
             children: vec![gap_leaf("B", "A/B")],
             cover_files: Vec::new(),
+            audio_files: Vec::new(),
         };
         assert!(container.has_gap_within(), "a descendant gap counts");
 
@@ -709,8 +727,10 @@ mod tests {
                 missing_ebook: false,
                 children: Vec::new(),
                 cover_files: Vec::new(),
+                audio_files: Vec::new(),
             }],
             cover_files: Vec::new(),
+            audio_files: Vec::new(),
         };
         assert!(!covered.has_gap_within(), "a fully covered branch has none");
     }
