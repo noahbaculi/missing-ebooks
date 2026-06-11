@@ -124,6 +124,31 @@ fn settings_menu() -> Markup {
     }
 }
 
+/// The navbar filter input, hidden until `app.js` reveals it (the connection
+/// banner's hidden-until-ready pattern) so the no-JS page never shows a filter that
+/// cannot run. The `/` key focuses it and Escape clears it; both live in `app.js`.
+fn search_box() -> Markup {
+    html! {
+        div.search id="search" hidden {
+            (PreEscaped(SEARCH_SVG))
+            input.search-input id="search-input" type="search"
+                placeholder="Filter folders" aria-label="Filter folders"
+                autocomplete="off";
+        }
+    }
+}
+
+/// The "no matches" line for an active filter that matches nothing. Hidden until
+/// `app.js` shows it, and a polite live region so the empty result is announced. It
+/// sits beside `#roots` so a rescan swap leaves it in place.
+fn search_empty() -> Markup {
+    html! {
+        p.search-empty id="search-empty" role="status" aria-live="polite" hidden {
+            "No folders match your filter."
+        }
+    }
+}
+
 /// The marker-write confirmation, rendered once at the page level so it survives
 /// the htmx section swaps. `app.js` fills the title, folder, file chip, confirm
 /// label, and the matching marker glyph from the button that fired, then opens
@@ -241,6 +266,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                 (conn_banner())
                 nav.navbar {
                     h1 { "Missing Ebooks" }
+                    (search_box())
                     span.spacer {}
                     (view_toggle(mode))
                     (settings_menu())
@@ -265,6 +291,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                         (roots(view, links, mode))
                     }
                     (scan_skeleton())
+                    (search_empty())
                 }
                 (confirm_dialog())
                 (toast())

@@ -2189,4 +2189,26 @@ mod tests {
         assert!(body.contains("transition: width"));
         assert!(body.contains(".gap-summary-head"));
     }
+
+    #[tokio::test]
+    async fn navbar_renders_the_hidden_filter_input_and_no_matches_line() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // A filter input with an accessible name, hidden until app.js reveals it (the
+        // connection banner's pattern), so the no-JS page stays clean.
+        assert!(body.contains(r#"id="search-input""#));
+        assert!(body.contains(r#"aria-label="Filter folders""#));
+        assert!(body.contains(r#"id="search" hidden"#));
+        // A polite "no matches" line, hidden until a query matches nothing.
+        assert!(body.contains(r#"id="search-empty""#));
+        assert!(body.contains(r#"aria-live="polite""#));
+        assert!(body.contains("No folders match"));
+    }
 }
