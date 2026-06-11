@@ -308,6 +308,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn index_marks_loose_and_mixed_flagged_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        // A loose gap: a book folder at the very top, with no author folder around it.
+        touch(&dir.path().join("The Hobbit/01.mp3"));
+        // A mixed node: an author folder that holds a loose file and also a gap subfolder.
+        touch(&dir.path().join("Terry Pratchett/01.mp3"));
+        touch(&dir.path().join("Terry Pratchett/Going Postal/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(body.contains("loose at top"), "the top-level book is marked loose");
+        assert!(
+            body.contains("holds audio + subfolders"),
+            "the half-sorted author is marked mixed"
+        );
+    }
+
+    #[tokio::test]
+    async fn index_leaves_a_deep_gap_unmarked() {
+        let dir = tempfile::tempdir().unwrap();
+        // A properly filed gap two levels down carries no smell.
+        touch(&dir.path().join("Author/Series/Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(!body.contains("loose at top"));
+        assert!(!body.contains("holds audio + subfolders"));
+    }
+
+    #[tokio::test]
     async fn show_all_keeps_depth_tags_on_covered_containers() {
         let dir = tempfile::tempdir().unwrap();
         // Audio under a series, plus an ebook at the author level so the whole

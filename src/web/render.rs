@@ -383,6 +383,23 @@ fn cover_files_span(node: &Node, mode: ViewMode) -> Markup {
     }
 }
 
+/// The structural-smell microlabel for a flagged row. A folder that directly holds
+/// audio and also has gap subfolders reads as mixed (a book and a shelf at once); a
+/// flagged leaf with no container around it (depth 0, including the root-itself gap)
+/// reads as loose. A gap filed under a container at depth 1 or deeper gets nothing.
+/// Non-flagged nodes never reach a true branch.
+fn smell_label(node: &Node, depth: usize) -> Markup {
+    html! {
+        @if node.needs_ebook() {
+            @if !node.children.is_empty() {
+                span.smell.smell-mixed { "holds audio + subfolders" }
+            } @else if depth == 0 {
+                span.smell.smell-loose { "loose at top" }
+            }
+        }
+    }
+}
+
 fn render_node(
     node: &Node,
     root: usize,
@@ -404,6 +421,7 @@ fn render_node(
                     (folder_icon())
                     span.name { (node.name) }
                     @if node.needs_ebook() { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
+                    (smell_label(node, depth))
                     @if mode == ViewMode::All { (status_icon(node)) }
                     (cover_files_span(node, mode))
                     span.spring {}
@@ -424,6 +442,7 @@ fn render_node(
                         (folder_icon())
                         span.name { (node.name) }
                         @if node.needs_ebook() { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
+                        (smell_label(node, depth))
                         @if mode == ViewMode::All { (status_icon(node)) }
                         (cover_files_span(node, mode))
                         span.spring {}
