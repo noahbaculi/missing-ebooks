@@ -455,6 +455,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_styles_container_depth() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.css")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The top container of a tree is bold; containers nested below it are italic.
+        assert!(body.contains(".container-top .name"));
+        assert!(body.contains(".container-nested .name"));
+        assert!(body.contains("font-style: italic"));
+    }
+
+    #[tokio::test]
     async fn rescan_is_an_in_place_htmx_swap_with_a_skeleton() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));

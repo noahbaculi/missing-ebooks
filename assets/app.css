@@ -433,6 +433,18 @@ details[open] > summary .chev {
   color: var(--color-success);
 }
 
+/* depth typography: bold the top container of each tree, italicize the
+   containers nested below it. Flagged and leaf rows never get these classes,
+   so their weight is left alone. These sit after the covered rules above so
+   the top weight wins over the covered weight on a covered top container
+   (equal specificity, so source order decides); the italic never conflicts. */
+.container-top .name {
+  font-weight: 700;
+}
+.container-nested .name {
+  font-style: italic;
+}
+
 /* covering ebook/marker filenames on a covered row (show-all only): muted, set off
    from the covered check by extra left margin, truncated with an ellipsis so a long
    list never wraps the row */
