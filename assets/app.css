@@ -428,6 +428,37 @@ details[open] > summary .chev {
   content: "\00b7\00a0";
 }
 
+/* audio-file count: the same muted, middot-led note as the smell label. */
+.file-count {
+  flex: none;
+  font-size: 0.74rem;
+  color: var(--color-muted);
+}
+.file-count::before {
+  content: "\00b7\00a0";
+}
+
+/* a revealed audio-file row: muted, indented on the tree guide like a child folder,
+   with a music glyph so it reads as a file rather than an actionable folder. The
+   reserved row min-height does not apply, since these carry no action buttons. */
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.14rem 0.5rem;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+.file-row .file-glyph {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: none;
+  color: var(--color-muted);
+}
+.file-name {
+  word-break: break-all;
+}
+
 /* covered rows + status check (show-all view only): a dimmed row that carries a
    success check and no actions */
 .covered .name {

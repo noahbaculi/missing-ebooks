@@ -330,6 +330,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn index_shows_a_file_count_and_a_collapsed_file_list_on_a_flagged_leaf() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01 - The Gunslinger.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The count sits on the row, and the file row is present but inside a closed
+        // <details> (no `open`), so the names are hidden until the row is expanded.
+        assert!(body.contains("1 file"));
+        assert!(body.contains(r#"<details class="node-files">"#));
+        assert!(body.contains("01 - The Gunslinger.mp3"));
+    }
+
+    #[tokio::test]
+    async fn index_pluralizes_the_file_count() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        touch(&dir.path().join("Book/02.mp3"));
+        touch(&dir.path().join("Book/03.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(body.contains("3 files"));
+    }
+
+    #[tokio::test]
+    async fn mixed_node_shows_its_own_files_above_its_child_gap() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Terry Pratchett/01 - The Colour of Magic.mp3"));
+        touch(&dir.path().join("Terry Pratchett/Going Postal/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The mixed author's own loose file renders as a file row, and the child gap
+        // still renders as a folder row carrying its badge.
+        assert!(body.contains("01 - The Colour of Magic.mp3"));
+        assert!(body.contains(r#"class="file-row""#));
+        assert!(body.contains("Going Postal"));
+    }
+
+    #[tokio::test]
     async fn index_leaves_a_deep_gap_unmarked() {
         let dir = tempfile::tempdir().unwrap();
         // A properly filed gap two levels down carries no smell.

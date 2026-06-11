@@ -32,6 +32,10 @@ const SEARCH_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" s
 /// Folder glyph shown on every node row. Inherits `currentColor`.
 const FOLDER_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>"##;
 
+/// A music note shown on each audio-file row, so a file reads differently from the
+/// folder rows around it. Inherits `currentColor`.
+const MUSIC_SVG: &str = r##"<svg class="file-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>"##;
+
 /// Check mark for the "no gaps in this root" state. Inherits `currentColor`.
 const CHECK_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>"##;
 
@@ -400,6 +404,35 @@ fn smell_label(node: &Node, depth: usize) -> Markup {
     }
 }
 
+/// The muted "N files" count for a flagged row. Gated on a gap so it appears only
+/// where the file disclosure does, never on a covered or container row.
+fn file_count(node: &Node) -> Markup {
+    html! {
+        @if node.needs_ebook() && !node.audio_files.is_empty() {
+            @let n = node.audio_files.len();
+            span.file-count {
+                @if n == 1 { "1 file" } @else { (n) " files" }
+            }
+        }
+    }
+}
+
+/// The audio-file rows for a flagged folder, each a muted, non-actionable line with a
+/// music glyph. Emits nothing on a container or covered row, so it is safe to call
+/// unconditionally inside the container branch where only a mixed node has files.
+fn file_rows(node: &Node) -> Markup {
+    html! {
+        @if node.needs_ebook() {
+            @for name in &node.audio_files {
+                li.file-row {
+                    (PreEscaped(MUSIC_SVG))
+                    span.file-name { (name) }
+                }
+            }
+        }
+    }
+}
+
 fn render_node(
     node: &Node,
     root: usize,
@@ -410,23 +443,44 @@ fn render_node(
 ) -> Markup {
     // A covered row dims only in show-all; gaps-only never holds covered nodes.
     let covered = mode == ViewMode::All && !node.missing_ebook;
-    // Buttons and links appear only where there is a gap to act on. In gaps-only
-    // every node qualifies, so the output is unchanged.
+    // Buttons and links appear only where there is a gap to act on.
     let act = node.has_gap_within();
     html! {
         @if node.children.is_empty() {
-            li {
-                div.row.flagged[node.needs_ebook()].covered[covered] {
-                    span.leaf-pad {}
-                    (folder_icon())
-                    span.name { (node.name) }
-                    @if node.needs_ebook() { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
-                    (smell_label(node, depth))
-                    @if mode == ViewMode::All { (status_icon(node)) }
-                    (cover_files_span(node, mode))
-                    span.spring {}
-                    @if act {
-                        (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
+            @if node.needs_ebook() {
+                // A flagged leaf: an expandable row whose audio files sit hidden under
+                // it until opened. It renders as a <summary> like a flagged container,
+                // a shape app.js already handles (see getRow in app.js).
+                li {
+                    details.node-files {
+                        summary.row.flagged {
+                            (chevron())
+                            (folder_icon())
+                            span.name { (node.name) }
+                            span.badge.badge-warning title="needs ebook" { "needs ebook" }
+                            (smell_label(node, depth))
+                            (file_count(node))
+                            @if mode == ViewMode::All { (status_icon(node)) }
+                            (cover_files_span(node, mode))
+                            span.spring {}
+                            @if act {
+                                (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
+                            }
+                        }
+                        ul.files { (file_rows(node)) }
+                    }
+                }
+            } @else {
+                // A non-flagged leaf (a covered or plain folder in show-all) stays a
+                // static row, exactly as before.
+                li {
+                    div.row.covered[covered] {
+                        span.leaf-pad {}
+                        (folder_icon())
+                        span.name { (node.name) }
+                        @if mode == ViewMode::All { (status_icon(node)) }
+                        (cover_files_span(node, mode))
+                        span.spring {}
                     }
                 }
             }
@@ -443,6 +497,7 @@ fn render_node(
                         span.name { (node.name) }
                         @if node.needs_ebook() { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
                         (smell_label(node, depth))
+                        (file_count(node))
                         @if mode == ViewMode::All { (status_icon(node)) }
                         (cover_files_span(node, mode))
                         span.spring {}
@@ -451,6 +506,7 @@ fn render_node(
                         }
                     }
                     ul {
+                        (file_rows(node))
                         @for child in &node.children { (render_node(child, root, links, mode, counter, depth + 1)) }
                     }
                 }
