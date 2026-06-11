@@ -47,12 +47,10 @@ In the Cloudflare dashboard for `noahbaculi.com`:
 
 ## Operations
 
-Common operations:
-
 ```shell
 docker compose -f demo/docker-compose.yml logs -f demo     # follow the logs
 docker compose -f demo/docker-compose.yml up -d --build    # update after a code change
-docker compose -f demo/docker-compose.yml down             # stop and remove the containers; sessions are in-memory, so nothing else needs cleanup
+docker compose -f demo/docker-compose.yml down             # stop and remove the containers (sessions are in-memory)
 ```
 
 Tune the demo by editing the `DEMO_*` environment values in `demo/docker-compose.yml` (scenario, idle window, session cap, and the cookie name), then re-run the up command.

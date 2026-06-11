@@ -44,6 +44,6 @@ The common shape is `Author / [Series] / Book / files`, but the real tree breaks
 - Book folders hold the audio plus side files: `cover.jpg`, `desc.txt`, `reader.txt`, and the occasional `.webp` map. Audio is mostly `.m4b` (3,317) and `.mp3` (2,217), with some `.m4a` (43).
 - Covered folders carry the ebook beside the audio. There are 430 ebooks: 415 `.epub`, 13 `.pdf`, 2 `.mobi`. A book with an `.epub` next to its `.m4b` is the typical covered case.
 - Markers already exist in the tree, 6 of them. Both kinds appear, and they sit at different depths. `.no_ebook` shows up at the book-folder level (for example `Orson Scott Card/Space Boy/.no_ebook`) and `.ebook_elsewhere` shows up at both book and series level (for example `Ursula K. Le Guin/The Earthsea Trilogy/.ebook_elsewhere`).
-- AppleDouble noise is present: 35 files named `._*`, written by macOS over SMB (for example `Andy Weir/Artemis/._01 - Artemis (Unabridged).mp3`). These shadow real files and must not be counted as audio or ebooks. The leading `._` is the thing to filter on.
+- AppleDouble noise: 35 files named `._*`, written by macOS over SMB (for example `Andy Weir/Artemis/._01 - Artemis (Unabridged).mp3`). These shadow real files and must not be counted as audio or ebooks. The leading `._` is the thing to filter on.
 
 Because the source is an SMB share, the tree has no Unix symlinks, dotfiles are visible, and the AppleDouble files above are present. A scanner tested only against a clean local directory would miss all three.
