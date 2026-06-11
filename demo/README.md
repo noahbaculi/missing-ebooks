@@ -1,10 +1,6 @@
 # missing-ebooks demo site
 
-A public, ephemeral demo of missing-ebooks. One server process serves every
-visitor; each visitor gets a private view seeded with sample data, and their
-changes are kept in memory and reset after a few idle minutes. The stack is the
-demo server fronted by a Cloudflare Tunnel. No inbound ports are opened on the
-host.
+A public, ephemeral demo of missing-ebooks. One server process serves every visitor; each visitor gets a private view seeded with sample data, and their changes are kept in memory and reset after a few idle minutes. The stack is the demo server fronted by a Cloudflare Tunnel. No inbound ports are opened on the host.
 
 ## What runs where
 
@@ -14,14 +10,7 @@ host.
 
 ## How isolation works
 
-One process serves all visitors. The seeded library is scanned once at startup
-into shared, read-only base views. A session cookie pins each visitor to an
-in-memory set of marks; on every request the server clones the base view and
-replays that session's marks on top, so each visitor sees only their own
-changes. Marks never touch disk, the data is synthetic, and an idle reaper
-recycles abandoned sessions. A global session cap bounds memory; at the cap a
-new visitor gets a soft 503 page. Request volume is throttled at the Cloudflare
-edge.
+One process serves all visitors. The seeded library is scanned once at startup into shared, read-only base views. A session cookie pins each visitor to an in-memory set of marks; on every request the server clones the base view and replays that session's marks on top, so each visitor sees only their own changes. Marks never touch disk, the data is synthetic, and an idle reaper recycles abandoned sessions. A global session cap bounds memory; at the cap a new visitor gets a soft 503 page. Request volume is throttled at the Cloudflare edge.
 
 ## One-time host setup
 
@@ -30,16 +19,13 @@ edge.
 
 ## One-time tunnel setup
 
-1. In the Cloudflare Zero Trust dashboard, go to Networks > Tunnels and create a
-   tunnel (named, for example, `missing-ebooks-demo`).
-2. On the connector install screen, choose Docker and copy the token value that
-   follows `--token`.
+1. In the Cloudflare Zero Trust dashboard, go to Networks > Tunnels and create a tunnel (named, for example, `missing-ebooks-demo`).
+2. On the connector install screen, choose Docker and copy the token value that follows `--token`.
 3. Add a public hostname to the tunnel:
    - Subdomain: `demo-missing-ebooks`
    - Domain: `noahbaculi.com`
    - Service: `HTTP`, URL `demo:8080`
-4. Copy `demo/.env.example` to `demo/.env` and paste the token into
-   `TUNNEL_TOKEN`.
+4. Copy `demo/.env.example` to `demo/.env` and paste the token into `TUNNEL_TOKEN`.
 
 ## Go live
 
@@ -49,8 +35,7 @@ From the repo root on the host:
 docker compose -f demo/docker-compose.yml --env-file demo/.env up -d --build
 ```
 
-Then open https://demo-missing-ebooks.noahbaculi.com. The first request mints a
-session and drops you into the live UI with the demo banner.
+Then open https://demo-missing-ebooks.noahbaculi.com. The first request mints a session and drops you into the live UI with the demo banner.
 
 ## Edge protections (recommended)
 
@@ -74,8 +59,5 @@ Tune the demo by editing the `DEMO_*` environment values in `demo/docker-compose
 
 ## Notes
 
-- The app has no authentication. That is acceptable here because the data is
-  synthetic and the only per-session write is an in-memory mark that resets when
-  the session is idle. No marker file is written on the request path.
-- A container restart drops every in-memory session; there is no on-disk state to
-  clean up.
+- The app has no authentication. That is acceptable here because the data is synthetic and the only per-session write is an in-memory mark that resets when the session is idle. No marker file is written on the request path.
+- A container restart drops every in-memory session; there is no on-disk state to clean up.
