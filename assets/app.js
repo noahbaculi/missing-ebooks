@@ -964,4 +964,160 @@
     recomputeSummary();
     if (searchInput && searchInput.value.trim() !== "") applyFilter();
   });
+
+  // ---- keyboard shortcuts ----
+
+  // Additive to the existing behavior. j/k move a single highlight through the
+  // visible gap rows; m and e mark the highlighted row by clicking its own marker
+  // buttons, so they pass through the confirm dialog exactly like a mouse click; r
+  // rescans; / focuses the filter; ? opens the cheatsheet; Escape clears the filter
+  // or, with an empty box, drops the highlight. The highlight is a real focus
+  // target so keyboard and screen-reader users land on the same row.
+  var activeRow = null;
+  var pendingHighlight = null; // gap-row index to restore after a hotkey mark swap
+
+  // A target we must not hijack typing from.
+  function isEditable(el) {
+    if (!el) return false;
+    var tag = el.tagName;
+    return (
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      tag === "SELECT" ||
+      el.isContentEditable
+    );
+  }
+
+  // Visible gap rows in document order: flagged, not mid-collapse, and on screen
+  // (offsetParent is null when hidden by the filter or inside a closed fold).
+  function visibleGapRows() {
+    var all = document.querySelectorAll("#roots .row.flagged:not(.leaving)");
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].offsetParent !== null) out.push(all[i]);
+    }
+    return out;
+  }
+
+  // Move the highlight to a row: clear the old, mark and focus the new so keyboard
+  // and screen-reader users land together, and scroll it into view (instant under
+  // reduced motion).
+  function setActiveRow(row) {
+    if (activeRow && activeRow !== row) {
+      activeRow.classList.remove("row-active");
+      activeRow.removeAttribute("tabindex");
+    }
+    activeRow = row || null;
+    if (!activeRow) return;
+    activeRow.classList.add("row-active");
+    activeRow.setAttribute("tabindex", "-1");
+    activeRow.focus();
+    activeRow.scrollIntoView({
+      block: "nearest",
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+    });
+  }
+
+  // Drop the highlight entirely (Escape with an empty filter box).
+  function dropHighlight() {
+    if (!activeRow) return;
+    activeRow.classList.remove("row-active");
+    activeRow.removeAttribute("tabindex");
+    if (document.activeElement === activeRow) activeRow.blur();
+    activeRow = null;
+  }
+
+  // Step the highlight forward (+1) or backward (-1) through the visible gap rows,
+  // clamped at both ends. With nothing highlighted, either direction lands first.
+  function moveHighlight(delta) {
+    var rows = visibleGapRows();
+    if (!rows.length) return;
+    var idx = activeRow ? rows.indexOf(activeRow) : -1;
+    var next = idx < 0 ? 0 : Math.min(Math.max(idx + delta, 0), rows.length - 1);
+    setActiveRow(rows[next]);
+  }
+
+  // Fire one of the highlighted row's own marker buttons, so the click runs the
+  // same confirm path a mouse click does. Remember the row's slot and drop focus
+  // before the swap (a focused row vanishing jumps the scroll), so the highlight
+  // can follow to the next gap once the section swaps.
+  function markActiveRow(file) {
+    if (!activeRow) return;
+    var btn = activeRow.querySelector(
+      '[hx-post="/mark"][data-confirm-file="' + file + '"]'
+    );
+    if (!btn) return;
+    pendingHighlight = visibleGapRows().indexOf(activeRow);
+    if (document.activeElement === activeRow) activeRow.blur();
+    btn.click();
+  }
+
+  // After a hotkey mark's section swap settles, move the highlight to the gap row
+  // now sitting where the marked one was (or the last, if it was at the end).
+  function restoreHighlight() {
+    if (pendingHighlight === null) return;
+    var rows = visibleGapRows();
+    var idx = Math.min(pendingHighlight, rows.length - 1);
+    pendingHighlight = null;
+    if (rows.length && idx >= 0) setActiveRow(rows[idx]);
+    else dropHighlight();
+  }
+
+  document.body.addEventListener("htmx:afterSwap", function () {
+    restoreHighlight();
+  });
+
+  document.addEventListener("keydown", function (evt) {
+    // Escape is allowed even from the filter box: clear the query if it holds one,
+    // otherwise drop the highlight. Toasts are cleared by their own listener.
+    if (evt.key === "Escape") {
+      if (searchInput && searchInput.value) {
+        searchInput.value = "";
+        clearFilter();
+      } else {
+        dropHighlight();
+      }
+      return;
+    }
+    // Every other shortcut is suppressed while typing in a field.
+    if (isEditable(evt.target)) return;
+    // Don't fight browser or OS chords.
+    if (evt.metaKey || evt.ctrlKey || evt.altKey) return;
+    switch (evt.key) {
+      case "j":
+        evt.preventDefault();
+        moveHighlight(1);
+        break;
+      case "k":
+        evt.preventDefault();
+        moveHighlight(-1);
+        break;
+      case "m":
+        evt.preventDefault();
+        markActiveRow(".no_ebook");
+        break;
+      case "e":
+        evt.preventDefault();
+        markActiveRow(".ebook_elsewhere");
+        break;
+      case "r":
+        evt.preventDefault();
+        var rescanBtn = document.getElementById("rescan-btn");
+        if (rescanBtn && !rescanBtn.disabled) rescanBtn.click();
+        break;
+      case "/":
+        evt.preventDefault();
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+        break;
+      case "?":
+        evt.preventDefault();
+        openCheatsheet();
+        break;
+      default:
+        break;
+    }
+  });
 })();

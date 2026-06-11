@@ -1676,3 +1676,13 @@ li.leaving {
   border: var(--border) solid var(--color-base-300);
   border-radius: 0.3rem;
 }
+
+/* ---- keyboard highlight ---- */
+/* The j/k highlight is a real focus target (tabindex -1), so it carries a visible
+   focus ring and a tinted band. */
+.row.row-active {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  border-radius: var(--radius-field);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}

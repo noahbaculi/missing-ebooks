@@ -2346,4 +2346,54 @@ mod tests {
         assert!(body.contains(r#"addEventListener("marked""#));
         assert!(body.contains("htmx:afterSwap"));
     }
+
+    #[tokio::test]
+    async fn app_script_defines_the_hotkeys_and_active_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.js")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // j/k move a focusable highlight through the visible gap rows; m/e mark it;
+        // / focuses the filter; ? opens the cheatsheet; Escape clears or drops.
+        assert!(body.contains("moveHighlight"));
+        assert!(body.contains("visibleGapRows"));
+        assert!(body.contains("row-active"));
+        assert!(body.contains("markActiveRow"));
+        // Marking routes through the row's own buttons, so the confirm dialog applies.
+        // The handler builds this selector with a single-quoted JS string, so the
+        // served script carries the double quotes unescaped (a raw Rust string holds
+        // them as-is).
+        assert!(body.contains(r#"[hx-post="/mark"][data-confirm-file="#));
+        // Keys are ignored while typing in a field.
+        assert!(body.contains("isEditable"));
+    }
+
+    #[tokio::test]
+    async fn stylesheet_styles_the_active_row_highlight() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.css")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The j/k highlight is a real focus target: a tinted band and a focus ring.
+        assert!(body.contains(".row-active"));
+        assert!(body.contains("outline"));
+    }
 }
