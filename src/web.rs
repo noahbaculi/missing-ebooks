@@ -1066,6 +1066,13 @@ mod tests {
         assert!(body.contains(r#"id="confirm-toggle""#));
         // The old two-state toggle is gone.
         assert!(!body.contains("toggleTheme()"));
+        // Confirm-before-marking renders above the theme control.
+        let confirm_at = body.find(r#"id="confirm-toggle""#).unwrap();
+        let theme_at = body.find(r#"data-theme-choice="light""#).unwrap();
+        assert!(
+            confirm_at < theme_at,
+            "the confirm row should render above the theme control"
+        );
     }
 
     #[tokio::test]
@@ -2327,7 +2334,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn index_renders_the_shortcuts_cheatsheet_and_trigger() {
+    async fn index_renders_the_shortcuts_inside_the_settings_panel() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let body = body_string(
@@ -2337,18 +2344,19 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // A native dialog listing the shortcuts, plus a labelled navbar trigger that
-        // opens it so the keys are discoverable without already knowing them.
-        assert!(body.contains(r#"id="cheatsheet""#));
+        // The shortcuts are a read-only section inside the settings popover now, so
+        // the standalone cheatsheet dialog and its navbar trigger are gone.
+        assert!(!body.contains(r#"id="cheatsheet""#));
+        assert!(!body.contains(r#"id="cheatsheet-btn""#));
+        assert!(body.contains(r#"class="settings-shortcuts""#));
         assert!(body.contains("Keyboard shortcuts"));
-        assert!(body.contains(r#"id="cheatsheet-btn""#));
         // The keys are spelled out for the reader.
         assert!(body.contains("<kbd>j</kbd>"));
         assert!(body.contains("Move between gaps"));
         // Enter leaves the filter box, the complement of / focusing it.
         assert!(body.contains("<kbd>Enter</kbd>"));
         assert!(body.contains("Exit the filter"));
-        // The mark shortcuts were removed, so the cheatsheet no longer lists them.
+        // The mark shortcuts were removed, so the list no longer mentions them.
         assert!(!body.contains("Mark as no ebook"));
         assert!(!body.contains("Mark ebook elsewhere"));
     }

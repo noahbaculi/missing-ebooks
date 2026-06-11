@@ -42,9 +42,6 @@ const CHECK_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" st
 /// Circled exclamation for a scan or write error. Inherits `currentColor`.
 const ERROR_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>"##;
 
-/// A keyboard outline for the cheatsheet trigger. Inherits `currentColor`.
-const KEYBOARD_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>"##;
-
 /// A thin × for the filter's clear button: two diagonal strokes, no circle, in
 /// `currentColor` so it follows the button's muted-to-base hover color.
 const CLEAR_SVG: &str = r##"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>"##;
@@ -101,11 +98,13 @@ fn view_toggle(mode: ViewMode) -> Markup {
     }
 }
 
-/// The navbar settings control: a cog that opens a popover panel holding the
-/// theme choice and the confirm-before-marking toggle. The native popover API
-/// drives open/close; the controls' behavior lives in `app.js`. The theme
-/// segments and the switch render with their default state (System, confirm on);
-/// `app.js` reconciles them against localStorage once it runs.
+/// The navbar settings control: a cog that opens a popover holding the
+/// confirm-before-marking toggle, the theme choice, and a read-only keyboard
+/// shortcuts reference. The native popover API drives open/close; the controls'
+/// behavior lives in `app.js`, which also opens this panel on the `?` key. The
+/// theme segments and the switch render with their default state (System,
+/// confirm on); `app.js` reconciles them against localStorage once it runs. The
+/// shortcuts section hides on mobile, where there is no keyboard.
 fn settings_menu() -> Markup {
     html! {
         button.btn.btn-ghost.btn-square.settings-cog type="button"
@@ -115,6 +114,16 @@ fn settings_menu() -> Markup {
             popovertarget="settings-panel" { (PreEscaped(COG_SVG)) }
         div.settings-panel id="settings-panel" popover="auto" aria-label="Settings" {
             div.settings-head { "Settings" }
+            div.settings-row {
+                span.settings-label {
+                    "Confirm before marking"
+                    span.settings-sub { "Ask before writing a marker" }
+                }
+                label.switch {
+                    input id="confirm-toggle" type="checkbox" checked;
+                    span.switch-track {}
+                }
+            }
             div.settings-row.settings-row-theme {
                 span.settings-label { "Theme" }
                 div.segmented role="group" aria-label="Theme" {
@@ -124,14 +133,15 @@ fn settings_menu() -> Markup {
                         data-theme-choice="system" aria-current="true" { "System" }
                 }
             }
-            div.settings-row {
-                span.settings-label {
-                    "Confirm before marking"
-                    span.settings-sub { "Ask before writing a marker" }
-                }
-                label.switch {
-                    input id="confirm-toggle" type="checkbox" checked;
-                    span.switch-track {}
+            div.settings-shortcuts {
+                div.settings-head { "Keyboard shortcuts" }
+                dl.settings-shortcuts-list {
+                    dt { kbd { "j" } " / " kbd { "k" } } dd { "Move between gaps" }
+                    dt { kbd { "r" } } dd { "Rescan the library" }
+                    dt { kbd { "/" } } dd { "Focus the filter" }
+                    dt { kbd { "Enter" } } dd { "Exit the filter" }
+                    dt { kbd { "?" } } dd { "Show this list" }
+                    dt { kbd { "Esc" } } dd { "Clear the filter or selection" }
                 }
             }
         }
@@ -164,38 +174,6 @@ fn search_empty() -> Markup {
     html! {
         p.search-empty id="search-empty" role="status" aria-live="polite" hidden {
             "No folders match your filter."
-        }
-    }
-}
-
-/// The keyboard-shortcuts trigger: a navbar button that opens the cheatsheet, so
-/// the hotkeys are discoverable without already knowing `?`. Hidden on small
-/// screens, where there is no keyboard. `app.js` wires the click.
-fn cheatsheet_trigger() -> Markup {
-    html! {
-        button.btn.btn-ghost.btn-square.cheatsheet-trigger id="cheatsheet-btn"
-            type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" {
-            (PreEscaped(KEYBOARD_SVG))
-        }
-    }
-}
-
-/// The shortcuts cheatsheet: a native dialog opened by `?` or the navbar trigger,
-/// focus-trapped and Escape-closable by the platform, and labelled. Lists every
-/// shortcut so the feature explains itself.
-fn cheatsheet() -> Markup {
-    html! {
-        dialog.cheatsheet id="cheatsheet" aria-labelledby="cheatsheet-title" {
-            h2.cheatsheet-title id="cheatsheet-title" { "Keyboard shortcuts" }
-            dl.cheatsheet-list {
-                dt { kbd { "j" } " / " kbd { "k" } } dd { "Move between gaps" }
-                dt { kbd { "r" } } dd { "Rescan the library" }
-                dt { kbd { "/" } } dd { "Focus the filter" }
-                dt { kbd { "Enter" } } dd { "Exit the filter" }
-                dt { kbd { "?" } } dd { "Show this list" }
-                dt { kbd { "Esc" } } dd { "Clear the filter or selection" }
-            }
-            button.btn.btn-outline id="cheatsheet-close" type="button" { "Close" }
         }
     }
 }
@@ -326,7 +304,6 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                     span.spacer {}
                     (search_box())
                     (view_toggle(mode))
-                    (cheatsheet_trigger())
                     (settings_menu())
                     form method="post" action="/rescan"
                         hx-post="/rescan" hx-target="#roots" hx-swap="innerHTML"
@@ -353,7 +330,6 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                 }
                 (confirm_dialog())
                 (toast())
-                (cheatsheet())
                 script src="/static/htmx.min.js" {}
                 script src="/static/app.js" {}
             }
