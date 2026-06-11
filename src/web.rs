@@ -2146,4 +2146,23 @@ mod tests {
         assert!(body.contains("gap-chip-error"));
         assert!(body.contains("scan error"));
     }
+
+    #[tokio::test]
+    async fn gap_summary_renders_a_session_progressbar() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // A progressbar that starts empty: this sitting's resolved-over-baseline meter.
+        assert!(body.contains(r#"role="progressbar""#));
+        assert!(body.contains(r#"aria-valuenow="0""#));
+        assert!(body.contains(r#"aria-valuemax="1""#));
+        assert!(body.contains(r#"aria-valuemin="0""#));
+        assert!(body.contains(r#"id="gap-bar-fill""#));
+    }
 }

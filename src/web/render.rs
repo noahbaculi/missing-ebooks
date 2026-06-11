@@ -383,8 +383,7 @@ fn gap_summary(view: &FlaggedView) -> Markup {
                         }
                     }
                 }
-                // The session bar is added in Task 3 (inside this @else: shown only
-                // when there is a gap to resolve).
+                (session_bar(total))
             }
             @if view.len() > 1 {
                 div.gap-chips id="gap-chips" {
@@ -422,6 +421,20 @@ fn root_chip(root: usize, section: &RootSection) -> Markup {
                     span.gap-chip-num { "scan error" }
                 }
             }
+        }
+    }
+}
+
+/// The session triage bar: a client-side meter of gaps resolved this sitting over
+/// the count at load. Renders empty (`aria-valuenow="0"`); `app.js` fills it as
+/// marks land and resets its baseline on a rescan. A `progressbar` so the value is
+/// announced; the fill transition is dropped under reduced motion in CSS.
+fn session_bar(total: usize) -> Markup {
+    html! {
+        div.gap-bar role="progressbar"
+            aria-label="Gaps resolved this session"
+            aria-valuemin="0" aria-valuemax=(total) aria-valuenow="0" {
+            span.gap-bar-fill id="gap-bar-fill" {}
         }
     }
 }
