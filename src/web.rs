@@ -2211,4 +2211,28 @@ mod tests {
         assert!(body.contains(r#"aria-live="polite""#));
         assert!(body.contains("No folders match"));
     }
+
+    #[tokio::test]
+    async fn stylesheet_styles_the_filter_input_and_hidden_states() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.css")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The filter input is styled and hidden until JS reveals it.
+        assert!(body.contains(".search-input"));
+        assert!(body.contains(".search[hidden]"));
+        // Filtered-out branches collapse, and the input drops to its own navbar row on
+        // a phone, the way the view toggle already reflows.
+        assert!(body.contains(".filter-hidden"));
+        assert!(body.contains(".navbar .search"));
+    }
 }

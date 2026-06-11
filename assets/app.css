@@ -732,6 +732,10 @@ details[open] > summary .chev {
     flex: 1;
     text-align: center;
   }
+  .navbar .search {
+    order: 5;
+    flex-basis: 100%;
+  }
   .gap-summary-head {
     flex-direction: column;
     align-items: flex-start;
@@ -1578,4 +1582,55 @@ li.leaving {
   .gap-bar-fill {
     transition: none;
   }
+}
+
+/* ---- navbar filter ---- */
+/* Hidden until app.js reveals it (the connection banner's pattern), so the no-JS
+   page never shows a filter that cannot run. The explicit display:none beats the
+   .search display:flex the way .conn-banner[hidden] does. */
+.search[hidden] {
+  display: none;
+}
+.search {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  background: var(--color-base-200);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: var(--radius-field);
+}
+.search .icon {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  color: var(--color-muted);
+}
+.search-input {
+  min-width: 9rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--color-base-content);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+/* a branch hidden by the filter collapses; ancestors of a match stay shown */
+.filter-hidden {
+  display: none;
+}
+
+/* the polite "no matches" line, hidden until a query matches nothing */
+.search-empty[hidden] {
+  display: none;
+}
+.search-empty {
+  max-width: 52rem;
+  margin: 0 auto 1rem;
+  padding: 0.85rem 1.1rem;
+  color: var(--color-muted);
+  background: var(--color-base-100);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: var(--radius-box);
 }
