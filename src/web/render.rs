@@ -332,7 +332,7 @@ pub(crate) fn render_section(
                             div.empty { span { "Nothing here" } }
                         } @else {
                             ul.menu {
-                                @for node in nodes { (render_node(node, root, links, mode, &counter)) }
+                                @for node in nodes { (render_node(node, root, links, mode, &counter, 0)) }
                             }
                         }
                     }
@@ -389,6 +389,7 @@ fn render_node(
     links: &[SearchLink],
     mode: ViewMode,
     counter: &std::cell::Cell<usize>,
+    depth: usize,
 ) -> Markup {
     // A covered row dims only in show-all; gaps-only never holds covered nodes.
     let covered = mode == ViewMode::All && !node.missing_ebook;
@@ -414,7 +415,11 @@ fn render_node(
         } @else {
             li {
                 details open {
-                    summary.row.flagged[node.needs_ebook()].covered[covered] {
+                    summary.row
+                        .flagged[node.needs_ebook()]
+                        .covered[covered]
+                        .container-top[!node.needs_ebook() && depth == 0]
+                        .container-nested[!node.needs_ebook() && depth > 0] {
                         (chevron())
                         (folder_icon())
                         span.name { (node.name) }
@@ -427,7 +432,7 @@ fn render_node(
                         }
                     }
                     ul {
-                        @for child in &node.children { (render_node(child, root, links, mode, counter)) }
+                        @for child in &node.children { (render_node(child, root, links, mode, counter, depth + 1)) }
                     }
                 }
             }

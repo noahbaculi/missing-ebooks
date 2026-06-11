@@ -289,6 +289,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn index_tags_container_rows_by_depth() {
+        let dir = tempfile::tempdir().unwrap();
+        // Author (top container) -> Series (nested container) -> Book (flagged leaf).
+        touch(&dir.path().join("Author/Series/Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The top container is tagged for bold, the nested one for italic.
+        assert!(body.contains(r#"class="row container-top""#));
+        assert!(body.contains(r#"class="row container-nested""#));
+        // The flagged leaf keeps exactly its existing class, with no depth tag.
+        assert!(body.contains(r#"class="row flagged""#));
+    }
+
+    #[tokio::test]
+    async fn show_all_keeps_depth_tags_on_covered_containers() {
+        let dir = tempfile::tempdir().unwrap();
+        // Audio under a series, plus an ebook at the author level so the whole
+        // branch is covered in show-all.
+        touch(&dir.path().join("Author/Series/Book/01.mp3"));
+        touch(&dir.path().join("Author/Author.epub"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/?view=all")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The covered top and nested containers still carry their depth tags, so the
+        // depth cue survives the view switch and composes with the covered class.
+        assert!(body.contains(r#"class="row covered container-top""#));
+        assert!(body.contains(r#"class="row covered container-nested""#));
+        // The covered leaf book carries the bare covered class with no depth tag
+        // (the trailing quote rules out a `covered container-*` prefix match).
+        assert!(body.contains(r#"class="row covered""#));
+    }
+
+    #[tokio::test]
     async fn index_wraps_the_sections_in_a_roots_container() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
