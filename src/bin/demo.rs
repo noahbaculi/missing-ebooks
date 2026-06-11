@@ -54,9 +54,11 @@ async fn main() -> anyhow::Result<()> {
     let scenario = scenarios::find_scenario(&demo_config.scenario)
         .ok_or_else(|| anyhow::anyhow!("unknown scenario {:?}", demo_config.scenario))?;
 
-    // Seed the scenario into a stable temp directory. The data is synthetic and
-    // the container is ephemeral, so it is never cleaned up explicitly.
-    let seed_dir = std::env::temp_dir().join("missing-ebooks-demo");
+    // Seed the scenario into a stable directory under /tmp. The data is synthetic
+    // and the container is ephemeral, so it is never cleaned up explicitly. /tmp
+    // matches the explore harness and keeps the root path short; it is a no-op in
+    // the Linux container, where the platform temp dir is already /tmp.
+    let seed_dir = std::path::Path::new("/tmp").join("missing-ebooks-demo");
     std::fs::create_dir_all(&seed_dir)?;
     let roots = (scenario.build)(&seed_dir);
 
