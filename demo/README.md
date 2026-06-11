@@ -8,13 +8,9 @@ host.
 
 ## What runs where
 
-- **Host:** any always-on Linux box. The reference host is an Oracle Cloud
-  always-free Ampere VM (arm64), which builds the arm64 image natively.
-- **Containers:** `demo` (the single server process) and `cloudflared` (the
-  tunnel client).
-- **Cloudflare:** terminates TLS for `demo-missing-ebooks.noahbaculi.com` and
-  routes it to the demo server over the tunnel. A single-label subdomain keeps
-  it under free Universal SSL.
+- The host is any always-on Linux box. The reference host is an Oracle Cloud always-free Ampere VM (arm64), which builds the arm64 image natively.
+- Two containers run: `demo` (the single server process) and `cloudflared` (the tunnel client).
+- Cloudflare terminates TLS for `demo-missing-ebooks.noahbaculi.com` and routes it to the demo server over the tunnel. A single-label subdomain keeps it under free Universal SSL.
 
 ## How isolation works
 
@@ -66,14 +62,15 @@ In the Cloudflare dashboard for `noahbaculi.com`:
 
 ## Operations
 
-- **Logs:** `docker compose -f demo/docker-compose.yml logs -f demo`
-- **Update after a code change:**
-  `docker compose -f demo/docker-compose.yml up -d --build`
-- **Tuning:** edit the `DEMO_*` environment values in
-  `demo/docker-compose.yml` (scenario, idle window, session cap, and the cookie
-  name) and re-run the up command.
-- **Reset everything:** `docker compose -f demo/docker-compose.yml down` removes
-  the containers; sessions live only in memory, so nothing else needs cleanup.
+Common operations:
+
+```shell
+docker compose -f demo/docker-compose.yml logs -f demo     # follow the logs
+docker compose -f demo/docker-compose.yml up -d --build    # update after a code change
+docker compose -f demo/docker-compose.yml down             # stop and remove the containers; sessions are in-memory, so nothing else needs cleanup
+```
+
+Tune the demo by editing the `DEMO_*` environment values in `demo/docker-compose.yml` (scenario, idle window, session cap, and the cookie name), then re-run the up command.
 
 ## Notes
 

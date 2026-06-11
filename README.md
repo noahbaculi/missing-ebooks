@@ -68,9 +68,9 @@ services:
 
 Then open http://127.0.0.1:13379.
 
-- **`PUID`/`PGID`** set the user the server runs as. The app writes marker files into your library, so set these to match whoever owns it on the host (run `id` to find yours). They default to `1000`.
-- **The library is mounted read-write** at `/audiobooks` and named by `MISSING_EBOOKS_LIBRARY_ROOTS`. For multiple roots, add a mount per root and list the container paths separated by `:`.
-- **File-only settings** (search links, exclude globs, extension lists) come from a mounted `config.toml`. Uncomment the second volume; the entrypoint auto-detects `/config/config.toml`.
+- `PUID`/`PGID` set the user the server runs as. The app writes marker files into your library, so set these to match whoever owns it on the host (run `id` to find yours). They default to `1000`.
+- The library is mounted read-write at `/audiobooks` and named by `MISSING_EBOOKS_LIBRARY_ROOTS`. For multiple roots, add a mount per root and list the container paths separated by `:`.
+- File-only settings (search links, exclude globs, extension lists) come from a mounted `config.toml`. Uncomment the second volume; the entrypoint auto-detects `/config/config.toml`.
 
 > [!WARNING]
 > The app has no authentication. The compose file above binds the host port to `127.0.0.1`, so it is reachable only from the machine running it. To reach it from the LAN, change the mapping to `"13379:13379"`, and put a reverse proxy with authentication in front of it before exposing it beyond your network.
