@@ -318,6 +318,7 @@ mod tests {
         assert!(listing.contains(USAGE));
         for name in [
             "mixed-forest",
+            "messy-shelf",
             "clean-error",
             "root-flagged",
             "pre-marked",

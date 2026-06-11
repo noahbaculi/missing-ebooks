@@ -28,6 +28,11 @@ pub fn catalog() -> Vec<Scenario> {
             build: build_mixed_forest,
         },
         Scenario {
+            name: "messy-shelf",
+            description: "Heterogeneous depth: standalone books, author-only and series-only folders, a dumping folder, beside one meticulous author>series>book pocket (single root)",
+            build: build_messy_shelf,
+        },
+        Scenario {
             name: "clean-error",
             description: "Two roots side by side: one fully covered (Clean), one uncreated (Error)",
             build: build_clean_error,
@@ -176,6 +181,66 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     );
     touch(&root.join("Arthur C. Clarke/The City and the Stars/01 - The City and the Stars.m4b"));
     touch(&root.join("Arthur C. Clarke/The City and the Stars/The City and the Stars.epub"));
+    vec![root]
+}
+
+/// A library a careless owner never tidied: standalone books, author-only and
+/// series-only folders, and a dumping folder, beside one meticulous
+/// author>series>book pocket. Flagged folders land at depths 1, 2, and 3 in one
+/// tree, which the clean `build_mixed_forest` hierarchy never produces.
+fn build_messy_shelf(base: &Path) -> Vec<PathBuf> {
+    let root = base.join("Audiobooks");
+
+    // Standalone books with no author folder above them, each flagged at the
+    // root's first level.
+    touch(&root.join("The Hobbit/01 - The Hobbit.mp3"));
+    touch(&root.join("Neuromancer/01 - Neuromancer.m4b"));
+    // Project Hail Mary is an Andy Weir book left loose at the top instead of
+    // under the "Andy Weir" folder below. The same author filed two ways is the
+    // messy-owner detail.
+    touch(&root.join("Project Hail Mary/01 - Project Hail Mary.mp3"));
+    // Dune carries its own epub, so it is covered and drops out of the tree.
+    touch(&root.join("Dune/01 - Dune.mp3"));
+    touch(&root.join("Dune/Dune.epub"));
+
+    // Author folders that hold audio directly, with no book subfolder, so the
+    // author folder itself is the flagged leaf.
+    touch(&root.join("Stephen King/01 - The Gunslinger.mp3"));
+    touch(&root.join("Neil Gaiman/01 - Coraline.m4a"));
+
+    // Dumping containers whose names a tidy library would not use. Each holds
+    // loose book folders, so the container surfaces only because of the gaps
+    // beneath it.
+    touch(&root.join("To Sort/Some Download/01 - track.mp3"));
+    touch(&root.join("To Sort/Another Rip/01 - track.m4b"));
+    touch(&root.join("Downloads/Unknown Audiobook/01 - track.mp3"));
+
+    // A normal author > book pair. Artemis stays flagged; The Martian carries a
+    // .no_ebook marker, so it drops out while its sibling stays.
+    touch(&root.join("Andy Weir/Artemis/01 - Artemis.mp3"));
+    touch(&root.join("Andy Weir/The Martian/01 - The Martian.m4b"));
+    touch(&root.join("Andy Weir/The Martian/.no_ebook"));
+    touch(
+        &root
+            .join("Ursula K. Le Guin/The Left Hand of Darkness/01 - The Left Hand of Darkness.mp3"),
+    );
+
+    // A series container with no author above it: the owner filed the series but
+    // not the writer.
+    touch(&root.join("The Expanse/Leviathan Wakes/01 - Leviathan Wakes.mp3"));
+    touch(&root.join("The Expanse/Caliban's War/01 - Caliban's War.m4b"));
+    touch(&root.join("The Expanse/Abaddon's Gate/01 - Abaddon's Gate.mp3"));
+
+    // The one meticulous pocket: a full author > series > book hierarchy, one
+    // author with two series, so flagged leaves reach depth 3.
+    touch(&root.join(
+        "Brandon Sanderson/The Stormlight Archive/The Way of Kings/01 - The Way of Kings.m4b",
+    ));
+    touch(&root.join(
+        "Brandon Sanderson/The Stormlight Archive/Words of Radiance/01 - Words of Radiance.mp3",
+    ));
+    touch(&root.join("Brandon Sanderson/Mistborn/The Final Empire/01 - The Final Empire.m4b"));
+
     vec![root]
 }
 
@@ -383,6 +448,35 @@ mod tests {
     }
 
     #[test]
+    fn messy_shelf_flags_the_expected_leaves() {
+        let dir = tempfile::tempdir().unwrap();
+        let roots = build_messy_shelf(dir.path());
+        assert_eq!(roots.len(), 1);
+        let want: BTreeSet<String> = [
+            "The Hobbit",
+            "Neuromancer",
+            "Project Hail Mary",
+            "Stephen King",
+            "Neil Gaiman",
+            "To Sort/Some Download",
+            "To Sort/Another Rip",
+            "Downloads/Unknown Audiobook",
+            "Andy Weir/Artemis",
+            "Ursula K. Le Guin/The Left Hand of Darkness",
+            "The Expanse/Leviathan Wakes",
+            "The Expanse/Caliban's War",
+            "The Expanse/Abaddon's Gate",
+            "Brandon Sanderson/The Stormlight Archive/The Way of Kings",
+            "Brandon Sanderson/The Stormlight Archive/Words of Radiance",
+            "Brandon Sanderson/Mistborn/The Final Empire",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(flagged(&roots[0]), want);
+    }
+
+    #[test]
     fn clean_error_has_a_covered_root_and_an_uncreated_root() {
         let dir = tempfile::tempdir().unwrap();
         let roots = build_clean_error(dir.path());
@@ -449,12 +543,13 @@ mod tests {
     }
 
     #[test]
-    fn catalog_lists_all_five_scenarios() {
+    fn catalog_lists_all_six_scenarios() {
         let names: Vec<&str> = catalog().iter().map(|s| s.name).collect();
         assert_eq!(
             names,
             vec![
                 "mixed-forest",
+                "messy-shelf",
                 "clean-error",
                 "root-flagged",
                 "pre-marked",
