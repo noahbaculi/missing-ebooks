@@ -2308,7 +2308,8 @@ mod tests {
         // control, which we hide.
         assert!(body.contains("::-webkit-search-cancel-button"));
         assert!(body.contains(".search-clear"));
-        // It darkens on hover and drops out of the layout while the box is empty.
+        // It darkens on hover and, while the box is empty, stays in the layout but
+        // invisible so its slot is reserved and the field width never changes.
         assert!(body.contains(".search-clear:hover"));
         assert!(body.contains(".search-clear[hidden]"));
     }

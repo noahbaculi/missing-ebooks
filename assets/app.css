@@ -1718,9 +1718,10 @@ li.leaving {
 .search-clear:hover {
   color: var(--color-base-content);
 }
-/* hidden while the box is empty; stays out of the flex layout */
+/* hidden while the box is empty, but kept in the flex layout (just invisible) so
+   its slot is always reserved and showing the × never widens the field. */
 .search-clear[hidden] {
-  display: none;
+  visibility: hidden;
 }
 
 /* a branch hidden by the filter collapses; ancestors of a match stay shown */
