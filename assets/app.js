@@ -948,13 +948,11 @@
   // ---- keyboard shortcuts ----
 
   // Additive to the existing behavior. j/k move a single highlight through the
-  // visible gap rows; m and e mark the highlighted row by clicking its own marker
-  // buttons, so they pass through the confirm dialog exactly like a mouse click; r
-  // rescans; / focuses the filter; ? opens the cheatsheet; Escape clears the filter
-  // or, with an empty box, drops the highlight. The highlight is a real focus
-  // target so keyboard and screen-reader users land on the same row.
+  // visible gap rows; r rescans; / focuses the filter; ? opens the cheatsheet;
+  // Escape clears the filter or, with an empty box, drops the highlight. The
+  // highlight is a real focus target so keyboard and screen-reader users land on the
+  // same row.
   var activeRow = null;
-  var pendingHighlight = null; // gap-row index to restore after a hotkey mark swap
 
   // A target we must not hijack typing from.
   function isEditable(el) {
@@ -1017,36 +1015,6 @@
     setActiveRow(rows[next]);
   }
 
-  // Fire one of the highlighted row's own marker buttons, so the click runs the
-  // same confirm path a mouse click does. Remember the row's slot and drop focus
-  // before the swap (a focused row vanishing jumps the scroll), so the highlight
-  // can follow to the next gap once the section swaps.
-  function markActiveRow(file) {
-    if (!activeRow) return;
-    var btn = activeRow.querySelector(
-      '[hx-post="/mark"][data-confirm-file="' + file + '"]'
-    );
-    if (!btn) return;
-    pendingHighlight = visibleGapRows().indexOf(activeRow);
-    if (document.activeElement === activeRow) activeRow.blur();
-    btn.click();
-  }
-
-  // After a hotkey mark's section swap settles, move the highlight to the gap row
-  // now sitting where the marked one was (or the last, if it was at the end).
-  function restoreHighlight() {
-    if (pendingHighlight === null) return;
-    var rows = visibleGapRows();
-    var idx = Math.min(pendingHighlight, rows.length - 1);
-    pendingHighlight = null;
-    if (rows.length && idx >= 0) setActiveRow(rows[idx]);
-    else dropHighlight();
-  }
-
-  document.body.addEventListener("htmx:afterSwap", function () {
-    restoreHighlight();
-  });
-
   document.addEventListener("keydown", function (evt) {
     // Escape is allowed even from the filter box: clear the query if it holds one,
     // otherwise drop the highlight. Toasts are cleared by their own listener.
@@ -1071,14 +1039,6 @@
       case "k":
         evt.preventDefault();
         moveHighlight(-1);
-        break;
-      case "m":
-        evt.preventDefault();
-        markActiveRow(".no_ebook");
-        break;
-      case "e":
-        evt.preventDefault();
-        markActiveRow(".ebook_elsewhere");
         break;
       case "r":
         evt.preventDefault();

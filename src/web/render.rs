@@ -173,8 +173,6 @@ fn cheatsheet() -> Markup {
             h2.cheatsheet-title id="cheatsheet-title" { "Keyboard shortcuts" }
             dl.cheatsheet-list {
                 dt { kbd { "j" } " / " kbd { "k" } } dd { "Move between gaps" }
-                dt { kbd { "m" } } dd { "Mark as no ebook" }
-                dt { kbd { "e" } } dd { "Mark ebook elsewhere" }
                 dt { kbd { "r" } } dd { "Rescan the library" }
                 dt { kbd { "/" } } dd { "Focus the filter" }
                 dt { kbd { "?" } } dd { "Show this list" }

@@ -2245,7 +2245,10 @@ mod tests {
         assert!(body.contains(r#"id="cheatsheet-btn""#));
         // The keys are spelled out for the reader.
         assert!(body.contains("<kbd>j</kbd>"));
-        assert!(body.contains("Mark as no ebook"));
+        assert!(body.contains("Move between gaps"));
+        // The mark shortcuts were removed, so the cheatsheet no longer lists them.
+        assert!(!body.contains("Mark as no ebook"));
+        assert!(!body.contains("Mark ebook elsewhere"));
     }
 
     #[tokio::test]
@@ -2356,17 +2359,13 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // j/k move a focusable highlight through the visible gap rows; m/e mark it;
+        // j/k move a focusable highlight through the visible gap rows; r rescans;
         // / focuses the filter; ? opens the cheatsheet; Escape clears or drops.
         assert!(body.contains("moveHighlight"));
         assert!(body.contains("visibleGapRows"));
         assert!(body.contains("row-active"));
-        assert!(body.contains("markActiveRow"));
-        // Marking routes through the row's own buttons, so the confirm dialog applies.
-        // The handler builds this selector with a single-quoted JS string, so the
-        // served script carries the double quotes unescaped (a raw Rust string holds
-        // them as-is).
-        assert!(body.contains(r#"[hx-post="/mark"][data-confirm-file="#));
+        // The mark hotkeys were removed, so the row-marking helper is gone too.
+        assert!(!body.contains("markActiveRow"));
         // Keys are ignored while typing in a field.
         assert!(body.contains("isEditable"));
     }
