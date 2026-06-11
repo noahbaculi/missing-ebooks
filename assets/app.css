@@ -732,6 +732,11 @@ details[open] > summary .chev {
     flex: 1;
     text-align: center;
   }
+  .gap-summary-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+  }
   .card {
     padding: 1rem 0.85rem;
   }
@@ -1452,5 +1457,125 @@ li.leaving {
   .toast {
     /* let the stretched stack set the width between its left and right insets */
     width: auto;
+  }
+}
+
+/* ---- gap summary strip ---- */
+/* Rendered between the navbar and the roots, computed server-side and kept current
+   by app.js as marks land. The session bar is a client-side meter of this sitting,
+   not a stored statistic. */
+.gap-summary {
+  max-width: 52rem;
+  margin: 0 auto 1.25rem;
+  padding: 0.9rem 1.1rem;
+  background: var(--color-base-100);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: var(--radius-box);
+}
+.gap-summary-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.5rem;
+}
+.gap-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.gap-hero-num {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--color-warning);
+}
+.gap-hero-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.gap-stat,
+.gap-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+.gap-stat-num {
+  font-weight: 700;
+  color: var(--color-base-content);
+}
+.gap-top-name {
+  font-weight: 600;
+  color: var(--color-base-content);
+}
+.gap-top-num {
+  font-weight: 700;
+  color: var(--color-warning);
+}
+.gap-summary-clear {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-success);
+}
+.gap-summary-clear .icon {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+/* per-root chips */
+.gap-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+.gap-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  background: var(--color-base-200);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+.gap-chip-name {
+  font-weight: 600;
+}
+.gap-chip-num {
+  font-weight: 700;
+  color: var(--color-warning);
+}
+.gap-chip-clean .gap-chip-num {
+  color: var(--color-success);
+}
+.gap-chip-error .gap-chip-num {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+/* ---- session triage bar ---- */
+.gap-bar {
+  margin-top: 0.85rem;
+  height: 0.5rem;
+  background: var(--color-base-200);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.gap-bar-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--color-success);
+  border-radius: inherit;
+  transition: width 320ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gap-bar-fill {
+    transition: none;
   }
 }

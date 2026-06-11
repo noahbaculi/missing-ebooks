@@ -2165,4 +2165,28 @@ mod tests {
         assert!(body.contains(r#"aria-valuemin="0""#));
         assert!(body.contains(r#"id="gap-bar-fill""#));
     }
+
+    #[tokio::test]
+    async fn stylesheet_styles_the_gap_summary_and_session_bar() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.css")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The strip, its chips, and the session bar are themed.
+        assert!(body.contains(".gap-summary"));
+        assert!(body.contains(".gap-chip"));
+        assert!(body.contains(".gap-bar-fill"));
+        // The fill animates its width, and the strip stacks on a phone.
+        assert!(body.contains("transition: width"));
+        assert!(body.contains(".gap-summary-head"));
+    }
 }
