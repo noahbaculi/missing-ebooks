@@ -505,10 +505,8 @@
     var sk = document.getElementById("scan-skeleton");
     var btn = document.getElementById("rescan-btn");
     if (sk) sk.classList.toggle("is-retrying", on);
-    if (btn) {
-      btn.classList.toggle("is-retrying", on);
-      btn.disabled = on;
-    }
+    // Holding it disabled carries the dim across the gaps; :disabled is its busy hook.
+    if (btn) btn.disabled = on;
   }
 
   // A rescan that failed for good: drop the skeleton, re-enable the Rescan button,

@@ -311,13 +311,10 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                         hx-disabled-elt="#rescan-btn" {
                         input type="hidden" name="view" value=(mode.as_query());
                         // The button sits in the nav, outside the swapped #roots, so htmx
-                        // keeps it across the request: it adds htmx-request for the busy
-                        // relabel and disables it so a second click cannot double-scan,
-                        // clearing both once the swap settles.
-                        button.btn.btn-primary id="rescan-btn" type="submit" {
-                            span.btn-idle { "Rescan" }
-                            span.btn-busy { "Rescanning…" }
-                        }
+                        // keeps it across the request: hx-disabled-elt locks it so a second
+                        // click cannot double-scan, and the disabled state dims it (app.css).
+                        // The label stays put; both clear once the swap settles.
+                        button.btn.btn-primary id="rescan-btn" type="submit" { "Rescan" }
                     }
                 }
                 (gap_summary(view))

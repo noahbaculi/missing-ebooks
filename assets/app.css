@@ -1078,32 +1078,18 @@ li.leaving {
 }
 
 /* ---- rescan button ---- */
-/* The button relabels itself to "Rescanning…" while a scan is in flight. It is in
-   the hx-indicator set, so htmx toggles htmx-request on it for the request, and
-   hx-disabled-elt disables it for the duration; both clear when the swap settles.
-   Both labels share one grid cell so the button is always sized to the wider busy
-   label, and toggling visibility (not display) keeps the navbar from reflowing. */
+/* The button keeps its "Rescan" label the whole time. It is in the hx-indicator set
+   and hx-disabled-elt disables it for the request, so a second click cannot
+   double-scan; the disabled state dims it and shows a locked cursor, both clearing
+   when the swap settles. The JS retry hold keeps it disabled across backoff gaps, so
+   :disabled is the single hook for the busy look. */
 #rescan-btn {
-  display: inline-grid;
-  justify-items: center;
-  /* trimmer than the default button padding so the navbar wordmark has room and
-     the longer "Rescanning…" label (which sizes the grid cell) stays compact. */
+  /* trimmer than the default button padding so the navbar wordmark has room. */
   padding-inline: 0.6rem;
 }
-#rescan-btn > span {
-  grid-area: 1 / 1;
-}
-#rescan-btn .btn-busy {
-  visibility: hidden;
-}
-#rescan-btn.htmx-request .btn-idle {
-  visibility: hidden;
-}
-#rescan-btn.htmx-request .btn-busy {
-  visibility: visible;
-}
-#rescan-btn.htmx-request {
-  opacity: 0.92;
+#rescan-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ---- rescan skeleton ---- */
@@ -1255,23 +1241,14 @@ li.leaving {
 
 /* ---- retry-held states ---- */
 /* While a rescan auto-retry runs across backoff gaps, the connection JS holds the
-   skeleton and the busy button label with .is-retrying, independent of htmx's
-   per-attempt htmx-request toggling, so neither flickers between tries. Mirrors the
-   .scan-skeleton and #rescan-btn rules above (app.css:972-1006). */
+   skeleton with .is-retrying, independent of htmx's per-attempt htmx-request
+   toggling, so it does not flicker between tries. The button stays disabled across
+   the gaps (JS sets btn.disabled), so its dim is carried by the :disabled rule above. */
 .scan-skeleton.is-retrying {
   display: block;
 }
 .roots-wrap:has(.scan-skeleton.is-retrying) #roots {
   display: none;
-}
-#rescan-btn.is-retrying .btn-idle {
-  visibility: hidden;
-}
-#rescan-btn.is-retrying .btn-busy {
-  visibility: visible;
-}
-#rescan-btn.is-retrying {
-  opacity: 0.92;
 }
 /* After a rescan fails for good, the Rescan button itself is the retry: a focus
    ring draws the eye to it. */
