@@ -1334,6 +1334,11 @@ mod tests {
         assert!(body.contains(r#"getElementById("gap-summary-head")"#));
         assert!(body.contains("clear.hidden = total !== 0"));
         assert!(body.contains("head.hidden = total === 0"));
+        // The live count excludes a mid-collapse row by its collapsing ancestor
+        // (`.leaving` rides the <li>, not the flagged row), so the flip leads the
+        // delayed swap instead of lagging a beat behind it.
+        assert!(body.contains("countGapRows"));
+        assert!(body.contains(r#"closest(".leaving")"#));
     }
 
     #[tokio::test]

@@ -891,9 +891,23 @@
   var summary = null;
   var sessionBaseline = 0;
 
+  // Gap rows under `scope`, mid-collapse rows excluded. `.leaving` rides the
+  // collapsing ancestor <li>, not the flagged row inside it, so test the ancestor:
+  // this lets the count drop the moment a row starts leaving, leading the delayed
+  // swap, rather than waiting for the fresh section to land.
+  function countGapRows(scope) {
+    var rows = scope.querySelectorAll(".row.flagged");
+    var n = 0;
+    for (var i = 0; i < rows.length; i++) {
+      if (!rows[i].closest(".leaving")) n++;
+    }
+    return n;
+  }
+
   // Every gap row in the tree, mid-collapse rows excluded.
   function currentGapTotal() {
-    return document.querySelectorAll("#roots .row.flagged:not(.leaving)").length;
+    var roots = document.getElementById("roots");
+    return roots ? countGapRows(roots) : 0;
   }
 
   function setText(id, text) {
@@ -920,9 +934,7 @@
       var section = document.querySelector('section.root[data-root="' + root + '"]');
       var num = chips[i].querySelector(".gap-chip-num");
       if (section && num) {
-        num.textContent = String(
-          section.querySelectorAll(".row.flagged:not(.leaving)").length
-        );
+        num.textContent = String(countGapRows(section));
       }
     }
     updateSessionBar(total);
