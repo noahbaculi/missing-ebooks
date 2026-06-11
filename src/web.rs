@@ -2177,6 +2177,8 @@ mod tests {
         // The fill animates its width, and the strip stacks on a phone.
         assert!(body.contains("transition: width"));
         assert!(body.contains(".gap-summary-head"));
+        // The session coverage block is themed.
+        assert!(body.contains(".gap-session"));
     }
 
     #[tokio::test]

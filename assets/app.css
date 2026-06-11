@@ -1481,9 +1481,9 @@ li.leaving {
 }
 .gap-summary-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 0.35rem 1.5rem;
+  gap: 0.5rem 1.5rem;
 }
 .gap-hero {
   display: flex;
@@ -1500,25 +1500,29 @@ li.leaving {
   font-size: 0.95rem;
   font-weight: 600;
 }
-.gap-stat,
-.gap-top {
+/* session coverage: a label, the readout, and the bar grouped beside the hero */
+.gap-session {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.gap-session-head {
   display: flex;
   align-items: baseline;
-  gap: 0.35rem;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+  margin-bottom: 0.4rem;
   font-size: 0.9rem;
   color: var(--color-muted);
 }
-.gap-stat-num {
+.gap-session-label,
+.gap-session-readout {
+  margin: 0;
+}
+.gap-session-roots,
+.gap-session-num {
   font-weight: 700;
   color: var(--color-base-content);
-}
-.gap-top-name {
-  font-weight: 600;
-  color: var(--color-base-content);
-}
-.gap-top-num {
-  font-weight: 700;
-  color: var(--color-warning);
 }
 .gap-summary-clear {
   display: flex;
@@ -1567,7 +1571,7 @@ li.leaving {
 
 /* ---- session triage bar ---- */
 .gap-bar {
-  margin-top: 0.85rem;
+  margin-top: 0;
   height: 0.5rem;
   background: var(--color-base-200);
   border-radius: 999px;
