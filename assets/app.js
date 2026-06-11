@@ -771,6 +771,8 @@
   // never touched here: filtering changes what is visible, not how many gaps exist.
   var searchInput = null;
   var searchEmpty = null;
+  var viewLink = null; // the inactive view-toggle segment (an <a>), or null
+  var viewLinkBase = ""; // its pristine href, before any filter query is appended
 
   // Reveal the navbar filter once JS is running, the hidden-until-ready pattern the
   // connection banner uses.
@@ -838,6 +840,7 @@
       delete opened[j].dataset.filterOpened;
     }
     if (searchEmpty) searchEmpty.hidden = true;
+    syncViewLink();
   }
 
   // Apply the current query, restoring the tree on empty and toggling the line.
@@ -850,13 +853,39 @@
     }
     var visible = filterTree(query);
     if (searchEmpty) searchEmpty.hidden = visible > 0;
+    syncViewLink();
+  }
+
+  // Carry the live filter on the view-toggle link so switching views (a full-page
+  // navigation) lands with the filter still applied. The query rides the URL as `q`,
+  // the way the view itself does; an empty query drops the param.
+  function syncViewLink() {
+    if (!viewLink) return;
+    var query = searchInput ? searchInput.value.trim() : "";
+    viewLink.href = query
+      ? viewLinkBase +
+        (viewLinkBase.indexOf("?") === -1 ? "?" : "&") +
+        "q=" +
+        encodeURIComponent(query)
+      : viewLinkBase;
   }
 
   document.addEventListener("DOMContentLoaded", function () {
     revealSearch();
     searchInput = document.getElementById("search-input");
     searchEmpty = document.getElementById("search-empty");
-    if (searchInput) searchInput.addEventListener("input", applyFilter);
+    viewLink = document.querySelector('.segmented[aria-label="View"] a.segment');
+    if (viewLink) viewLinkBase = viewLink.getAttribute("href");
+    if (searchInput) {
+      searchInput.addEventListener("input", applyFilter);
+      // A filter carried across a view switch arrives as the q param: re-apply it,
+      // which also re-syncs the toggle link so the next switch keeps it too.
+      var carried = new URLSearchParams(location.search).get("q");
+      if (carried) {
+        searchInput.value = carried;
+        applyFilter();
+      }
+    }
   });
 
   // ---- gap summary recompute ----

@@ -2334,6 +2334,30 @@ mod tests {
         // Enter in the box drops focus, so the live filter stays but the keyboard
         // returns to navigation.
         assert!(body.contains(r#"evt.key === "Enter""#));
+        // The live filter rides the view-toggle link as a q param and is re-applied
+        // from the URL on the next page, so switching views keeps the filter.
+        assert!(body.contains("syncViewLink"));
+        assert!(body.contains("URLSearchParams"));
+    }
+
+    #[tokio::test]
+    async fn index_tolerates_a_filter_query_param_on_a_view_switch() {
+        // The client carries the live filter across a view switch as a q param; the
+        // server has no use for it and must ignore it, not reject the request.
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/?view=all&q=Book")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_string(response).await;
+        assert!(body.contains(r#"id="roots""#));
     }
 
     #[tokio::test]
