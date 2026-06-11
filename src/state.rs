@@ -45,6 +45,36 @@ impl ModeSlots {
     }
 }
 
+/// Stamp and store a freshly built view in a slot. The single place that sets
+/// `stored_at = now`: a fresh build refreshes the freshness clock (ADR-0002).
+fn store_fresh(slot: &mut Option<CacheEntry>, view: FlaggedView) -> Arc<FlaggedView> {
+    let view = Arc::new(view);
+    *slot = Some(CacheEntry {
+        stored_at: Instant::now(),
+        view: Arc::clone(&view),
+    });
+    view
+}
+
+/// The write-path tail: return the requested mode's warm slot, or build it fresh
+/// when it is cold. The `if let … return` form keeps the read borrow from
+/// overlapping the later write.
+async fn return_or_build<F, Fut>(
+    slots: &mut ModeSlots,
+    mode: ViewMode,
+    build: F,
+) -> Arc<FlaggedView>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = FlaggedView>,
+{
+    if let Some(entry) = slots.slot(mode).as_ref() {
+        return Arc::clone(&entry.view);
+    }
+    let view = build().await;
+    store_fresh(slots.slot(mode), view)
+}
+
 impl Cache {
     /// Return the cached view for `mode` if it is still fresh, otherwise build one
     /// under the lock and store it. Single-flight: the lock is held across `build`.
@@ -60,12 +90,8 @@ impl Cache {
         {
             return Arc::clone(&entry.view);
         }
-        let view = Arc::new(build().await);
-        *slots.slot(mode) = Some(CacheEntry {
-            stored_at: Instant::now(),
-            view: Arc::clone(&view),
-        });
-        view
+        let view = build().await;
+        store_fresh(slots.slot(mode), view)
     }
 
     /// Build a fresh view for `mode` under the lock and store it, ignoring the TTL.
@@ -75,12 +101,8 @@ impl Cache {
         Fut: Future<Output = FlaggedView>,
     {
         let mut slots = self.entries.lock().await;
-        let view = Arc::new(build().await);
-        *slots.slot(mode) = Some(CacheEntry {
-            stored_at: Instant::now(),
-            view: Arc::clone(&view),
-        });
-        view
+        let view = build().await;
+        store_fresh(slots.slot(mode), view)
     }
 
     /// Apply a marker write to both slots under one lock, then return the view for
@@ -114,19 +136,7 @@ impl Cache {
             edit_all(&mut view);
             entry.view = Arc::new(view);
         }
-        // Return the requested slot. If it was cold there is nothing to return, so
-        // build it fresh. The `if let ... return` form (not a `match`) keeps the
-        // read borrow from overlapping the later write, the same shape as
-        // `get_or_build`.
-        if let Some(entry) = slots.slot(mode).as_ref() {
-            return Arc::clone(&entry.view);
-        }
-        let view = Arc::new(build().await);
-        *slots.slot(mode) = Some(CacheEntry {
-            stored_at: Instant::now(),
-            view: Arc::clone(&view),
-        });
-        view
+        return_or_build(&mut slots, mode, build).await
     }
 
     /// Rescan one root and replace its section in each warm slot, under one lock,
@@ -167,17 +177,7 @@ impl Cache {
             }
             entry.view = Arc::new(view);
         }
-        // Return the requested slot. If it was cold there is nothing to return, so
-        // build it fresh, the same shape as `get_or_build` / `edit_both_or_build`.
-        if let Some(entry) = slots.slot(mode).as_ref() {
-            return Arc::clone(&entry.view);
-        }
-        let view = Arc::new(build_full().await);
-        *slots.slot(mode) = Some(CacheEntry {
-            stored_at: Instant::now(),
-            view: Arc::clone(&view),
-        });
-        view
+        return_or_build(&mut slots, mode, build_full).await
     }
 }
 
@@ -390,5 +390,34 @@ mod tests {
         };
         let state = AppState::new(cfg, settings());
         assert_eq!(state.cache.ttl, Some(Duration::from_secs(90)));
+    }
+
+    #[tokio::test]
+    async fn fresh_build_stamps_stored_at_and_edit_leaves_it() {
+        let cache = test_cache(Some(Duration::from_secs(60)));
+
+        // A build stamps the clock.
+        cache
+            .get_or_build(ViewMode::GapsOnly, || async { sample_view("v1") })
+            .await;
+        let stamped = {
+            let slots = cache.entries.lock().await;
+            slots.gaps_only.as_ref().unwrap().stored_at
+        };
+
+        // An in-place edit changes the data but not the clock.
+        cache
+            .edit_both_or_build(
+                ViewMode::GapsOnly,
+                |view| view[0].path = "edited".to_string(),
+                |_view| {},
+                || async { sample_view("unused") },
+            )
+            .await;
+        let after_edit = {
+            let slots = cache.entries.lock().await;
+            slots.gaps_only.as_ref().unwrap().stored_at
+        };
+        assert_eq!(stamped, after_edit, "an edit must not bump stored_at");
     }
 }
