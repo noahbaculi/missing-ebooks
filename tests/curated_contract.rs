@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use missing_ebooks::config::Config;
-use missing_ebooks::scanner::{ScanInputs, ScanSettings, scan, scan_all};
+use missing_ebooks::scanner::{FlaggedFolder, ScanInputs, ScanSettings, scan, scan_all};
 use missing_ebooks::tree::{Node, build, build_all};
 
 use serde::Deserialize;
@@ -76,7 +76,7 @@ fn scanner_flagged_set_matches_the_contract() {
     let root = fixture_dir().join("Audiobooks");
     let got: BTreeSet<String> = scan(&root, &expected_settings(&expected))
         .iter()
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))
         .collect();
     let want: BTreeSet<String> = expected.flagged.iter().map(|f| f.path.clone()).collect();
     assert_eq!(got, want);
@@ -85,10 +85,13 @@ fn scanner_flagged_set_matches_the_contract() {
 #[test]
 fn tree_container_set_matches_the_contract() {
     let expected = load_expected();
-    let flagged_paths: Vec<PathBuf> = expected
+    let flagged_paths: Vec<FlaggedFolder> = expected
         .flagged
         .iter()
-        .map(|f| PathBuf::from(&f.path))
+        .map(|f| FlaggedFolder {
+            rel_path: PathBuf::from(&f.path),
+            audio_files: Vec::new(),
+        })
         .collect();
     let forest = build("Audiobooks", &flagged_paths);
 

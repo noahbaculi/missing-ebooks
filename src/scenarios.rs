@@ -494,7 +494,7 @@ mod tests {
         let settings = ScanSettings::compile(Config::default().scan_inputs()).unwrap();
         scanner::scan(root, &settings)
             .iter()
-            .map(|path| path.to_string_lossy().replace('\\', "/"))
+            .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))
             .collect()
     }
 

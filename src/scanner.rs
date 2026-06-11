@@ -128,16 +128,27 @@ fn classify_file(name: &OsStr, settings: &ScanSettings) -> FileKind {
     }
 }
 
-/// Walk `root` and return flagged folders as paths relative to `root`. Order is
-/// unspecified; the tree builder sorts.
+/// One flagged folder from the gaps-only walk: its path relative to the root and the
+/// audio filenames it directly holds, natural-sorted. `tree::build` consumes it. The
+/// empty relative path is the loose-root case (see ADR-0005).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlaggedFolder {
+    /// The folder's path relative to the walked root.
+    pub rel_path: PathBuf,
+    /// Audio filenames that physically sit in this folder, natural-sorted.
+    pub audio_files: Vec<String>,
+}
+
+/// Walk `root` and return flagged folders, each with the audio filenames it holds,
+/// as paths relative to `root`. Order is unspecified; the tree builder sorts.
 #[must_use]
-pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<PathBuf> {
+pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<FlaggedFolder> {
     let mut flagged = Vec::new();
     visit(root, root, settings, &mut flagged);
     flagged
 }
 
-fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<PathBuf>) {
+fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<FlaggedFolder>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         // Unreadable directory (for example permission denied): log and skip it.
@@ -148,7 +159,7 @@ fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<PathBuf
     };
 
     let mut subdirs: Vec<PathBuf> = Vec::new();
-    let mut has_audio = false;
+    let mut audio_files: Vec<String> = Vec::new();
     let mut covered = false;
 
     for entry in entries.flatten() {
@@ -158,9 +169,10 @@ fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<PathBuf
         if file_type.is_dir() {
             subdirs.push(entry.path());
         } else {
-            match classify_file(&entry.file_name(), settings) {
+            let file_name = entry.file_name();
+            match classify_file(&file_name, settings) {
                 FileKind::Ebook | FileKind::Marker => covered = true,
-                FileKind::Audio => has_audio = true,
+                FileKind::Audio => audio_files.push(file_name.to_string_lossy().into_owned()),
                 FileKind::Other => {}
             }
         }
@@ -177,8 +189,14 @@ fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<PathBuf
         }
         return;
     }
-    if has_audio && let Ok(rel) = dir.strip_prefix(root) {
-        out.push(rel.to_path_buf());
+    if !audio_files.is_empty()
+        && let Ok(rel) = dir.strip_prefix(root)
+    {
+        audio_files.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
+        out.push(FlaggedFolder {
+            rel_path: rel.to_path_buf(),
+            audio_files,
+        });
     }
     // A flag does not stop the descent: a child can be a separate gap.
     for sub in subdirs {
@@ -344,7 +362,7 @@ mod tests {
     fn flagged_set(root: &Path, settings: &ScanSettings) -> BTreeSet<String> {
         scan(root, settings)
             .iter()
-            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))
             .collect()
     }
 
@@ -631,6 +649,19 @@ mod tests {
         assert!(got["Book"][..2].contains(&"Book.epub".to_string()));
         assert!(got["Book"][..2].contains(&"Book (2016).pdf".to_string()));
         assert_eq!(got["Book"][2], ".no_ebook".to_string());
+    }
+
+    #[test]
+    fn scan_collects_audio_filenames_for_a_flagged_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/02 - Two.mp3"));
+        touch(&dir.path().join("Book/01 - One.mp3"));
+        let flagged = scan(dir.path(), &default_settings(&[]));
+        let book = flagged
+            .iter()
+            .find(|f| f.rel_path == Path::new("Book"))
+            .unwrap();
+        assert_eq!(book.audio_files, vec!["01 - One.mp3", "02 - Two.mp3"]);
     }
 
     #[test]

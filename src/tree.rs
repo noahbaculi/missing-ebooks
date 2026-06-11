@@ -8,7 +8,7 @@
 //! the forest. The types derive `Serialize` so a future JSON API can return them
 //! unchanged.
 
-use std::path::{Component, PathBuf};
+use std::path::Component;
 
 use serde::Serialize;
 
@@ -61,11 +61,13 @@ impl Node {
 /// produces it. Non-normal components (a leading `/` or `..`) are dropped, so an
 /// absolute path would lose its prefix.
 #[must_use]
-pub fn build(root_name: &str, flagged: &[PathBuf]) -> Vec<Node> {
+pub fn build(root_name: &str, flagged: &[crate::scanner::FlaggedFolder]) -> Vec<Node> {
     let mut roots: Vec<Node> = Vec::new();
     let mut root_flagged = false;
-    for path in flagged {
-        let components: Vec<String> = path
+    let mut root_audio: Vec<String> = Vec::new();
+    for folder in flagged {
+        let components: Vec<String> = folder
+            .rel_path
             .components()
             .filter_map(|c| match c {
                 Component::Normal(os) => Some(os.to_string_lossy().into_owned()),
@@ -76,9 +78,10 @@ pub fn build(root_name: &str, flagged: &[PathBuf]) -> Vec<Node> {
             // The empty relative path is the library root itself: it directly
             // holds uncovered audio, so the root is a flagged gap (ADR-0005).
             root_flagged = true;
+            root_audio = folder.audio_files.clone();
             continue;
         }
-        insert(&mut roots, &components, "");
+        insert(&mut roots, &components, "", &folder.audio_files);
     }
     sort_forest(&mut roots);
     if root_flagged {
@@ -94,7 +97,7 @@ pub fn build(root_name: &str, flagged: &[PathBuf]) -> Vec<Node> {
                 missing_ebook: true,
                 children: Vec::new(),
                 cover_files: Vec::new(),
-                audio_files: Vec::new(),
+                audio_files: root_audio,
             },
         );
     }
@@ -197,7 +200,12 @@ fn child_rel(parent_rel: &str, head: &str) -> String {
     }
 }
 
-fn insert(siblings: &mut Vec<Node>, components: &[String], parent_rel: &str) {
+fn insert(
+    siblings: &mut Vec<Node>,
+    components: &[String],
+    parent_rel: &str,
+    audio_files: &[String],
+) {
     let Some((head, tail)) = components.split_first() else {
         return;
     };
@@ -223,8 +231,9 @@ fn insert(siblings: &mut Vec<Node>, components: &[String], parent_rel: &str) {
         // This path's tail ends here: the folder directly holds audio. With
         // `missing_ebook` already true, this is a gap. The old `flagged = true`.
         siblings[idx].directly_holds_audio = true;
+        siblings[idx].audio_files = audio_files.to_vec();
     } else {
-        insert(&mut siblings[idx].children, tail, &rel_path);
+        insert(&mut siblings[idx].children, tail, &rel_path, audio_files);
     }
 }
 
@@ -323,8 +332,15 @@ mod tests {
     use crate::scanner::ScannedFolder;
     use std::path::PathBuf;
 
+    fn ff(rel: &str, audio: &[&str]) -> crate::scanner::FlaggedFolder {
+        crate::scanner::FlaggedFolder {
+            rel_path: PathBuf::from(rel),
+            audio_files: audio.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
     fn forest(paths: &[&str]) -> Vec<Node> {
-        let owned: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+        let owned: Vec<crate::scanner::FlaggedFolder> = paths.iter().map(|p| ff(p, &[])).collect();
         build("Audiobooks", &owned)
     }
 
@@ -391,12 +407,23 @@ mod tests {
     fn loose_audio_in_the_root_becomes_a_flagged_root_node() {
         // The scanner reports the root itself as the empty relative path
         // (see ADR-0005); it must surface as a flagged node pinned first.
-        let owned = vec![PathBuf::from(""), PathBuf::from("Andy Weir/Artemis")];
+        let owned = vec![ff("", &[]), ff("Andy Weir/Artemis", &[])];
         let roots = build("Audiobooks", &owned);
         assert_eq!(names(&roots), vec!["Audiobooks", "Andy Weir"]);
         assert!(roots[0].needs_ebook());
         assert_eq!(roots[0].rel_path, ".");
         assert!(roots[0].children.is_empty());
+    }
+
+    #[test]
+    fn build_carries_audio_files_onto_a_flagged_leaf() {
+        let forest = build("Audiobooks", &[ff("Author/Book", &["01.mp3", "02.mp3"])]);
+        assert_eq!(
+            find(&forest, "Author/Book").unwrap().audio_files,
+            vec!["01.mp3".to_string(), "02.mp3".to_string()]
+        );
+        // The inferred container above the leaf holds no audio of its own.
+        assert!(find(&forest, "Author").unwrap().audio_files.is_empty());
     }
 
     fn gap_leaf(name: &str, rel: &str) -> Node {
