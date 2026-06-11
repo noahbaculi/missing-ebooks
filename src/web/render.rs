@@ -316,7 +316,10 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
             body {
                 (conn_banner())
                 nav.navbar {
-                    h1 { (PreEscaped(BRAND_SVG)) "Missing Ebooks" }
+                    // The title is a home link: a plain GET to "/" that survives the
+                    // htmx swaps and works without JS, landing on the default gaps-only
+                    // view with no filter, the conventional reset for a wordmark.
+                    h1 { a href="/" { (PreEscaped(BRAND_SVG)) "Missing Ebooks" } }
                     (search_box())
                     span.spacer {}
                     (view_toggle(mode))

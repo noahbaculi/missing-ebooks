@@ -2191,9 +2191,9 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // The brand glyph leads the title in the navbar, inline so it tracks the theme.
-        // It opens the h1, so the assertion fixes both its presence and its position.
-        assert!(body.contains(r#"<h1><svg class="brand-mark""#));
+        // The title is a home link wrapping the brand glyph and the wordmark. The
+        // single assertion fixes the link, the inline mark, and its leading position.
+        assert!(body.contains(r#"<h1><a href="/"><svg class="brand-mark""#));
         assert!(body.contains("Missing Ebooks"));
     }
 
