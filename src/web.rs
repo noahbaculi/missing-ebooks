@@ -13,6 +13,7 @@ use axum::routing::{get, post};
 use maud::Markup;
 use serde::Deserialize;
 
+use crate::config::SearchLink;
 use crate::marker::Marker;
 use crate::service::{self, ViewMode};
 use crate::state::AppState;
@@ -83,16 +84,14 @@ async fn mark(
             section_response(markup, trigger)
         }
         Err(err) => {
-            // A server-side write failure: re-render the section with an inline alert
-            // that names the folder, so the error stays on the page by the row rather
-            // than in a toast. The tree is left intact and the row keeps its buttons.
-            let message = format!("Could not mark {}: {err}", req.rel);
-            let view = service::current_view(&state, mode).await;
-            let markup = match view.get(req.root) {
-                Some(section) => render::render_section(section, req.root, Some(&message), links, mode),
-                None => render::error_section(req.root, &message),
-            };
-            section_response(markup, None)
+            failed_write_response(
+                &state,
+                req.root,
+                mode,
+                links,
+                format!("Could not mark {}: {err}", req.rel),
+            )
+            .await
         }
     }
 }
@@ -109,17 +108,36 @@ async fn unmark(
             None,
         ),
         Err(err) => {
-            // The undo write failed: re-render the section with an inline alert naming
-            // the folder. The marked row stays put, so the user can try undoing again.
-            let message = format!("Could not undo {}: {err}", req.rel);
-            let view = service::current_view(&state, mode).await;
-            let markup = match view.get(req.root) {
-                Some(section) => render::render_section(section, req.root, Some(&message), links, mode),
-                None => render::error_section(req.root, &message),
-            };
-            section_response(markup, None)
+            failed_write_response(
+                &state,
+                req.root,
+                mode,
+                links,
+                format!("Could not undo {}: {err}", req.rel),
+            )
+            .await
         }
     }
+}
+
+/// A server-side write failed: re-render the affected root's section with an
+/// inline alert that names the folder, so the error stays on the page by the row
+/// rather than in a toast. The tree is left intact and the row keeps its buttons.
+/// The current view is re-fetched (a cache hit) since the failed call returned no
+/// view; an out-of-range root falls back to a standalone error card.
+async fn failed_write_response(
+    state: &AppState,
+    root: usize,
+    mode: ViewMode,
+    links: &[SearchLink],
+    message: String,
+) -> axum::response::Response {
+    let view = service::current_view(state, mode).await;
+    let markup = match view.get(root) {
+        Some(section) => render::render_section(section, root, Some(&message), links, mode),
+        None => render::error_section(root, &message),
+    };
+    section_response(markup, None)
 }
 
 async fn rescan(
