@@ -1057,6 +1057,9 @@ li.leaving {
 #rescan-btn {
   display: inline-grid;
   justify-items: center;
+  /* trimmer than the default button padding so the navbar wordmark has room and
+     the longer "Rescanning…" label (which sizes the grid cell) stays compact. */
+  padding-inline: 0.6rem;
 }
 #rescan-btn > span {
   grid-area: 1 / 1;
@@ -1639,7 +1642,10 @@ li.leaving {
   color: var(--color-muted);
 }
 .search-input {
-  min-width: 9rem;
+  /* an explicit width, since a search input's intrinsic size (~20 chars) is wider
+     than the navbar wants; min-width 0 lets it give way on a cramped row. */
+  width: 8rem;
+  min-width: 0;
   font: inherit;
   font-size: 0.85rem;
   color: var(--color-base-content);
