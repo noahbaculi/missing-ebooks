@@ -1235,10 +1235,9 @@ mod tests {
         assert!(body.contains(".settings-panel"));
         assert!(body.contains(".switch-track"));
         assert!(body.contains(".settings-panel:popover-open"));
-        // The mobile sheet resets the desktop anchor positioning; without this the
-        // @supports position-area rule keeps the panel pinned under the cog at
-        // partial width instead of spanning the full bottom of the viewport.
-        assert!(body.contains("position-area: none"));
+        // The panel opens as a centered overlay (so the cog and the ? hotkey land it
+        // in the same place) and dims the page behind it with a backdrop scrim.
+        assert!(body.contains(".settings-panel::backdrop"));
         // The shortcuts reference is styled inside the panel and hidden on mobile.
         assert!(body.contains(".settings-shortcuts"));
     }
