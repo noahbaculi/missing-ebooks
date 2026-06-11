@@ -270,6 +270,16 @@ mod tests {
         router(Arc::new(AppState::new(cfg, settings)))
     }
 
+    fn app_for_roots(roots: &[&Path]) -> Router {
+        let cfg = Config {
+            library_roots: roots.iter().map(|r| r.to_path_buf()).collect(),
+            ttl_seconds: 60,
+            ..Default::default()
+        };
+        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
+        router(Arc::new(AppState::new(cfg, settings)))
+    }
+
     async fn body_string(response: axum::response::Response) -> String {
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         String::from_utf8(bytes.to_vec()).unwrap()
@@ -2044,5 +2054,96 @@ mod tests {
         assert!(body.contains(r#"data-gaps-at-load="0""#));
         assert!(body.contains("All clear"));
         assert!(!body.contains(r#"role="progressbar""#));
+    }
+
+    #[tokio::test]
+    async fn gap_summary_names_the_top_author_when_several_are_affected() {
+        let dir = tempfile::tempdir().unwrap();
+        // Two authors with gaps; "Heavy" carries more than "Light".
+        touch(&dir.path().join("Heavy/Book 1/01.mp3"));
+        touch(&dir.path().join("Heavy/Book 2/01.mp3"));
+        touch(&dir.path().join("Light/Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // More than one author affected: the strip names the worst offender.
+        assert!(body.contains(r#"id="gap-top""#));
+        assert!(body.contains("Most gaps"));
+        assert!(body.contains("Heavy"));
+    }
+
+    #[tokio::test]
+    async fn gap_summary_hides_the_top_author_with_one_affected() {
+        let dir = tempfile::tempdir().unwrap();
+        // One author, two gaps: a "most gaps" line would just repeat the hero.
+        touch(&dir.path().join("Solo/Book 1/01.mp3"));
+        touch(&dir.path().join("Solo/Book 2/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(!body.contains(r#"id="gap-top""#));
+    }
+
+    #[tokio::test]
+    async fn gap_summary_renders_a_chip_per_root_for_a_multi_root_config() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        touch(&a.path().join("BookA/01.mp3"));
+        touch(&b.path().join("BookB/01.mp3"));
+        let body = body_string(
+            app_for_roots(&[a.path(), b.path()])
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // One chip per root, each with its own gap count and a data-root hook the
+        // client recompute updates.
+        assert!(body.contains(r#"id="gap-chips""#));
+        assert!(body.contains(r#"class="gap-chip" data-root="0""#));
+        assert!(body.contains(r#"data-root="1""#));
+    }
+
+    #[tokio::test]
+    async fn gap_summary_omits_chips_for_a_single_root() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(!body.contains(r#"id="gap-chips""#));
+    }
+
+    #[tokio::test]
+    async fn gap_summary_chips_handle_a_clean_and_an_error_root() {
+        let good = tempfile::tempdir().unwrap();
+        touch(&good.path().join("Book/01.mp3"));
+        touch(&good.path().join("Book/Book.epub")); // covered -> Clean
+        let body = body_string(
+            app_for_roots(&[good.path(), Path::new("/no/such/root/xyz123")])
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // Total is zero, so the all-clear message shows, and a multi-root setup still
+        // gets its chips, the error root labelled.
+        assert!(body.contains("All clear"));
+        assert!(body.contains(r#"id="gap-chips""#));
+        assert!(body.contains("gap-chip-clean"));
+        assert!(body.contains("gap-chip-error"));
+        assert!(body.contains("scan error"));
     }
 }

@@ -315,6 +315,28 @@ fn authors_affected(view: &FlaggedView) -> usize {
         .count()
 }
 
+/// Gaps at or below a single node, the node itself included.
+fn node_gaps(node: &Node) -> usize {
+    usize::from(node.needs_ebook()) + count_gaps(&node.children)
+}
+
+/// The top-level node carrying the most gaps, with its count, across every root.
+/// `None` when no root holds a forest. Drives the "most gaps" line.
+fn top_author(view: &FlaggedView) -> Option<(&str, usize)> {
+    view.iter()
+        .filter_map(forest_nodes)
+        .flatten()
+        .map(|node| (node.name.as_str(), node_gaps(node)))
+        .max_by_key(|&(_, gaps)| gaps)
+}
+
+/// A root's short label: the last non-empty path segment, for the per-root chips.
+fn root_label(path: &str) -> &str {
+    path.rsplit(['/', '\\'])
+        .find(|seg| !seg.is_empty())
+        .unwrap_or(path)
+}
+
 /// "gap" / "gaps".
 fn gap_word(n: usize) -> &'static str {
     if n == 1 { "gap" } else { "gaps" }
@@ -351,13 +373,55 @@ fn gap_summary(view: &FlaggedView) -> Markup {
                         span.gap-stat-num id="gap-authors" { (authors) }
                         span.gap-stat-label { (author_word(authors)) " affected" }
                     }
-                    // The "most gaps" line is added in Task 2.
+                    @if authors > 1 {
+                        @if let Some((name, gaps)) = top_author(view) {
+                            div.gap-top id="gap-top" {
+                                span.gap-top-label { "Most gaps" }
+                                span.gap-top-name id="gap-top-name" { (name) }
+                                span.gap-top-num id="gap-top-num" { (gaps) }
+                            }
+                        }
+                    }
                 }
                 // The session bar is added in Task 3 (inside this @else: shown only
                 // when there is a gap to resolve).
             }
-            // Per-root chips are added in Task 2, at this section level so a
-            // multi-root all-clear library still shows them.
+            @if view.len() > 1 {
+                div.gap-chips id="gap-chips" {
+                    @for (root, section) in view.iter().enumerate() {
+                        (root_chip(root, section))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// One per-root chip: the root's short label and its own gap count, shown only in
+/// a multi-root setup. A covered root reads zero; an error root reads "scan error".
+/// The `data-root` hook lets the client recompute update each chip independently.
+fn root_chip(root: usize, section: &RootSection) -> Markup {
+    html! {
+        @match &section.state {
+            RootState::Forest(nodes) => {
+                @let n = count_gaps(nodes);
+                span.gap-chip data-root=(root) {
+                    span.gap-chip-name { (root_label(&section.path)) }
+                    span.gap-chip-num { (n) }
+                }
+            }
+            RootState::Clean => {
+                span.gap-chip.gap-chip-clean data-root=(root) {
+                    span.gap-chip-name { (root_label(&section.path)) }
+                    span.gap-chip-num { "0" }
+                }
+            }
+            RootState::Error(_) => {
+                span.gap-chip.gap-chip-error data-root=(root) {
+                    span.gap-chip-name { (root_label(&section.path)) }
+                    span.gap-chip-num { "scan error" }
+                }
+            }
         }
     }
 }
