@@ -142,6 +142,7 @@ Scenarios:
 | Scenario       | Shows                                                                      |
 | -------------- | -------------------------------------------------------------------------- |
 | `mixed-forest` | Nested tree: containers, flagged leaves, query cleaning, ancestor coverage |
+| `messy-shelf`  | Inconsistent organization: standalone books, author-only/series-only folders, a dumping folder, beside one tidy author>series>book pocket |
 | `clean-error`  | Two roots side by side: one fully covered (Clean), one uncreated (Error)   |
 | `root-flagged` | Loose audio in the root, so the root itself is flagged                     |
 | `pre-marked`   | Pre-existing markers hide covered folders; siblings stay click targets     |
