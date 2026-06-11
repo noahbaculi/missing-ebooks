@@ -470,7 +470,8 @@ fn row_actions(
 fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup {
     // In gaps-only the marked folder leaves the list, so app.js collapses its row and
     // the section swap waits for that to play. In show-all the row stays and flips to
-    // covered in place, so the swap is immediate. The delay matches the CSS transition.
+    // covered in place, so the swap is immediate; the row's reserved min-height keeps
+    // the flip from shifting the rows below.
     let swap = match mode {
         ViewMode::GapsOnly => "outerHTML swap:250ms",
         ViewMode::All => "outerHTML",

@@ -321,8 +321,8 @@ mod tests {
         )
         .await;
         assert!(gaps.contains(r#"hx-swap="outerHTML swap:250ms""#));
-        // Show-all: the row stays and flips to covered in place, so there is nothing to
-        // collapse and the swap is immediate.
+        // Show-all: the row flips to covered in place, so the swap is immediate; the
+        // reserved row height keeps the flip from shifting the rows below.
         let all = body_string(
             app.oneshot(
                 Request::builder()

@@ -242,6 +242,9 @@ details > summary::-webkit-details-marker {
   gap: 0.5rem;
   padding: 0.3rem 0.5rem;
   border-radius: var(--radius-field);
+  /* reserve the action-button row height so a covered row, which drops the buttons,
+     stays as tall as a flagged one and marking never shifts the rows below */
+  min-height: 2rem;
 }
 .row:hover {
   background: var(--color-base-200);
