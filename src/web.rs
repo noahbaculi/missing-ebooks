@@ -2198,6 +2198,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn navbar_places_the_spacer_before_the_search_box() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The flexible spacer sits right after the title, so the title alone pins to the
+        // left and the search box groups with the controls on the right.
+        let spacer = body.find(r#"<span class="spacer">"#).expect("spacer present");
+        let search = body.find(r#"<div class="search""#).expect("search box present");
+        assert!(spacer < search, "the spacer should sit before the search box");
+    }
+
+    #[tokio::test]
     async fn navbar_renders_the_hidden_filter_input_and_no_matches_line() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));

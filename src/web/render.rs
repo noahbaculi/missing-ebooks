@@ -320,8 +320,11 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                     // htmx swaps and works without JS, landing on the default gaps-only
                     // view with no filter, the conventional reset for a wordmark.
                     h1 { a href="/" { (PreEscaped(BRAND_SVG)) "Missing Ebooks" } }
-                    (search_box())
+                    // The spacer sits right after the title so the title alone pins
+                    // left and everything else groups on the right. Mobile reorders
+                    // every control by flex `order`, so this DOM move is desktop-only.
                     span.spacer {}
+                    (search_box())
                     (view_toggle(mode))
                     (cheatsheet_trigger())
                     (settings_menu())
