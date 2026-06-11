@@ -279,14 +279,14 @@ fn build_messy_shelf(base: &Path) -> Vec<PathBuf> {
     touch(&root.join("Terry Pratchett/01 - The Colour of Magic.mp3"));
     touch(&root.join("Terry Pratchett/Going Postal/01 - Going Postal.m4b"));
 
-    // Dumping containers whose names a tidy library would not use. Each holds
-    // loose book folders, so the container surfaces only because of the gaps
-    // beneath it.
-    touch(&root.join("To Sort/Some Download/01 - track.mp3"));
-    touch(&root.join("To Sort/Another Rip/01 - track.m4b"));
+    // Dumping containers whose names a tidy library would not use. The files keep
+    // descriptive names even though the folders do not, so the file display can
+    // recover what the folder name hides.
+    touch(&root.join("To Sort/Some Download/Becky Chambers - Record of a Spaceborn Few.mp3"));
+    touch(&root.join("To Sort/Another Rip/Martha Wells - Network Effect.m4b"));
     // A pile that itself grew a subfolder, so a gap sits three levels down.
-    touch(&root.join("To Sort/Box Set/Disc 1/01 - track.mp3"));
-    touch(&root.join("Downloads/Unknown Audiobook/01 - track.mp3"));
+    touch(&root.join("To Sort/Box Set/Disc 1/Title Sequence 01.mp3"));
+    touch(&root.join("Downloads/Unknown Audiobook/Ursula K. Le Guin - The Tombs of Atuan.mp3"));
 
     // A normal author > book pair. Artemis stays flagged; The Martian carries a
     // .no_ebook marker, so it drops out while its sibling stays.
