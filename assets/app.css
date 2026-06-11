@@ -736,6 +736,9 @@ details[open] > summary .chev {
     order: 5;
     flex-basis: 100%;
   }
+  .cheatsheet-trigger {
+    display: none;
+  }
   .gap-summary-head {
     flex-direction: column;
     align-items: flex-start;
@@ -1633,4 +1636,43 @@ li.leaving {
   background: var(--color-base-100);
   border: var(--border) solid var(--color-base-300);
   border-radius: var(--radius-box);
+}
+
+/* ---- shortcuts cheatsheet ---- */
+.cheatsheet {
+  max-width: 22rem;
+  padding: 1.25rem 1.4rem;
+  color: var(--color-base-content);
+  background: var(--color-base-100);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: var(--radius-box);
+}
+.cheatsheet::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+.cheatsheet-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+.cheatsheet-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 0.9rem;
+  margin: 0 0 1rem;
+}
+.cheatsheet-list dt,
+.cheatsheet-list dd {
+  margin: 0;
+}
+.cheatsheet-list dd {
+  color: var(--color-muted);
+}
+.cheatsheet kbd {
+  padding: 0.1rem 0.4rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--color-base-200);
+  border: var(--border) solid var(--color-base-300);
+  border-radius: 0.3rem;
 }

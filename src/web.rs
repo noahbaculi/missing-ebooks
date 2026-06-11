@@ -2235,4 +2235,65 @@ mod tests {
         assert!(body.contains(".filter-hidden"));
         assert!(body.contains(".navbar .search"));
     }
+
+    #[tokio::test]
+    async fn index_renders_the_shortcuts_cheatsheet_and_trigger() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // A native dialog listing the shortcuts, plus a labelled navbar trigger that
+        // opens it so the keys are discoverable without already knowing them.
+        assert!(body.contains(r#"id="cheatsheet""#));
+        assert!(body.contains("Keyboard shortcuts"));
+        assert!(body.contains(r#"id="cheatsheet-btn""#));
+        // The keys are spelled out for the reader.
+        assert!(body.contains("<kbd>j</kbd>"));
+        assert!(body.contains("Mark as no ebook"));
+    }
+
+    #[tokio::test]
+    async fn stylesheet_styles_the_cheatsheet_and_hides_its_trigger_on_mobile() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.css")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(body.contains(".cheatsheet"));
+        assert!(body.contains(".cheatsheet::backdrop"));
+        // The trigger is desktop-only: a touch device has no keys to press.
+        assert!(body.contains(".cheatsheet-trigger"));
+    }
+
+    #[tokio::test]
+    async fn app_script_opens_and_closes_the_cheatsheet() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.js")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(body.contains("openCheatsheet"));
+        assert!(body.contains("showModal"));
+    }
 }

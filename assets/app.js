@@ -738,4 +738,28 @@
   document.addEventListener("keydown", function (evt) {
     if (evt.key === "Escape") clearToasts();
   });
+
+  // ---- shortcuts cheatsheet ----
+
+  // A native dialog: showModal traps focus and Escape closes it, so this only has
+  // to open and close it. openCheatsheet is also the `?` hotkey's target (Task 10).
+  var cheatsheet = null;
+
+  function openCheatsheet() {
+    if (cheatsheet && typeof cheatsheet.showModal === "function" && !cheatsheet.open) {
+      cheatsheet.showModal();
+    }
+  }
+
+  function closeCheatsheet() {
+    if (cheatsheet && cheatsheet.open) cheatsheet.close();
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    cheatsheet = document.getElementById("cheatsheet");
+    var trigger = document.getElementById("cheatsheet-btn");
+    if (trigger) trigger.addEventListener("click", openCheatsheet);
+    var close = document.getElementById("cheatsheet-close");
+    if (close) close.addEventListener("click", closeCheatsheet);
+  });
 })();

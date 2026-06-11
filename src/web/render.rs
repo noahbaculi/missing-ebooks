@@ -42,6 +42,9 @@ const CHECK_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" st
 /// Circled exclamation for a scan or write error. Inherits `currentColor`.
 const ERROR_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>"##;
 
+/// A keyboard outline for the cheatsheet trigger. Inherits `currentColor`.
+const KEYBOARD_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>"##;
+
 /// The favicon as an inline SVG data URI, so the tab gets an identity and the
 /// browser stops requesting `/favicon.ico`. The "book wearing headphones" glyph
 /// on its own, no backdrop. It draws in `currentColor`, and an embedded `<style>`
@@ -145,6 +148,39 @@ fn search_empty() -> Markup {
     html! {
         p.search-empty id="search-empty" role="status" aria-live="polite" hidden {
             "No folders match your filter."
+        }
+    }
+}
+
+/// The keyboard-shortcuts trigger: a navbar button that opens the cheatsheet, so
+/// the hotkeys are discoverable without already knowing `?`. Hidden on small
+/// screens, where there is no keyboard. `app.js` wires the click.
+fn cheatsheet_trigger() -> Markup {
+    html! {
+        button.btn.btn-ghost.btn-square.cheatsheet-trigger id="cheatsheet-btn"
+            type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts" {
+            (PreEscaped(KEYBOARD_SVG))
+        }
+    }
+}
+
+/// The shortcuts cheatsheet: a native dialog opened by `?` or the navbar trigger,
+/// focus-trapped and Escape-closable by the platform, and labelled. Lists every
+/// shortcut so the feature explains itself.
+fn cheatsheet() -> Markup {
+    html! {
+        dialog.cheatsheet id="cheatsheet" aria-labelledby="cheatsheet-title" {
+            h2.cheatsheet-title id="cheatsheet-title" { "Keyboard shortcuts" }
+            dl.cheatsheet-list {
+                dt { kbd { "j" } " / " kbd { "k" } } dd { "Move between gaps" }
+                dt { kbd { "m" } } dd { "Mark as no ebook" }
+                dt { kbd { "e" } } dd { "Mark ebook elsewhere" }
+                dt { kbd { "r" } } dd { "Rescan the library" }
+                dt { kbd { "/" } } dd { "Focus the filter" }
+                dt { kbd { "?" } } dd { "Show this list" }
+                dt { kbd { "Esc" } } dd { "Clear the filter or selection" }
+            }
+            button.btn.btn-outline id="cheatsheet-close" type="button" { "Close" }
         }
     }
 }
@@ -269,6 +305,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                     (search_box())
                     span.spacer {}
                     (view_toggle(mode))
+                    (cheatsheet_trigger())
                     (settings_menu())
                     form method="post" action="/rescan"
                         hx-post="/rescan" hx-target="#roots" hx-swap="innerHTML"
@@ -295,6 +332,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                 }
                 (confirm_dialog())
                 (toast())
+                (cheatsheet())
                 script src="/static/htmx.min.js" {}
                 script src="/static/app.js" {}
             }
