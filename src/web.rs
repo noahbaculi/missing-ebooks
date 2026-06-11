@@ -2262,6 +2262,9 @@ mod tests {
         // The keys are spelled out for the reader.
         assert!(body.contains("<kbd>j</kbd>"));
         assert!(body.contains("Move between gaps"));
+        // Enter leaves the filter box, the complement of / focusing it.
+        assert!(body.contains("<kbd>Enter</kbd>"));
+        assert!(body.contains("Exit the filter"));
         // The mark shortcuts were removed, so the cheatsheet no longer lists them.
         assert!(!body.contains("Mark as no ebook"));
         assert!(!body.contains("Mark ebook elsewhere"));
@@ -2328,6 +2331,9 @@ mod tests {
         assert!(body.contains("filter-hidden"));
         assert!(body.contains("search-empty"));
         assert!(body.contains("clearFilter"));
+        // Enter in the box drops focus, so the live filter stays but the keyboard
+        // returns to navigation.
+        assert!(body.contains(r#"evt.key === "Enter""#));
     }
 
     #[tokio::test]

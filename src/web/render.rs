@@ -182,6 +182,7 @@ fn cheatsheet() -> Markup {
                 dt { kbd { "j" } " / " kbd { "k" } } dd { "Move between gaps" }
                 dt { kbd { "r" } } dd { "Rescan the library" }
                 dt { kbd { "/" } } dd { "Focus the filter" }
+                dt { kbd { "Enter" } } dd { "Exit the filter" }
                 dt { kbd { "?" } } dd { "Show this list" }
                 dt { kbd { "Esc" } } dd { "Clear the filter or selection" }
             }

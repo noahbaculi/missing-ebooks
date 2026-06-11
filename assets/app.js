@@ -948,10 +948,10 @@
   // ---- keyboard shortcuts ----
 
   // Additive to the existing behavior. j/k move a single highlight through the
-  // visible gap rows; r rescans; / focuses the filter; ? opens the cheatsheet;
-  // Escape clears the filter or, with an empty box, drops the highlight. The
-  // highlight is a real focus target so keyboard and screen-reader users land on the
-  // same row.
+  // visible gap rows; r rescans; / focuses the filter and Enter leaves it; ? opens
+  // the cheatsheet; Escape clears the filter or, with an empty box, drops the
+  // highlight. The highlight is a real focus target so keyboard and screen-reader
+  // users land on the same row.
   var activeRow = null;
 
   // A target we must not hijack typing from.
@@ -1025,6 +1025,14 @@
       } else {
         dropHighlight();
       }
+      return;
+    }
+    // Enter in the filter box just drops focus: the filter is already live, so this
+    // commits nothing and leaves the query in place, handing the keyboard back to
+    // j/k navigation without Escape clearing it.
+    if (evt.key === "Enter" && searchInput && evt.target === searchInput) {
+      evt.preventDefault();
+      searchInput.blur();
       return;
     }
     // Every other shortcut is suppressed while typing in a field.
