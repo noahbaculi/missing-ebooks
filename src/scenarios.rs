@@ -29,7 +29,7 @@ pub fn catalog() -> Vec<Scenario> {
         },
         Scenario {
             name: "messy-shelf",
-            description: "Heterogeneous depth: standalone books, author-only and series-only folders, a dumping folder, beside one meticulous author>series>book pocket (single root)",
+            description: "Heterogeneous depth: standalone books, author-only and series-only folders, a half-sorted author, a dumping folder, beside one meticulous author>series>book pocket (single root)",
             build: build_messy_shelf,
         },
         Scenario {
@@ -208,11 +208,18 @@ fn build_messy_shelf(base: &Path) -> Vec<PathBuf> {
     touch(&root.join("Stephen King/01 - The Gunslinger.mp3"));
     touch(&root.join("Neil Gaiman/01 - Coraline.m4a"));
 
+    // A half-sorted author: one book loose in the author folder, another in its
+    // own subfolder, so the author folder and its book both flag.
+    touch(&root.join("Terry Pratchett/01 - The Colour of Magic.mp3"));
+    touch(&root.join("Terry Pratchett/Going Postal/01 - Going Postal.m4b"));
+
     // Dumping containers whose names a tidy library would not use. Each holds
     // loose book folders, so the container surfaces only because of the gaps
     // beneath it.
     touch(&root.join("To Sort/Some Download/01 - track.mp3"));
     touch(&root.join("To Sort/Another Rip/01 - track.m4b"));
+    // A pile that itself grew a subfolder, so a gap sits three levels down.
+    touch(&root.join("To Sort/Box Set/Disc 1/01 - track.mp3"));
     touch(&root.join("Downloads/Unknown Audiobook/01 - track.mp3"));
 
     // A normal author > book pair. Artemis stays flagged; The Martian carries a
@@ -230,6 +237,13 @@ fn build_messy_shelf(base: &Path) -> Vec<PathBuf> {
     touch(&root.join("The Expanse/Leviathan Wakes/01 - Leviathan Wakes.mp3"));
     touch(&root.join("The Expanse/Caliban's War/01 - Caliban's War.m4b"));
     touch(&root.join("The Expanse/Abaddon's Gate/01 - Abaddon's Gate.mp3"));
+
+    // Another series with no author above it, half-covered: The Great Hunt is
+    // hidden by an .ebook_elsewhere marker, so the container shows only its one
+    // remaining gap.
+    touch(&root.join("Wheel of Time/The Eye of the World/01 - The Eye of the World.mp3"));
+    touch(&root.join("Wheel of Time/The Great Hunt/01 - The Great Hunt.m4b"));
+    touch(&root.join("Wheel of Time/The Great Hunt/.ebook_elsewhere"));
 
     // The one meticulous pocket: a full author > series > book hierarchy, one
     // author with two series, so flagged leaves reach depth 3.
@@ -458,14 +472,18 @@ mod tests {
             "Project Hail Mary",
             "Stephen King",
             "Neil Gaiman",
+            "Terry Pratchett",
+            "Terry Pratchett/Going Postal",
             "To Sort/Some Download",
             "To Sort/Another Rip",
+            "To Sort/Box Set/Disc 1",
             "Downloads/Unknown Audiobook",
             "Andy Weir/Artemis",
             "Ursula K. Le Guin/The Left Hand of Darkness",
             "The Expanse/Leviathan Wakes",
             "The Expanse/Caliban's War",
             "The Expanse/Abaddon's Gate",
+            "Wheel of Time/The Eye of the World",
             "Brandon Sanderson/The Stormlight Archive/The Way of Kings",
             "Brandon Sanderson/The Stormlight Archive/Words of Radiance",
             "Brandon Sanderson/Mistborn/The Final Empire",
