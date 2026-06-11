@@ -2220,6 +2220,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn search_box_renders_a_hidden_themed_clear_button() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // A labelled clear button sits in the filter box, hidden at first paint so it
+        // only appears once the box holds text (app.js drives the toggle).
+        assert!(body.contains(r#"id="search-clear""#));
+        assert!(body.contains(r#"aria-label="Clear filter" hidden"#));
+        // It carries a thin-× glyph, not a circle: two diagonal strokes.
+        assert!(body.contains(r#"d="M6 6l12 12M18 6L6 18""#));
+    }
+
+    #[tokio::test]
     async fn stylesheet_styles_the_filter_input_and_hidden_states() {
         let dir = tempfile::tempdir().unwrap();
         let body = body_string(

@@ -45,6 +45,10 @@ const ERROR_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" st
 /// A keyboard outline for the cheatsheet trigger. Inherits `currentColor`.
 const KEYBOARD_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>"##;
 
+/// A thin × for the filter's clear button: two diagonal strokes, no circle, in
+/// `currentColor` so it follows the button's muted-to-base hover color.
+const CLEAR_SVG: &str = r##"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>"##;
+
 /// The favicon as an inline SVG data URI, so the tab gets an identity and the
 /// browser stops requesting `/favicon.ico`. The "book wearing headphones" glyph
 /// on its own, no backdrop. It draws in `currentColor`, and an embedded `<style>`
@@ -137,6 +141,7 @@ fn settings_menu() -> Markup {
 /// The navbar filter input, hidden until `app.js` reveals it (the connection
 /// banner's hidden-until-ready pattern) so the no-JS page never shows a filter that
 /// cannot run. The `/` key focuses it and Escape clears it; both live in `app.js`.
+/// A themed clear button sits after the input, hidden until the box holds text.
 fn search_box() -> Markup {
     html! {
         div.search id="search" hidden {
@@ -144,6 +149,10 @@ fn search_box() -> Markup {
             input.search-input id="search-input" type="search"
                 placeholder="Filter folders" aria-label="Filter folders"
                 autocomplete="off";
+            button.search-clear id="search-clear" type="button"
+                aria-label="Clear filter" hidden {
+                (PreEscaped(CLEAR_SVG))
+            }
         }
     }
 }
