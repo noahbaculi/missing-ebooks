@@ -771,6 +771,7 @@
   // never touched here: filtering changes what is visible, not how many gaps exist.
   var searchInput = null;
   var searchEmpty = null;
+  var searchClear = null; // the themed × button, shown only when the box holds text
   var viewLink = null; // the inactive view-toggle segment (an <a>), or null
   var viewLinkBase = ""; // its pristine href, before any filter query is appended
 
@@ -827,6 +828,13 @@
     return visible;
   }
 
+  // Show the clear button only while the filter box holds text. Driven by applyFilter
+  // (the input handler and the carried-q load) and by clearFilter (Escape, the
+  // empty-query branch, and the button's own click).
+  function toggleClear() {
+    if (searchClear) searchClear.hidden = !searchInput || searchInput.value === "";
+  }
+
   // Restore the full tree: drop every collapse mark and re-close the folders the
   // filter forced open, leaving the user's own folds untouched, and hide the line.
   function clearFilter() {
@@ -841,11 +849,13 @@
     }
     if (searchEmpty) searchEmpty.hidden = true;
     syncViewLink();
+    toggleClear();
   }
 
   // Apply the current query, restoring the tree on empty and toggling the line.
   function applyFilter() {
     if (!searchInput) return;
+    toggleClear();
     var query = searchInput.value.trim();
     if (query === "") {
       clearFilter();
@@ -874,12 +884,23 @@
     revealSearch();
     searchInput = document.getElementById("search-input");
     searchEmpty = document.getElementById("search-empty");
+    searchClear = document.getElementById("search-clear");
     viewLink = document.querySelector('.segmented[aria-label="View"] a.segment');
     if (viewLink) viewLinkBase = viewLink.getAttribute("href");
     if (searchInput) {
       searchInput.addEventListener("input", applyFilter);
+      if (searchClear) {
+        // Empty the box, run the clear path (restore the tree, hide the no-matches
+        // line, drop q, hide this button), and hand focus back to the input.
+        searchClear.addEventListener("click", function () {
+          searchInput.value = "";
+          clearFilter();
+          searchInput.focus();
+        });
+      }
       // A filter carried across a view switch arrives as the q param: re-apply it,
-      // which also re-syncs the toggle link so the next switch keeps it too.
+      // which also re-syncs the toggle link so the next switch keeps it too, and
+      // reveals the clear button since applyFilter toggles it.
       var carried = new URLSearchParams(location.search).get("q");
       if (carried) {
         searchInput.value = carried;

@@ -2384,6 +2384,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn app_script_toggles_and_handles_the_clear_button() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.js")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The script finds the clear button and toggles its visibility from the input
+        // value, so it shows only when the box holds text.
+        assert!(body.contains("search-clear"));
+        assert!(body.contains("toggleClear"));
+    }
+
+    #[tokio::test]
     async fn index_tolerates_a_filter_query_param_on_a_view_switch() {
         // The client carries the live filter across a view switch as a q param; the
         // server has no use for it and must ignore it, not reject the request.
