@@ -24,7 +24,7 @@ pub fn catalog() -> Vec<Scenario> {
     vec![
         Scenario {
             name: "mixed-forest",
-            description: "Flagship nested tree: containers, flagged leaves, query cleaning, ancestor coverage (single root)",
+            description: "Flagship tree across three roots: a showcase forest, a smaller forest with cross-root .ebook_elsewhere markers, and a fully covered Clean root",
             build: build_mixed_forest,
         },
         Scenario {
@@ -77,8 +77,11 @@ fn touch(path: &Path) {
 // --- Scenario builders. Each one seeds a synthetic library and returns its
 // roots. ---
 
-/// Flagship nested tree exercising containers, flagged leaves, query cleaning,
-/// and ancestor coverage under one root.
+/// Flagship nested tree across three roots: the showcase `Library` exercising
+/// containers, flagged leaves, query cleaning, and ancestor coverage; a smaller
+/// `External Library` forest whose duplicated authors carry cross-root
+/// `.ebook_elsewhere` markers; and a fully covered `Complete Library` that
+/// renders Clean.
 fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     let root = base.join("Library");
     // Andy Weir: a flagged leaf whose "(Unabridged)" suffix is stripped from the
@@ -181,7 +184,70 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     );
     touch(&root.join("Arthur C. Clarke/The City and the Stars/01 - The City and the Stars.m4b"));
     touch(&root.join("Arthur C. Clarke/The City and the Stars/The City and the Stars.epub"));
-    vec![root]
+
+    // Root 2: a second, smaller mixed forest on another drive. Five new authors
+    // carry their own gaps. Four authors duplicate root 1, modeling the same
+    // author on a second drive: three carry an .ebook_elsewhere marker (the ebook
+    // lives in the main library), so they resolve here while staying flagged in
+    // root 1, and Octavia Butler's Kindred has no marker, so the same gap surfaces
+    // in both roots.
+    let external = base.join("External Library");
+    // Becky Chambers: a "Wayfarers" series container. "The Long Way to a Small,
+    // Angry Planet" stays flagged; "A Closed and Common Orbit" is covered by its
+    // own epub, so the container surfaces showing its one remaining gap.
+    touch(&external.join(
+        "Becky Chambers/Wayfarers/The Long Way to a Small, Angry Planet/01 - The Long Way to a Small, Angry Planet.mp3",
+    ));
+    touch(&external.join(
+        "Becky Chambers/Wayfarers/A Closed and Common Orbit/01 - A Closed and Common Orbit.m4b",
+    ));
+    touch(
+        &external.join(
+            "Becky Chambers/Wayfarers/A Closed and Common Orbit/A Closed and Common Orbit.epub",
+        ),
+    );
+    // N.K. Jemisin: "The Fifth Season" stays flagged; "The Obelisk Gate" is
+    // covered by its own epub, so the author surfaces with one gap.
+    touch(&external.join("N.K. Jemisin/The Fifth Season/01 - The Fifth Season.m4b"));
+    touch(&external.join("N.K. Jemisin/The Obelisk Gate/01 - The Obelisk Gate.mp3"));
+    touch(&external.join("N.K. Jemisin/The Obelisk Gate/The Obelisk Gate.epub"));
+    // Ann Leckie and Ted Chiang: a plain flagged book each, no coverage case.
+    touch(&external.join("Ann Leckie/Ancillary Justice/01 - Ancillary Justice.mp3"));
+    touch(&external.join("Ted Chiang/Exhalation/01 - Exhalation.m4a"));
+    // Martha Wells: a "Murderbot Diaries" series container with two flagged books.
+    touch(
+        &external
+            .join("Martha Wells/The Murderbot Diaries/All Systems Red/01 - All Systems Red.mp3"),
+    );
+    touch(&external.join(
+        "Martha Wells/The Murderbot Diaries/Artificial Condition/01 - Artificial Condition.m4b",
+    ));
+    // Four duplicates of root 1 authors. Three carry .ebook_elsewhere, so they
+    // resolve here while their root 1 copies stay flagged; Kindred has no marker,
+    // so it stays flagged in both roots.
+    touch(&external.join("Andy Weir/Artemis/01 - Artemis.mp3"));
+    touch(&external.join("Andy Weir/Artemis/.ebook_elsewhere"));
+    touch(&external.join(
+        "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire/01 - The Final Empire.m4b",
+    ));
+    touch(&external.join(
+        "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire/.ebook_elsewhere",
+    ));
+    touch(&external.join("Isaac Asimov/Foundation/01 - Foundation.m4b"));
+    touch(&external.join("Isaac Asimov/Foundation/.ebook_elsewhere"));
+    touch(&external.join("Octavia E. Butler/Kindred/01 - Kindred.mp3"));
+
+    // Root 3: a fully covered library. Every audio folder has its own ebook beside
+    // it, so the scanner reports no gaps and the section renders Clean.
+    let complete = base.join("Complete Library");
+    touch(&complete.join("Adrian Tchaikovsky/Children of Time/01 - Children of Time.m4b"));
+    touch(&complete.join("Adrian Tchaikovsky/Children of Time/Children of Time.epub"));
+    touch(&complete.join("Kim Stanley Robinson/Red Mars/01 - Red Mars.mp3"));
+    touch(&complete.join("Kim Stanley Robinson/Red Mars/Red Mars.epub"));
+    touch(&complete.join("Connie Willis/Doomsday Book/01 - Doomsday Book.m4a"));
+    touch(&complete.join("Connie Willis/Doomsday Book/Doomsday Book.epub"));
+
+    vec![root, external, complete]
 }
 
 /// A library a careless owner never tidied: standalone books, author-only and
@@ -436,8 +502,10 @@ mod tests {
     fn mixed_forest_flags_the_expected_leaves() {
         let dir = tempfile::tempdir().unwrap();
         let roots = build_mixed_forest(dir.path());
-        assert_eq!(roots.len(), 1);
-        let want: BTreeSet<String> = [
+        assert_eq!(roots.len(), 3);
+
+        // Root 0: the original showcase forest, unchanged.
+        let want_library: BTreeSet<String> = [
             "Andy Weir/Artemis (Unabridged)",
             "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire",
             "Brandon Sanderson/The Mistborn Saga/Mistborn 02 - The Well of Ascension [2007]",
@@ -458,7 +526,28 @@ mod tests {
         .iter()
         .map(|s| s.to_string())
         .collect();
-        assert_eq!(flagged(&roots[0]), want);
+        assert_eq!(flagged(&roots[0]), want_library);
+
+        // Root 1: External Library, a smaller forest. The three .ebook_elsewhere
+        // duplicates resolve here; Octavia Butler's Kindred has no marker, so the
+        // same gap surfaces in both roots.
+        let want_external: BTreeSet<String> = [
+            "Ann Leckie/Ancillary Justice",
+            "Becky Chambers/Wayfarers/The Long Way to a Small, Angry Planet",
+            "Martha Wells/The Murderbot Diaries/All Systems Red",
+            "Martha Wells/The Murderbot Diaries/Artificial Condition",
+            "N.K. Jemisin/The Fifth Season",
+            "Octavia E. Butler/Kindred",
+            "Ted Chiang/Exhalation",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(flagged(&roots[1]), want_external);
+
+        // Root 2: Complete Library, fully covered, so no gaps.
+        assert!(flagged(&roots[2]).is_empty());
+        assert!(roots[2].is_dir());
     }
 
     #[test]
