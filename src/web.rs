@@ -3,12 +3,11 @@
 //! decoupled from the axum version. Marker writes use htmx to swap just the
 //! affected root's section; the script is vendored and served from `/static`.
 
-use std::hash::{DefaultHasher, Hash, Hasher};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{Form, Query, State};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::{DOCTYPE, Markup, PreEscaped, html};
@@ -21,29 +20,11 @@ use crate::service::{self, FlaggedView, RootSection, RootState, ViewMode};
 use crate::state::AppState;
 use crate::tree::Node;
 
-/// The vendored htmx runtime, embedded at compile time and served from `/static`.
-const HTMX_JS: &str = include_str!("../assets/htmx.min.js");
+mod assets;
 
-/// The hand-rolled stylesheet, embedded at compile time and served from `/static`.
-const APP_CSS: &str = include_str!("../assets/app.css");
-
-/// The client behavior script, embedded at compile time and served from `/static`.
-const APP_JS: &str = include_str!("../assets/app.js");
-
-/// Cache lifetimes for the static assets. htmx is vendored and changes only on a
-/// deliberate version bump, so it gets a week; the stylesheet and the client
-/// script change often, so they get an hour. None carry `immutable`: the URLs are
-/// not fingerprinted, so the ETag must stay free to revalidate a changed asset
-/// once the window passes.
-const HTMX_CACHE_CONTROL: &str = "public, max-age=604800";
-const APP_CSS_CACHE_CONTROL: &str = "public, max-age=3600";
-const APP_JS_CACHE_CONTROL: &str = "public, max-age=3600";
-
-/// Per-asset ETag cells, each filled once from the embedded bytes on the first
-/// request.
-static HTMX_ETAG: OnceLock<String> = OnceLock::new();
-static APP_CSS_ETAG: OnceLock<String> = OnceLock::new();
-static APP_JS_ETAG: OnceLock<String> = OnceLock::new();
+// The demo router reuses these two handlers; re-export so its `use crate::web::…`
+// import path stays put.
+pub(crate) use assets::{app_css, htmx_script};
 
 /// Pre-paint theme bootstrap: resolves the saved choice, or the OS preference for
 /// "system" / an unset value, and sets `data-theme` on <html> before first paint
@@ -125,9 +106,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/mark", post(mark))
         .route("/unmark", post(unmark))
         .route("/rescan", post(rescan))
-        .route("/static/htmx.min.js", get(htmx_script))
-        .route("/static/app.css", get(app_css))
-        .route("/static/app.js", get(app_js))
+        .route("/static/htmx.min.js", get(assets::htmx_script))
+        .route("/static/app.css", get(assets::app_css))
+        .route("/static/app.js", get(assets::app_js))
         .with_state(state)
 }
 
@@ -250,96 +231,6 @@ fn view_toggle(mode: ViewMode) -> Markup {
             }
         }
     }
-}
-
-/// A strong ETag for an asset: a quoted hash of its bytes. It depends only on the
-/// content, so it is fixed for the life of the process and identical across restarts
-/// built from the same bytes; a client's cached validator then survives any redeploy
-/// that left the asset unchanged.
-fn asset_etag(body: &str) -> String {
-    let mut hasher = DefaultHasher::new();
-    body.hash(&mut hasher);
-    format!("\"{:016x}\"", hasher.finish())
-}
-
-/// Whether an `If-None-Match` value revalidates against `etag`. A bare `*` matches
-/// any current representation (RFC 9110 §13.1.2), and the asset always exists, so
-/// it always revalidates. Otherwise the value is a comma list whose candidates may
-/// carry the `W/` weak prefix an edge added; `If-None-Match` uses the weak
-/// comparison, which treats `W/"x"` and `"x"` as equal, so each candidate is
-/// trimmed and unwrapped before the compare.
-fn if_none_match_hit(value: Option<&str>, etag: &str) -> bool {
-    let Some(value) = value else { return false };
-    value.split(',').any(|candidate| {
-        let candidate = candidate.trim();
-        candidate == "*" || candidate.strip_prefix("W/").unwrap_or(candidate) == etag
-    })
-}
-
-/// Serve one embedded asset with revalidation. The ETag is computed once into
-/// `etag_cell`; a matching `If-None-Match` gets a `304` carrying `ETag` and
-/// `Cache-Control` and no body, and every other request gets a `200` with the body
-/// and all three headers.
-fn serve_asset(
-    headers: &HeaderMap,
-    body: &'static str,
-    content_type: &'static str,
-    cache_control: &'static str,
-    etag_cell: &'static OnceLock<String>,
-) -> Response {
-    let etag = etag_cell.get_or_init(|| asset_etag(body));
-    let requested = headers
-        .get(header::IF_NONE_MATCH)
-        .and_then(|v| v.to_str().ok());
-    if if_none_match_hit(requested, etag) {
-        return (
-            StatusCode::NOT_MODIFIED,
-            [
-                (header::ETAG, etag.as_str()),
-                (header::CACHE_CONTROL, cache_control),
-            ],
-        )
-            .into_response();
-    }
-    (
-        [
-            (header::CONTENT_TYPE, content_type),
-            (header::CACHE_CONTROL, cache_control),
-            (header::ETAG, etag.as_str()),
-        ],
-        body,
-    )
-        .into_response()
-}
-
-pub(crate) async fn htmx_script(headers: HeaderMap) -> Response {
-    serve_asset(
-        &headers,
-        HTMX_JS,
-        "text/javascript;charset=utf-8",
-        HTMX_CACHE_CONTROL,
-        &HTMX_ETAG,
-    )
-}
-
-pub(crate) async fn app_css(headers: HeaderMap) -> Response {
-    serve_asset(
-        &headers,
-        APP_CSS,
-        "text/css;charset=utf-8",
-        APP_CSS_CACHE_CONTROL,
-        &APP_CSS_ETAG,
-    )
-}
-
-async fn app_js(headers: HeaderMap) -> Response {
-    serve_asset(
-        &headers,
-        APP_JS,
-        "text/javascript;charset=utf-8",
-        APP_JS_CACHE_CONTROL,
-        &APP_JS_ETAG,
-    )
 }
 
 /// The navbar settings control: a cog that opens a popover panel holding the
@@ -2450,23 +2341,6 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_string(response).await;
         assert!(body.contains("--color-base-100"));
-    }
-
-    #[test]
-    fn if_none_match_handles_stars_lists_and_weak_tags() {
-        let etag = "\"abc123\"";
-        // No header at all never revalidates.
-        assert!(!if_none_match_hit(None, etag));
-        // A bare `*` matches any current representation.
-        assert!(if_none_match_hit(Some("*"), etag));
-        // An exact strong match.
-        assert!(if_none_match_hit(Some("\"abc123\""), etag));
-        // The same tag carried with the weak prefix an edge may add.
-        assert!(if_none_match_hit(Some("W/\"abc123\""), etag));
-        // One of several candidates in a comma list matches.
-        assert!(if_none_match_hit(Some("\"other\", W/\"abc123\""), etag));
-        // None of the candidates match.
-        assert!(!if_none_match_hit(Some("\"stale\", \"older\""), etag));
     }
 
     #[tokio::test]
