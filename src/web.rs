@@ -2383,7 +2383,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn app_script_opens_and_closes_the_cheatsheet() {
+    async fn app_script_opens_the_settings_popover_for_the_help_key() {
         let dir = tempfile::tempdir().unwrap();
         let body = body_string(
             app_for(dir.path())
@@ -2397,8 +2397,10 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        assert!(body.contains("openCheatsheet"));
-        assert!(body.contains("showModal"));
+        // The `?` key opens the merged settings popover; the old cheatsheet helper
+        // is gone.
+        assert!(body.contains("showPopover"));
+        assert!(!body.contains("openCheatsheet"));
     }
 
     #[tokio::test]

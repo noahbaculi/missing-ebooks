@@ -739,30 +739,6 @@
     if (evt.key === "Escape") clearToasts();
   });
 
-  // ---- shortcuts cheatsheet ----
-
-  // A native dialog: showModal traps focus and Escape closes it, so this only has
-  // to open and close it. openCheatsheet is also the `?` hotkey's target (Task 10).
-  var cheatsheet = null;
-
-  function openCheatsheet() {
-    if (cheatsheet && typeof cheatsheet.showModal === "function" && !cheatsheet.open) {
-      cheatsheet.showModal();
-    }
-  }
-
-  function closeCheatsheet() {
-    if (cheatsheet && cheatsheet.open) cheatsheet.close();
-  }
-
-  document.addEventListener("DOMContentLoaded", function () {
-    cheatsheet = document.getElementById("cheatsheet");
-    var trigger = document.getElementById("cheatsheet-btn");
-    if (trigger) trigger.addEventListener("click", openCheatsheet);
-    var close = document.getElementById("cheatsheet-close");
-    if (close) close.addEventListener("click", closeCheatsheet);
-  });
-
   // ---- search / filter ----
 
   // The whole tree filters client-side over the DOM already present. A node stays
@@ -999,7 +975,7 @@
 
   // Additive to the existing behavior. j/k move a single highlight through the
   // visible gap rows; r rescans; / focuses the filter and Enter leaves it; ? opens
-  // the cheatsheet; Escape clears the filter or, with an empty box, drops the
+  // the settings popover; Escape clears the filter or, with an empty box, drops the
   // highlight. The highlight is a real focus target so keyboard and screen-reader
   // users land on the same row.
   var activeRow = null;
@@ -1112,7 +1088,14 @@
         break;
       case "?":
         evt.preventDefault();
-        openCheatsheet();
+        var settingsPanel = document.getElementById("settings-panel");
+        if (
+          settingsPanel &&
+          typeof settingsPanel.showPopover === "function" &&
+          !settingsPanel.matches(":popover-open")
+        ) {
+          settingsPanel.showPopover();
+        }
         break;
       default:
         break;
