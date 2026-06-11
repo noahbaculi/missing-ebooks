@@ -52,9 +52,16 @@ const KEYBOARD_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none"
 /// `%23c7c5ff` on dark ones via `prefers-color-scheme`, so the mark keeps its
 /// contrast either way. (Chrome, Firefox, and Edge honor the media query inside a
 /// favicon; Safari ignores it and shows the light-mode indigo throughout.) The
-/// source art lives at `assets/brand/favicon.svg`; keep the two in sync if the
-/// mark changes.
+/// source art lives at `assets/brand/favicon.svg`; keep it, `BRAND_SVG`, and the
+/// source art in sync if the mark changes.
 const FAVICON_HREF: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round'%3E%3Cstyle%3Esvg{color:%23605dff}@media(prefers-color-scheme:dark){svg{color:%23c7c5ff}}%3C/style%3E%3Cpath d='M4.5 14v-2a7.5 7.5 0 0 1 15 0v2' stroke-width='2'/%3E%3Crect x='3' y='13' width='3.2' height='6' rx='1.6' fill='currentColor' stroke='none'/%3E%3Crect x='17.8' y='13' width='3.2' height='6' rx='1.6' fill='currentColor' stroke='none'/%3E%3Cpath d='M12 11.8c-1.2-.85-3-.85-4.2 0v4.8c1.2-.85 3-.85 4.2 0c1.2-.85 3-.85 4.2 0v-4.8c-1.2-.85-3-.85-4.2 0z' stroke-width='1.4'/%3E%3Cpath d='M12 11.8v4.8' stroke-width='1.2'/%3E%3C/svg%3E";
+
+/// The brand mark drawn inline at the head of the navbar, the same "book wearing
+/// headphones" glyph as the favicon. It draws in `currentColor`, which the navbar
+/// binds to the primary indigo so the mark follows the theme, and is `aria-hidden`
+/// since the `<h1>` already names the app. Same art as `FAVICON_HREF` and
+/// `assets/brand/favicon.svg`; keep the three in sync if the mark changes.
+const BRAND_SVG: &str = r##"<svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2" stroke-width="2"/><rect x="3" y="13" width="3.2" height="6" rx="1.6" fill="currentColor" stroke="none"/><rect x="17.8" y="13" width="3.2" height="6" rx="1.6" fill="currentColor" stroke="none"/><path d="M12 11.8c-1.2-.85-3-.85-4.2 0v4.8c1.2-.85 3-.85 4.2 0c1.2-.85 3-.85 4.2 0v-4.8c-1.2-.85-3-.85-4.2 0z" stroke-width="1.4"/><path d="M12 11.8v4.8" stroke-width="1.2"/></svg>"##;
 
 /// Vertical three-dot "more actions" glyph for the mobile per-row menu trigger.
 /// Inherits `currentColor`.
@@ -299,7 +306,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
             body {
                 (conn_banner())
                 nav.navbar {
-                    h1 { "Missing Ebooks" }
+                    h1 { (PreEscaped(BRAND_SVG)) "Missing Ebooks" }
                     (search_box())
                     span.spacer {}
                     (view_toggle(mode))

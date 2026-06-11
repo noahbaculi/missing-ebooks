@@ -76,10 +76,20 @@ details > summary::-webkit-details-marker {
   border-radius: var(--radius-box);
 }
 .navbar h1 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin: 0;
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+/* the inline brand mark leading the title; indigo via the theme's primary */
+.brand-mark {
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  color: var(--color-primary);
 }
 .navbar .spacer {
   flex: 1;

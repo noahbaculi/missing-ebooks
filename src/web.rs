@@ -2182,6 +2182,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn navbar_renders_the_brand_mark_before_the_title() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The brand glyph leads the title in the navbar, inline so it tracks the theme.
+        // It opens the h1, so the assertion fixes both its presence and its position.
+        assert!(body.contains(r#"<h1><svg class="brand-mark""#));
+        assert!(body.contains("Missing Ebooks"));
+    }
+
+    #[tokio::test]
     async fn navbar_renders_the_hidden_filter_input_and_no_matches_line() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
