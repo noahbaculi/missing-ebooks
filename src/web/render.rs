@@ -361,40 +361,6 @@ fn total_gaps(view: &FlaggedView) -> usize {
         .sum()
 }
 
-/// The forest behind a section, or `None` for a `Clean` / `Error` root.
-fn forest_nodes(section: &RootSection) -> Option<&[Node]> {
-    match &section.state {
-        RootState::Forest(nodes) => Some(nodes.as_slice()),
-        RootState::Clean | RootState::Error(_) => None,
-    }
-}
-
-/// Top-level forest nodes that still hold a gap, across every root. In gaps-only
-/// every top-level node qualifies; in show-all a fully covered one is excluded.
-/// The loose-root `.` node counts as one. This is "authors affected".
-fn authors_affected(view: &FlaggedView) -> usize {
-    view.iter()
-        .filter_map(forest_nodes)
-        .flatten()
-        .filter(|node| node.has_gap_within())
-        .count()
-}
-
-/// Gaps at or below a single node, the node itself included.
-fn node_gaps(node: &Node) -> usize {
-    usize::from(node.needs_ebook()) + count_gaps(&node.children)
-}
-
-/// The top-level node carrying the most gaps, with its count, across every root.
-/// `None` when no root holds a forest. Drives the "most gaps" line.
-fn top_author(view: &FlaggedView) -> Option<(&str, usize)> {
-    view.iter()
-        .filter_map(forest_nodes)
-        .flatten()
-        .map(|node| (node.name.as_str(), node_gaps(node)))
-        .max_by_key(|&(_, gaps)| gaps)
-}
-
 /// A root's short label: the last non-empty path segment, for the per-root chips.
 fn root_label(path: &str) -> &str {
     path.rsplit(['/', '\\'])
@@ -407,20 +373,14 @@ fn gap_word(n: usize) -> &'static str {
     if n == 1 { "gap" } else { "gaps" }
 }
 
-/// "author" / "authors".
-fn author_word(n: usize) -> &'static str {
-    if n == 1 { "author" } else { "authors" }
-}
-
 /// The gap summary strip, rendered between the navbar and the roots and computed
 /// from the `FlaggedView` already on hand, so it needs no scanner change. The hero
-/// gap total, the authors-affected count, an optional "most gaps" line, optional
-/// per-root chips for a multi-root setup, and a session progress bar. `app.js`
-/// keeps these current from the DOM as marks land; this render is the first paint
-/// and the no-JS view. `data-gaps-at-load` seeds the session bar's baseline.
+/// gap total, a session coverage readout with its progress bar, and optional
+/// per-root chips for a multi-root setup. `app.js` keeps the hero and readout
+/// current from the DOM as marks land; this render is the first paint and the no-JS
+/// view. `data-gaps-at-load` seeds the session bar's baseline.
 fn gap_summary(view: &FlaggedView) -> Markup {
     let total = total_gaps(view);
-    let authors = authors_affected(view);
     html! {
         section.gap-summary id="gap-summary" data-gaps-at-load=(total) {
             @if total == 0 {
@@ -434,21 +394,8 @@ fn gap_summary(view: &FlaggedView) -> Markup {
                         span.gap-hero-num id="gap-total" { (total) }
                         span.gap-hero-label { (gap_word(total)) " to fill" }
                     }
-                    div.gap-stat {
-                        span.gap-stat-num id="gap-authors" { (authors) }
-                        span.gap-stat-label { (author_word(authors)) " affected" }
-                    }
-                    @if authors > 1 {
-                        @if let Some((name, gaps)) = top_author(view) {
-                            div.gap-top id="gap-top" {
-                                span.gap-top-label { "Most gaps" }
-                                span.gap-top-name id="gap-top-name" { (name) }
-                                span.gap-top-num id="gap-top-num" { (gaps) }
-                            }
-                        }
-                    }
+                    (session_bar(view, total))
                 }
-                (session_bar(total))
             }
             @if view.len() > 1 {
                 div.gap-chips id="gap-chips" {
@@ -490,18 +437,46 @@ fn root_chip(root: usize, section: &RootSection) -> Markup {
     }
 }
 
-/// The session triage bar: a client-side meter of gaps resolved this sitting over
-/// the count at load. Renders empty (`aria-valuenow="0"`); `app.js` fills it as
-/// marks land and resets its baseline on a rescan. A `progressbar` so the value is
-/// announced; the fill transition is dropped under reduced motion in CSS.
-fn session_bar(total: usize) -> Markup {
+/// The session coverage block beside the hero: a label naming the roots it spans, a
+/// readout of gaps resolved this sitting over the count at load
+/// (`{resolved} of {baseline} audiobooks · {pct}%`), and the progress bar. Renders
+/// at zero (`0 of {total}`, empty bar); `app.js` rewrites the readout and fills the
+/// bar as marks land, and resets the baseline on a rescan. The numbers aggregate
+/// every root, so the label lists every root to make that scope explicit. A
+/// `progressbar` so the value is announced; the fill transition is dropped under
+/// reduced motion in CSS.
+fn session_bar(view: &FlaggedView, total: usize) -> Markup {
     html! {
-        div.gap-bar role="progressbar"
-            aria-label="Gaps resolved this session"
-            aria-valuemin="0" aria-valuemax=(total) aria-valuenow="0" {
-            span.gap-bar-fill id="gap-bar-fill" {}
+        div.gap-session {
+            div.gap-session-head {
+                p.gap-session-label {
+                    "Coverage in "
+                    span.gap-session-roots { (root_names(view)) }
+                }
+                p.gap-session-readout {
+                    span.gap-session-num id="gap-resolved" { "0" }
+                    " of "
+                    span.gap-session-num id="gap-baseline" { (total) }
+                    " audiobooks · "
+                    span.gap-session-num id="gap-pct" { "0" } "%"
+                }
+            }
+            div.gap-bar role="progressbar"
+                aria-label="Gaps resolved this session"
+                aria-valuemin="0" aria-valuemax=(total) aria-valuenow="0" {
+                span.gap-bar-fill id="gap-bar-fill" {}
+            }
         }
     }
+}
+
+/// The root names the coverage readout spans, comma-joined, so its all-roots scope
+/// reads plainly. One root gives "Library"; several give "Library A, Library B".
+fn root_names(view: &FlaggedView) -> String {
+    view.iter()
+        .map(|section| root_label(&section.path))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The badge shown on a root's summary: the gap count, a clean check, or a scan

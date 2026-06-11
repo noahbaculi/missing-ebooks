@@ -2033,9 +2033,13 @@ mod tests {
         // baseline rides on the strip as a data attribute. One gap here (Book).
         assert!(body.contains(r#"id="gap-total""#));
         assert!(body.contains(r#"data-gaps-at-load="1""#));
-        // "Authors affected" is the count of top-level folders that still hold a gap.
-        assert!(body.contains(r#"id="gap-authors""#));
-        assert!(body.contains("affected"));
+        // The session coverage readout: resolved of baseline audiobooks with a
+        // percent, under a label that names the root it spans. First paint is 0 of 1.
+        assert!(body.contains(r#"id="gap-resolved""#));
+        assert!(body.contains(r#"id="gap-baseline""#));
+        assert!(body.contains(r#"id="gap-pct""#));
+        assert!(body.contains("audiobooks"));
+        assert!(body.contains("Coverage in"));
     }
 
     #[tokio::test]
@@ -2057,39 +2061,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gap_summary_names_the_top_author_when_several_are_affected() {
-        let dir = tempfile::tempdir().unwrap();
-        // Two authors with gaps; "Heavy" carries more than "Light".
-        touch(&dir.path().join("Heavy/Book 1/01.mp3"));
-        touch(&dir.path().join("Heavy/Book 2/01.mp3"));
-        touch(&dir.path().join("Light/Book/01.mp3"));
+    async fn gap_summary_labels_the_session_coverage_with_every_root() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        touch(&a.path().join("BookA/01.mp3"));
+        touch(&b.path().join("BookB/01.mp3"));
+        let a_name = a.path().file_name().unwrap().to_str().unwrap();
+        let b_name = b.path().file_name().unwrap().to_str().unwrap();
         let body = body_string(
-            app_for(dir.path())
+            app_for_roots(&[a.path(), b.path()])
                 .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
                 .await
                 .unwrap(),
         )
         .await;
-        // More than one author affected: the strip names the worst offender.
-        assert!(body.contains(r#"id="gap-top""#));
-        assert!(body.contains("Most gaps"));
-        assert!(body.contains("Heavy"));
-    }
-
-    #[tokio::test]
-    async fn gap_summary_hides_the_top_author_with_one_affected() {
-        let dir = tempfile::tempdir().unwrap();
-        // One author, two gaps: a "most gaps" line would just repeat the hero.
-        touch(&dir.path().join("Solo/Book 1/01.mp3"));
-        touch(&dir.path().join("Solo/Book 2/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        assert!(!body.contains(r#"id="gap-top""#));
+        // The coverage label names what the readout spans, every root listed in
+        // config order, comma-joined. The joined pair appears only in the label.
+        assert!(body.contains("Coverage in"));
+        assert!(body.contains(&format!("{a_name}, {b_name}")));
     }
 
     #[tokio::test]
