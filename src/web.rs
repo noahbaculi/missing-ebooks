@@ -2220,9 +2220,16 @@ mod tests {
         .await;
         // The flexible spacer sits right after the title, so the title alone pins to the
         // left and the search box groups with the controls on the right.
-        let spacer = body.find(r#"<span class="spacer">"#).expect("spacer present");
-        let search = body.find(r#"<div class="search""#).expect("search box present");
-        assert!(spacer < search, "the spacer should sit before the search box");
+        let spacer = body
+            .find(r#"<span class="spacer">"#)
+            .expect("spacer present");
+        let search = body
+            .find(r#"<div class="search""#)
+            .expect("search box present");
+        assert!(
+            spacer < search,
+            "the spacer should sit before the search box"
+        );
     }
 
     #[tokio::test]
