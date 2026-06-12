@@ -1081,6 +1081,10 @@ mod tests {
         assert!(body.contains(r#"data-theme-choice="light""#));
         assert!(body.contains(r#"data-theme-choice="dark""#));
         assert!(body.contains(r#"data-theme-choice="system""#));
+        // The Theme control's header reuses the .settings-head styling, like the
+        // folder-depth group above it, not the inline .settings-label.
+        assert!(body.contains(r#"<div class="settings-head">Theme</div>"#));
+        assert!(!body.contains(r#"<span class="settings-label">Theme</span>"#));
         // The confirm-before-marking switch.
         assert!(body.contains(r#"id="confirm-toggle""#));
         // The old two-state toggle is gone.

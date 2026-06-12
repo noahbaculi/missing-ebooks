@@ -148,8 +148,8 @@ fn settings_menu() -> Markup {
                     span.switch-track {}
                 }
             }
+            div.settings-head { "Theme" }
             div.settings-row.settings-row-theme {
-                span.settings-label { "Theme" }
                 div.segmented role="group" aria-label="Theme" {
                     button.segment type="button" data-theme-choice="light" { "Light" }
                     button.segment type="button" data-theme-choice="dark" { "Dark" }
