@@ -11,17 +11,21 @@ use crate::tree::Node;
 
 /// Pre-paint bootstrap: resolves the saved theme (or the OS preference for
 /// "system" / an unset value) and sets `data-theme` on <html> before first
-/// paint so there is no flash, and applies the depth-typography opt-out the
-/// same way, setting `data-depth="off"` when the preference is stored off. The
-/// interactive controls live in `app.js`.
+/// paint so there is no flash, and applies the two depth-typography opt-outs
+/// the same way, setting `data-bold-top="off"` and/or `data-italic-nested="off"`
+/// when their preferences are stored off. The interactive controls live in
+/// `app.js`.
 const PREPAINT_JS: &str = r#"(function () {
   var saved = localStorage.getItem('theme');
   var t = (saved === 'light' || saved === 'dark')
     ? saved
     : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   document.documentElement.dataset.theme = t;
-  if (localStorage.getItem('depthType') === 'off') {
-    document.documentElement.dataset.depth = 'off';
+  if (localStorage.getItem('boldTopFolder') === 'off') {
+    document.documentElement.dataset.boldTop = 'off';
+  }
+  if (localStorage.getItem('italicNestedFolders') === 'off') {
+    document.documentElement.dataset.italicNested = 'off';
   }
 })();"#;
 

@@ -836,10 +836,12 @@ mod tests {
         assert!(body.contains(r#"href="/static/app.css""#));
         // The pre-paint theme script is present and reads the OS preference.
         assert!(body.contains("prefers-color-scheme"));
-        // The pre-paint bootstrap also resolves the depth preference, so a reader
-        // who opted out never flashes the bold/italic before app.js runs.
-        assert!(body.contains("depthType"));
-        assert!(body.contains("dataset.depth"));
+        // The pre-paint bootstrap also resolves both depth preferences, so a reader
+        // who opted out of an effect never flashes it before app.js runs.
+        assert!(body.contains("boldTopFolder"));
+        assert!(body.contains("italicNestedFolders"));
+        assert!(body.contains("dataset.boldTop"));
+        assert!(body.contains("dataset.italicNested"));
         // The theme toggle moved into the settings menu: a labelled cog, with the
         // theme choices inside the panel.
         assert!(body.contains(r#"aria-label="Settings""#));
