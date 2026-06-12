@@ -1,11 +1,11 @@
 # missing-ebooks
 
-Self-hosted web server that scans audiobook library trees and surfaces folders that hold audio but no matching ebook, so the gaps are easy to find and fill.
+Self-hosted web server that scans audiobook library trees and surfaces folders that hold audio but no matching ebook, so the gaps can be found and filled.
 
 ## Live demo
 
 Try it without installing anything: **[demo-missing-ebooks.noahbaculi.com](https://demo-missing-ebooks.noahbaculi.com)**.
-Each visit opens a private, throwaway sandbox seeded with sample audiobooks. Your clicks stay yours and the sandbox resets when idle.
+Each visit opens a private, throwaway sandbox seeded with sample audiobooks. Changes stay in your session and reset when idle.
 
 ## How it works
 
