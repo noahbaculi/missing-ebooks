@@ -139,10 +139,10 @@
   function fillDialog(btn) {
     if (!dialog) return;
     var action = /** @type {string} */ (btn.dataset.confirmAction);
-    var file = /** @type {string} */ (btn.dataset.confirmFile);
+    var file = btn.dataset.confirmFile;
     need("confirm-title").textContent = action + "?";
-    need("confirm-folder").textContent = /** @type {string} */ (btn.dataset.confirmFolder);
-    need("confirm-file").textContent = file;
+    need("confirm-folder").textContent = btn.dataset.confirmFolder || "";
+    need("confirm-file").textContent = file || "";
     need("confirm-accept-label").textContent = action;
     var icons = /** @type {NodeListOf<HTMLElement>} */ (
       dialog.querySelectorAll("[data-confirm-icon]")
