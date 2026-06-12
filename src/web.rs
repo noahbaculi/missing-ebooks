@@ -1275,6 +1275,9 @@ mod tests {
         assert!(body.contains(".settings-panel::backdrop"));
         // The shortcuts reference is styled inside the panel and hidden on mobile.
         assert!(body.contains(".settings-shortcuts"));
+        // Sections are separated by whitespace, not rules: every section start
+        // after the first gets a top gap.
+        assert!(body.contains(".settings-head:not(:first-child)"));
     }
 
     #[tokio::test]

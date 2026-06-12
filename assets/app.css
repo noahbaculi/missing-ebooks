@@ -585,6 +585,11 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   text-transform: uppercase;
   color: var(--color-muted);
 }
+/* sections after the first open with a wider gap above the header than below it,
+   so whitespace alone marks the grouping; the panel carries no divider rules. */
+.settings-head:not(:first-child) {
+  margin-top: 0.8rem;
+}
 .settings-row {
   display: flex;
   align-items: center;
@@ -618,12 +623,11 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 }
 
 /* settings shortcuts: the read-only hotkey reference folded into the panel,
-   below the live controls and divided from them by a hairline. hidden on mobile,
-   where there is no keyboard (see the navbar media query). */
+   below the live controls and set off by the same whitespace gap that separates
+   the other sections. hidden on mobile, where there is no keyboard (see the
+   navbar media query). */
 .settings-shortcuts {
-  margin-top: 0.3rem;
-  padding-top: 0.3rem;
-  border-top: var(--border) solid var(--color-base-300);
+  margin-top: 0.8rem;
 }
 .settings-shortcuts-list {
   display: grid;
