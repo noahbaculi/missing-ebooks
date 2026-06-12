@@ -1362,6 +1362,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_defines_the_border_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // Borders use a dedicated token, lighter than the surface in dark, instead
+        // of --color-base-300 (which in dark is darker than the surface and vanishes).
+        assert!(body.contains("--color-border"));
+    }
+
+    #[tokio::test]
     async fn stylesheet_neutralizes_native_button_chrome_on_segments() {
         let dir = tempfile::tempdir().unwrap();
         let response = app_for(dir.path())

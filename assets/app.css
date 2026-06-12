@@ -18,6 +18,7 @@
   --color-success: #00b074;
   --color-error: #ef4565;
   --guide: #dfe2e7;
+  --color-border: #e5e6e9;
   --radius-box: 1rem;
   --radius-field: 0.5rem;
   --border: 1px;
@@ -36,6 +37,7 @@
   --color-success: #00b074;
   --color-error: #ff6b85;
   --guide: #2b323b;
+  --color-border: #333b46;
 }
 
 /* ---- 3: base ---- */
@@ -72,7 +74,7 @@ details > summary::-webkit-details-marker {
   margin: 0 auto 1.25rem;
   padding: 0.75rem 1rem;
   background: var(--color-base-100);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: var(--radius-box);
 }
 .navbar h1 {
@@ -145,7 +147,7 @@ details > summary::-webkit-details-marker {
 }
 .btn-outline {
   background: transparent;
-  border-color: var(--color-base-300);
+  border-color: var(--color-border);
   color: var(--color-base-content);
 }
 .btn-outline:hover {
@@ -165,7 +167,7 @@ details > summary::-webkit-details-marker {
   gap: 0.15rem;
   padding: 0.15rem;
   background: var(--color-base-200);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: var(--radius-field);
 }
 .segment {
@@ -203,7 +205,7 @@ details > summary::-webkit-details-marker {
   margin: 0 auto 1rem;
   padding: 1rem 1.1rem;
   background: var(--color-base-100);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: var(--radius-box);
 }
 .root-head {
@@ -391,7 +393,7 @@ details[open] > summary .chev {
   min-width: 9rem;
   padding: 0.25rem;
   background: var(--color-base-100);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: var(--radius-field);
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
 }
@@ -570,7 +572,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   min-width: 15rem;
   padding: 0.4rem;
   background: var(--color-base-100);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: var(--radius-field);
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
 }
@@ -650,7 +652,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   font-size: 0.75rem;
   font-weight: 700;
   background: var(--color-base-200);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: 0.3rem;
 }
 
@@ -703,7 +705,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   padding: 1.1rem 1.15rem 1rem;
   background: var(--color-base-100);
   color: var(--color-base-content);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: var(--radius-box);
   box-shadow: 0 16px 48px rgb(0 0 0 / 28%);
 }
@@ -724,7 +726,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   font-family: ui-monospace, monospace;
   font-size: 0.82rem;
   background: var(--color-base-200);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: 0.35rem;
   padding: 0.05rem 0.3rem;
 }
@@ -1375,14 +1377,14 @@ li.leaving {
   padding: 0.7rem 0.8rem;
   background: var(--color-base-100);
   color: var(--color-base-content);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: var(--radius-field);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
   animation: toast-in 380ms ease both;
 }
 /* a faint variant-tinted border ties the card to its status without a heavy fill */
 .toast--success {
-  border-color: color-mix(in srgb, var(--color-success) 35%, var(--color-base-300));
+  border-color: color-mix(in srgb, var(--color-success) 35%, var(--color-border));
 }
 /* status badge: a filled, tinted circle carrying the success glyph, so the
    read lands instantly instead of leaning on a thin spine */
@@ -1528,7 +1530,7 @@ li.leaving {
   margin: 0 auto 1.25rem;
   padding: 0.9rem 1.1rem;
   background: var(--color-base-100);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: var(--radius-box);
 }
 .gap-summary-head {
@@ -1617,7 +1619,7 @@ li.leaving {
   gap: 0.35rem;
   padding: 0.2rem 0.6rem;
   background: var(--color-base-200);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: 999px;
   font-size: 0.8rem;
 }
@@ -1675,7 +1677,7 @@ li.leaving {
   gap: 0.4rem;
   padding: 0.25rem 0.6rem;
   background: var(--color-base-200);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: var(--radius-field);
 }
 .search .icon {
@@ -1747,7 +1749,7 @@ li.leaving {
   padding: 0.85rem 1.1rem;
   color: var(--color-muted);
   background: var(--color-base-100);
-  border: var(--border) solid var(--color-base-300);
+  border: var(--border) solid var(--color-border);
   border-radius: var(--radius-box);
 }
 
