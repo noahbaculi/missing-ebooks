@@ -1086,6 +1086,14 @@ mod tests {
             confirm_at < theme_at,
             "the confirm row should render above the theme control"
         );
+        // The folder-depth styling switch sits between the confirm switch and the
+        // theme control.
+        assert!(body.contains(r#"id="depth-toggle""#));
+        let depth_at = body.find(r#"id="depth-toggle""#).unwrap();
+        assert!(
+            confirm_at < depth_at && depth_at < theme_at,
+            "the depth row should render between the confirm switch and the theme control"
+        );
     }
 
     #[tokio::test]

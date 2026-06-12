@@ -129,6 +129,16 @@ fn settings_menu() -> Markup {
                     span.switch-track {}
                 }
             }
+            div.settings-row {
+                span.settings-label {
+                    "Folder depth styling"
+                    span.settings-sub { "Bold the top folder, italicize nested ones" }
+                }
+                label.switch {
+                    input id="depth-toggle" type="checkbox" checked;
+                    span.switch-track {}
+                }
+            }
             div.settings-row.settings-row-theme {
                 span.settings-label { "Theme" }
                 div.segmented role="group" aria-label="Theme" {
