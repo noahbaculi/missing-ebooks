@@ -173,3 +173,4 @@ With the hook installed, any commit that touches Rust or build-config files runs
 - [x] Prettier UI
 - [ ] Tag-based search query built from path structure, not just the leaf folder name
 - [ ] Runtime button to append an exclude name and persist it to config
+- [ ] Library coverage percentage (covered audiobooks vs total), deferred until the cost of the full directory walk it needs is measured on a large library over a network mount
