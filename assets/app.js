@@ -579,7 +579,8 @@
   }
 
   /** @type {("htmx:sendError" | "htmx:timeout" | "htmx:responseError")[]} */
-  (["htmx:sendError", "htmx:timeout", "htmx:responseError"]).forEach(function (type) {
+  var FAILURE_EVENTS = ["htmx:sendError", "htmx:timeout", "htmx:responseError"];
+  FAILURE_EVENTS.forEach(function (type) {
     document.body.addEventListener(type, function (evt) {
       var elt = evt.detail.elt;
       var op = opOf(elt);
