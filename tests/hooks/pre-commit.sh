@@ -157,6 +157,12 @@ MISE_EXIT=0
 expect_exit "tsconfig: passing typecheck exits 0" 0 "$(hook_exit)"
 expect_typecheck_ran "tsconfig: ran typecheck"
 
+# 6b. A .d.ts change (the ambient stubs) also triggers the type check.
+stage_case types/htmx.d.ts
+MISE_EXIT=0
+expect_exit "dts: passing typecheck exits 0" 0 "$(hook_exit)"
+expect_typecheck_ran "dts: ran typecheck"
+
 # 7. Type check fails: hook blocks.
 stage_case assets/app.js
 MISE_EXIT=1
