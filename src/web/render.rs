@@ -133,13 +133,18 @@ fn settings_menu() -> Markup {
                     span.switch-track {}
                 }
             }
+            div.settings-head { "Folder depth styling" }
             div.settings-row {
-                span.settings-label {
-                    "Folder depth styling"
-                    span.settings-sub { "Bold the top folder, italicize nested ones" }
-                }
+                span.settings-label { "Bold top folder" }
                 label.switch {
-                    input id="depth-toggle" type="checkbox" checked;
+                    input id="bold-top-toggle" type="checkbox" checked;
+                    span.switch-track {}
+                }
+            }
+            div.settings-row {
+                span.settings-label { "Italicize nested folders" }
+                label.switch {
+                    input id="italic-nested-toggle" type="checkbox" checked;
                     span.switch-track {}
                 }
             }

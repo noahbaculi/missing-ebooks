@@ -1091,13 +1091,16 @@ mod tests {
             confirm_at < theme_at,
             "the confirm row should render above the theme control"
         );
-        // The folder-depth styling switch sits between the confirm switch and the
-        // theme control.
-        assert!(body.contains(r#"id="depth-toggle""#));
-        let depth_at = body.find(r#"id="depth-toggle""#).unwrap();
+        // The two folder-depth styling switches sit under a "Folder depth styling"
+        // header, between the confirm switch and the theme control, bold then italic.
+        assert!(body.contains("Folder depth styling"));
+        assert!(body.contains(r#"id="bold-top-toggle""#));
+        assert!(body.contains(r#"id="italic-nested-toggle""#));
+        let bold_at = body.find(r#"id="bold-top-toggle""#).unwrap();
+        let italic_at = body.find(r#"id="italic-nested-toggle""#).unwrap();
         assert!(
-            confirm_at < depth_at && depth_at < theme_at,
-            "the depth row should render between the confirm switch and the theme control"
+            confirm_at < bold_at && bold_at < italic_at && italic_at < theme_at,
+            "the depth switches should render between the confirm switch and the theme control, bold then italic"
         );
     }
 
