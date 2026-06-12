@@ -1,7 +1,8 @@
 // @ts-check
-// missing-ebooks client behavior. The pre-paint theme resolver runs inline in
-// <head>; this file owns the rest: the theme control, the settings panel sync,
-// and the marker-write confirmation. Loaded at the end of <body>, after htmx.
+// missing-ebooks client behavior. The pre-paint bootstrap (theme + depth opt-out)
+// runs inline in <head>; this file owns the rest: the theme control, the depth
+// toggle, the settings panel sync, and the marker-write confirmation. Loaded at
+// the end of <body>, after htmx.
 (function () {
   "use strict";
 
@@ -19,6 +20,7 @@
 
   var THEME_KEY = "theme";
   var CONFIRM_KEY = "confirmMarks";
+  var DEPTH_KEY = "depthType";
   var darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
   // ---- theme ----
@@ -94,12 +96,38 @@
     localStorage.setItem(CONFIRM_KEY, on ? "on" : "off");
   }
 
+  // ---- folder-depth styling preference ----
+
+  /**
+   * On by default: only the literal "off" disables it, so the key need not exist.
+   * @returns {boolean}
+   */
+  function depthEnabled() {
+    return localStorage.getItem(DEPTH_KEY) !== "off";
+  }
+
+  /**
+   * Persist a choice and reflect it on <html>. The on state removes the attribute
+   * so the default markup stays attribute-free, matching the pre-paint bootstrap.
+   * @param {boolean} on
+   */
+  function setDepth(on) {
+    localStorage.setItem(DEPTH_KEY, on ? "on" : "off");
+    if (on) {
+      document.documentElement.removeAttribute("data-depth");
+    } else {
+      document.documentElement.dataset.depth = "off";
+    }
+  }
+
   // Sync the settings controls from storage. Runs on load and whenever the panel
   // opens, so the switch reflects a "Don't ask again" choice made in the dialog.
   function syncSettings() {
     markActiveTheme(storedTheme());
     var sw = /** @type {HTMLInputElement | null} */ (document.getElementById("confirm-toggle"));
     if (sw) sw.checked = confirmEnabled();
+    var depthSw = /** @type {HTMLInputElement | null} */ (document.getElementById("depth-toggle"));
+    if (depthSw) depthSw.checked = depthEnabled();
   }
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -121,6 +149,14 @@
       sw.addEventListener("change", function (e) {
         var el = /** @type {HTMLInputElement} */ (e.currentTarget);
         setConfirmEnabled(el.checked);
+      });
+    }
+
+    var depthSw = document.getElementById("depth-toggle");
+    if (depthSw) {
+      depthSw.addEventListener("change", function (e) {
+        var el = /** @type {HTMLInputElement} */ (e.currentTarget);
+        setDepth(el.checked);
       });
     }
   });
