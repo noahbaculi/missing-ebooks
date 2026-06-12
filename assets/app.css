@@ -1546,6 +1546,17 @@ li.leaving {
   flex: 1 1 16rem;
   min-width: 0;
 }
+/* On mobile .gap-summary-head turns flex-direction: column, so the 16rem above is no
+   longer a width basis but a height floor, stretching the ~40px session block to 256px
+   and opening an empty band above the per-root chips. Reset it to its natural height.
+   This sits after the base rule, not in the main mobile @media block: the gap-summary
+   section is defined past that block, so a same-specificity override there loses the
+   cascade. */
+@media (max-width: 600px) {
+  .gap-session {
+    flex: 0 1 auto;
+  }
+}
 .gap-session-head {
   display: flex;
   align-items: baseline;
