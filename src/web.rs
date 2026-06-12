@@ -2116,12 +2116,11 @@ mod tests {
         assert!(body.contains(r#"id="gap-total""#));
         assert!(body.contains(r#"data-gaps-at-load="1""#));
         // The session coverage readout: resolved of baseline audiobooks with a
-        // percent, under a label that names the root it spans. First paint is 0 of 1.
+        // percent. First paint is 0 of 1.
         assert!(body.contains(r#"id="gap-resolved""#));
         assert!(body.contains(r#"id="gap-baseline""#));
         assert!(body.contains(r#"id="gap-pct""#));
         assert!(body.contains("audiobooks"));
-        assert!(body.contains("Coverage in"));
         // The all-clear line renders too, hidden until the live total reaches zero.
         assert!(body.contains(r#"id="gap-summary-clear" hidden"#));
     }
@@ -2148,27 +2147,6 @@ mod tests {
         // The hidden bar still floors its max at 1, never a degenerate max-of-zero.
         assert!(body.contains(r#"aria-valuemax="1""#));
         assert!(!body.contains(r#"aria-valuemax="0""#));
-    }
-
-    #[tokio::test]
-    async fn gap_summary_labels_the_session_coverage_with_every_root() {
-        let a = tempfile::tempdir().unwrap();
-        let b = tempfile::tempdir().unwrap();
-        touch(&a.path().join("BookA/01.mp3"));
-        touch(&b.path().join("BookB/01.mp3"));
-        let a_name = a.path().file_name().unwrap().to_str().unwrap();
-        let b_name = b.path().file_name().unwrap().to_str().unwrap();
-        let body = body_string(
-            app_for_roots(&[a.path(), b.path()])
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The coverage label names what the readout spans, every root listed in
-        // config order, comma-joined. The joined pair appears only in the label.
-        assert!(body.contains("Coverage in"));
-        assert!(body.contains(&format!("{a_name}, {b_name}")));
     }
 
     #[tokio::test]

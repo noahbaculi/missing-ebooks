@@ -414,7 +414,7 @@ fn gap_summary(view: &FlaggedView) -> Markup {
                     span.gap-hero-num id="gap-total" { (total) }
                     span.gap-hero-label { (gap_word(total)) " to fill" }
                 }
-                (session_bar(view, total))
+                (session_bar(total))
             }
             @if view.len() > 1 {
                 div.gap-chips id="gap-chips" {
@@ -456,26 +456,20 @@ fn root_chip(root: usize, section: &RootSection) -> Markup {
     }
 }
 
-/// The session coverage block beside the hero: a label naming the roots it spans, a
-/// readout of gaps resolved this sitting over the count at load
-/// (`{resolved} of {baseline} audiobooks · {pct}%`), and the progress bar. Renders
-/// at zero (`0 of {total}`, empty bar); `app.js` rewrites the readout and fills the
-/// bar as marks land, and resets the baseline on a rescan. The numbers aggregate
-/// every root, so the label lists every root to make that scope explicit. A
-/// `progressbar` so the value is announced; the fill transition is dropped under
-/// reduced motion in CSS.
+/// The session coverage block beside the hero: a readout of gaps resolved this sitting
+/// over the count at load (`{resolved} of {baseline} audiobooks · {pct}%`), and the
+/// progress bar. Renders at zero (`0 of {total}`, empty bar); `app.js` rewrites the
+/// readout and fills the bar as marks land, and resets the baseline on a rescan. The
+/// numbers aggregate every root. A `progressbar` so the value is announced; the fill
+/// transition is dropped under reduced motion in CSS.
 ///
 /// The block always renders, even at a clean load where its head is hidden, because
 /// a rescan re-renders only `#roots` and never this strip; `app.js` reaches in to
 /// fill the bar and rewrite the readout when a rescan turns up new gaps.
-fn session_bar(view: &FlaggedView, total: usize) -> Markup {
+fn session_bar(total: usize) -> Markup {
     html! {
         div.gap-session {
             div.gap-session-head {
-                p.gap-session-label {
-                    "Coverage in "
-                    span.gap-session-roots { (root_names(view)) }
-                }
                 p.gap-session-readout {
                     span.gap-session-num id="gap-resolved" { "0" }
                     " of "
@@ -494,15 +488,6 @@ fn session_bar(view: &FlaggedView, total: usize) -> Markup {
             }
         }
     }
-}
-
-/// The root names the coverage readout spans, comma-joined, so its all-roots scope
-/// reads plainly. One root gives "Library"; several give "Library A, Library B".
-fn root_names(view: &FlaggedView) -> String {
-    view.iter()
-        .map(|section| root_label(&section.path))
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 /// The badge shown on a root's summary: the gap count, a clean check, or a scan

@@ -1567,11 +1567,9 @@ li.leaving {
   font-size: 0.9rem;
   color: var(--color-muted);
 }
-.gap-session-label,
 .gap-session-readout {
   margin: 0;
 }
-.gap-session-roots,
 .gap-session-num {
   font-weight: 700;
   color: var(--color-base-content);
