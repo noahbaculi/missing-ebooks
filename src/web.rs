@@ -576,9 +576,10 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // The top container of a tree is bold; containers nested below it are italic.
-        assert!(body.contains(".container-top .name"));
-        assert!(body.contains(".container-nested .name"));
+        // The depth rules are gated so they apply unless <html> opts out via
+        // data-depth="off"; the default and the no-JS path leave the attribute absent.
+        assert!(body.contains(r#"html:not([data-depth="off"]) .container-top .name"#));
+        assert!(body.contains(r#"html:not([data-depth="off"]) .container-nested .name"#));
         assert!(body.contains("font-style: italic"));
     }
 
