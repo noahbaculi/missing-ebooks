@@ -1,8 +1,9 @@
 #!/bin/sh
-# Exercise the pre-commit hook's control flow with a stubbed cargo, so the test
-# stays fast and deterministic. Real cargo fmt and clippy behavior is covered by
-# CI; here we only check that the hook skips non-Rust commits, runs both checks
-# in order, and blocks the commit when either one fails.
+# Exercise the pre-commit hook's control flow with stubbed cargo and mise, so the
+# test stays fast and deterministic. Real cargo and tsc behavior is covered by CI;
+# here we only check the gating: the Rust checks run on Rust changes, the type
+# check runs on JS and tsconfig changes, each is skipped on unrelated commits, and
+# the commit is blocked when any check fails.
 set -eu
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -26,6 +27,18 @@ exit 0
 STUB_EOF
 chmod +x "$STUB/cargo"
 
+# A fake mise on PATH: records each call and exits with the code we choose, so
+# we can simulate the type check passing or failing without running tsc.
+cat > "$STUB/mise" <<'STUB_EOF'
+#!/bin/sh
+echo "$*" >> "$MISE_LOG"
+exit "${MISE_EXIT:-0}"
+STUB_EOF
+chmod +x "$STUB/mise"
+
+export MISE_LOG="$WORK/mise.log"
+export MISE_EXIT=0
+
 export CARGO_LOG="$WORK/cargo.log"
 export CARGO_FMT_EXIT=0
 export CARGO_CLIPPY_EXIT=0
@@ -36,6 +49,7 @@ stage_case() {
   rm -rf "$WORK/repo"
   mkdir -p "$WORK/repo"
   : > "$CARGO_LOG"
+  : > "$MISE_LOG"
   git init -q "$WORK/repo"
   git -C "$WORK/repo" config user.email test@example.com
   git -C "$WORK/repo" config user.name test
@@ -85,12 +99,30 @@ expect_log_empty() { # label
     echo "ok: $1"
   fi
 }
+expect_typecheck_ran() { # label
+  if grep -qF "run typecheck" "$MISE_LOG"; then
+    echo "ok: $1"
+  else
+    echo "FAIL: $1 (mise run typecheck did not run)" >&2
+    fail=1
+  fi
+}
+expect_typecheck_skipped() { # label
+  if grep -qF "run typecheck" "$MISE_LOG"; then
+    echo "FAIL: $1 (mise run typecheck ran but should have been skipped)" >&2
+    fail=1
+  else
+    echo "ok: $1"
+  fi
+}
 
 # 1. Only a Markdown file staged: hook skips, cargo never runs.
 stage_case notes.md
 CARGO_FMT_EXIT=0; CARGO_CLIPPY_EXIT=0
 expect_exit "skip: markdown-only exits 0" 0 "$(hook_exit)"
 expect_log_empty "skip: cargo not invoked"
+# 1b. Markdown-only also skips the type check.
+expect_typecheck_skipped "skip: typecheck not invoked"
 
 # 2. Clean Rust file: both checks run and pass.
 stage_case src/main.rs
@@ -111,6 +143,25 @@ stage_case src/main.rs
 CARGO_FMT_EXIT=0; CARGO_CLIPPY_EXIT=1
 expect_exit "clippy-fail: blocks commit" 1 "$(hook_exit)"
 expect_log_has "clippy-fail: ran clippy" "clippy"
+
+# 5. JS change: type check runs, cargo stays out.
+stage_case assets/app.js
+MISE_EXIT=0
+expect_exit "js: passing typecheck exits 0" 0 "$(hook_exit)"
+expect_typecheck_ran "js: ran typecheck"
+expect_log_empty "js: cargo not invoked"
+
+# 6. tsconfig change also triggers the type check.
+stage_case tsconfig.json
+MISE_EXIT=0
+expect_exit "tsconfig: passing typecheck exits 0" 0 "$(hook_exit)"
+expect_typecheck_ran "tsconfig: ran typecheck"
+
+# 7. Type check fails: hook blocks.
+stage_case assets/app.js
+MISE_EXIT=1
+expect_exit "js-fail: blocks commit" 1 "$(hook_exit)"
+expect_typecheck_ran "js-fail: ran typecheck"
 
 if [ "$fail" -ne 0 ]; then
   echo "hook tests FAILED" >&2
