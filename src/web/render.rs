@@ -123,7 +123,6 @@ fn settings_menu() -> Markup {
             aria-haspopup="menu"
             popovertarget="settings-panel" { (PreEscaped(COG_SVG)) }
         div.settings-panel id="settings-panel" popover="auto" aria-label="Settings" {
-            div.settings-head { "Settings" }
             div.settings-head { "Theme" }
             div.settings-row.settings-row-theme {
                 div.segmented role="group" aria-label="Theme" {
@@ -133,6 +132,7 @@ fn settings_menu() -> Markup {
                         data-theme-choice="system" aria-current="true" { "System" }
                 }
             }
+            div.settings-head { "Settings" }
             div.settings-row {
                 span.settings-label {
                     "Confirm before marking"
