@@ -108,12 +108,13 @@ fn view_toggle(mode: ViewMode) -> Markup {
 }
 
 /// The navbar settings control: a cog that opens a popover holding the
-/// confirm-before-marking toggle, the theme choice, and a read-only keyboard
-/// shortcuts reference. The native popover API drives open/close; the controls'
-/// behavior lives in `app.js`, which also opens this panel on the `?` key. The
-/// theme segments and the switch render with their default state (System,
-/// confirm on); `app.js` reconciles them against localStorage once it runs. The
-/// shortcuts section hides on mobile, where there is no keyboard.
+/// confirm-before-marking toggle, the folder-depth styling switches, the theme
+/// choice, and a read-only keyboard shortcuts reference. The native popover API
+/// drives open/close; the controls' behavior lives in `app.js`, which also opens
+/// this panel on the `?` key. The theme segments and the switches render in their
+/// default state (System, all switches on); `app.js` reconciles them against
+/// localStorage once it runs. The shortcuts section hides on mobile, where there
+/// is no keyboard.
 fn settings_menu() -> Markup {
     html! {
         button.btn.btn-ghost.btn-square.settings-cog type="button"
