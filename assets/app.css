@@ -506,12 +506,13 @@ details[open] > summary .chev {
    so their weight is left alone. These sit after the covered rules above so
    the top weight wins over the covered weight on a covered top container
    (equal specificity, so source order decides); the italic never conflicts.
-   The html:not([data-depth="off"]) guard lets the settings toggle switch the
-   whole effect off; an absent attribute (the default and the no-JS path) matches. */
-html:not([data-depth="off"]) .container-top .name {
+   Each rule carries its own html:not([data-…="off"]) guard so the two settings
+   switches toggle them independently; an absent attribute (the default and the
+   no-JS path) matches. */
+html:not([data-bold-top="off"]) .container-top .name {
   font-weight: 700;
 }
-html:not([data-depth="off"]) .container-nested .name {
+html:not([data-italic-nested="off"]) .container-nested .name {
   font-style: italic;
 }
 
