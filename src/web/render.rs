@@ -9,15 +9,20 @@ use crate::query::clean_query;
 use crate::service::{FlaggedView, RootSection, RootState, ViewMode};
 use crate::tree::Node;
 
-/// Pre-paint theme bootstrap: resolves the saved choice, or the OS preference for
-/// "system" / an unset value, and sets `data-theme` on <html> before first paint
-/// so there is no flash. The interactive theme control lives in `app.js`.
-const PREPAINT_THEME_JS: &str = r#"(function () {
+/// Pre-paint bootstrap: resolves the saved theme (or the OS preference for
+/// "system" / an unset value) and sets `data-theme` on <html> before first
+/// paint so there is no flash, and applies the depth-typography opt-out the
+/// same way, setting `data-depth="off"` when the preference is stored off. The
+/// interactive controls live in `app.js`.
+const PREPAINT_JS: &str = r#"(function () {
   var saved = localStorage.getItem('theme');
   var t = (saved === 'light' || saved === 'dark')
     ? saved
     : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   document.documentElement.dataset.theme = t;
+  if (localStorage.getItem('depthType') === 'off') {
+    document.documentElement.dataset.depth = 'off';
+  }
 })();"#;
 
 /// Gear glyph for the settings menu trigger. Inherits `currentColor`.
@@ -288,7 +293,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Missing Ebooks" }
                 link rel="icon" href=(FAVICON_HREF);
-                script { (PreEscaped(PREPAINT_THEME_JS)) }
+                script { (PreEscaped(PREPAINT_JS)) }
                 link rel="stylesheet" href="/static/app.css";
             }
             body {
