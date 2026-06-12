@@ -1103,7 +1103,9 @@ mod tests {
             "the panel should order theme, then confirm, then the depth switches bold-then-italic"
         );
         // The panel title sits below the theme selector, heading the rest.
-        let settings_head_at = body.find(r#"<div class="settings-head">Settings</div>"#).unwrap();
+        let settings_head_at = body
+            .find(r#"<div class="settings-head">Settings</div>"#)
+            .unwrap();
         assert!(
             theme_at < settings_head_at && settings_head_at < confirm_at,
             "the Settings title should sit below the theme selector and above the confirm switch"
