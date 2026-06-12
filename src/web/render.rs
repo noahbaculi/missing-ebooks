@@ -77,8 +77,8 @@ const BRAND_SVG: &str = r##"<svg class="brand-mark" viewBox="0 0 24 24" fill="no
 /// Inherits `currentColor`.
 const KEBAB_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>"##;
 
-/// A "no entry" sign (circle with a horizontal bar) for the sheet's "Mark as
-/// None" row. Shown only inside the mobile sheet. Inherits `currentColor`.
+/// A "no entry" sign (circle with a horizontal bar) for the sheet's "No ebook"
+/// row. Shown only inside the mobile sheet. Inherits `currentColor`.
 const NO_ENTRY_SVG: &str = r##"<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg>"##;
 
 /// A book with a small check, marking that this audiobook's ebook is accounted
@@ -787,13 +787,14 @@ fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup 
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"no_ebook"}"#)
-                data-confirm-action="Mark as None"
+                data-confirm-action="No ebook"
                 data-confirm-file=".no_ebook"
                 data-confirm-folder=(name)
+                title="No ebook exists or can be sourced. Covers this folder and everything beneath it."
                 onclick="event.stopPropagation()" {
                     span.sheet-icon { (PreEscaped(NO_ENTRY_SVG)) }
-                    span.label-long { "Mark as None" }
-                    span.label-short { "None" }
+                    span.label-long { "No ebook" }
+                    span.label-short { "No ebook" }
                 }
             button.btn.btn-outline.btn-xs type="button"
                 hx-post="/mark"
@@ -802,6 +803,7 @@ fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup 
                 data-confirm-action="Ebook elsewhere"
                 data-confirm-file=".ebook_elsewhere"
                 data-confirm-folder=(name)
+                title="The ebook is in another folder. Covers this folder and everything beneath it."
                 onclick="event.stopPropagation()" {
                     span.sheet-icon { (PreEscaped(EBOOK_ELSEWHERE_SVG)) }
                     span.label-long { "Ebook elsewhere" }

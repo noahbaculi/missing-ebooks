@@ -710,7 +710,7 @@ mod tests {
         assert!(body.contains(r#"hx-post="/mark""#));
         assert!(body.contains(r#"src="/static/htmx.min.js""#));
         assert!(body.contains(r#"src="/static/app.js""#));
-        assert!(body.contains(">None<"));
+        assert!(body.contains(">No ebook<"));
     }
 
     #[tokio::test]
@@ -1189,11 +1189,18 @@ mod tests {
             .unwrap();
         let body = body_string(response).await;
         // Each marker button names its action, file, and folder for the dialog.
-        assert!(body.contains(r#"data-confirm-action="Mark as None""#));
+        assert!(body.contains(r#"data-confirm-action="No ebook""#));
         assert!(body.contains(r#"data-confirm-file=".no_ebook""#));
         assert!(body.contains(r#"data-confirm-action="Ebook elsewhere""#));
         assert!(body.contains(r#"data-confirm-file=".ebook_elsewhere""#));
         assert!(body.contains(r#"data-confirm-folder="Book""#));
+        // Each button carries a hover tooltip spelling out what the marker means.
+        assert!(body.contains(
+            r#"title="No ebook exists or can be sourced. Covers this folder and everything beneath it.""#
+        ));
+        assert!(body.contains(
+            r#"title="The ebook is in another folder. Covers this folder and everything beneath it.""#
+        ));
     }
 
     #[tokio::test]
@@ -1891,7 +1898,7 @@ mod tests {
         assert!(body.contains(r#"class="sheet-title""#));
         // The marker buttons and search links still render inside the group.
         assert!(body.contains(r#"hx-post="/mark""#));
-        assert!(body.contains(">None<"));
+        assert!(body.contains(">No ebook<"));
         assert!(body.contains("Goodreads"));
         // The bespoke toggle is gone; the browser drives open/close now.
         assert!(!body.contains("toggleRowActions"));
@@ -1909,11 +1916,11 @@ mod tests {
         let body = body_string(response).await;
         // The sheet header titles the sheet with the folder name.
         assert!(body.contains(r#"class="sheet-title">Book<"#));
-        // The verbose, sheet-only marker labels sit alongside the compact ones.
-        assert!(body.contains("Mark as None"));
+        // The elsewhere marker keeps a verbose sheet label distinct from its
+        // compact pill; the no-ebook marker reads "No ebook" in both registers.
         assert!(body.contains("Ebook elsewhere"));
-        // The compact labels keep the exact text the marker write asserts on.
-        assert!(body.contains(">None<"));
+        // The compact labels render with their exact pill text.
+        assert!(body.contains(">No ebook<"));
         assert!(body.contains(">Elsewhere<"));
     }
 
