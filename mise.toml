@@ -7,6 +7,8 @@
 [tools]
 "cargo:bacon" = "3"
 "aqua:EmbarkStudios/cargo-deny" = "0.19"
+node = "22"
+"npm:typescript" = "5"
 
 [tasks.setup]
 description = "Point this clone's git at the committed hooks in .githooks"
