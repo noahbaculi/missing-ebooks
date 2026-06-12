@@ -450,7 +450,7 @@ fn render_node(
             @if node.needs_ebook() {
                 // A flagged leaf: an expandable row whose audio files sit hidden under
                 // it until opened. It renders as a <summary> like a flagged container,
-                // a shape app.js already handles (see getRow in app.js).
+                // a shape app.js already handles (see rowOf in app.js).
                 li {
                     details.node-files {
                         summary.row.flagged {
