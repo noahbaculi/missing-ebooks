@@ -2100,6 +2100,9 @@ mod tests {
         assert!(body.contains("All clear"));
         assert!(body.contains(r#"id="gap-summary-clear">"#));
         assert!(body.contains(r#"id="gap-summary-head" hidden"#));
+        // The hidden bar still floors its max at 1, never a degenerate max-of-zero.
+        assert!(body.contains(r#"aria-valuemax="1""#));
+        assert!(!body.contains(r#"aria-valuemax="0""#));
     }
 
     #[tokio::test]

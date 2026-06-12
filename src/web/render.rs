@@ -439,6 +439,10 @@ fn root_chip(root: usize, section: &RootSection) -> Markup {
 /// every root, so the label lists every root to make that scope explicit. A
 /// `progressbar` so the value is announced; the fill transition is dropped under
 /// reduced motion in CSS.
+///
+/// The block always renders, even at a clean load where its head is hidden, because
+/// a rescan re-renders only `#roots` and never this strip; `app.js` reaches in to
+/// fill the bar and rewrite the readout when a rescan turns up new gaps.
 fn session_bar(view: &FlaggedView, total: usize) -> Markup {
     html! {
         div.gap-session {
@@ -455,9 +459,12 @@ fn session_bar(view: &FlaggedView, total: usize) -> Markup {
                     span.gap-session-num id="gap-pct" { "0" } "%"
                 }
             }
+            // Floor the max at 1: a clean load renders this bar hidden with no gaps to
+            // span, and `aria-valuemax="0"` would be a degenerate range. `app.js` sets
+            // the real baseline the moment the bar has gaps to measure.
             div.gap-bar role="progressbar"
                 aria-label="Gaps resolved this session"
-                aria-valuemin="0" aria-valuemax=(total) aria-valuenow="0" {
+                aria-valuemin="0" aria-valuemax=(total.max(1)) aria-valuenow="0" {
                 span.gap-bar-fill id="gap-bar-fill" {}
             }
         }
