@@ -698,6 +698,14 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
+/* off-track in dark: base-300 is darker than the panel and effectively vanishes,
+   so an off toggle reads as empty space. Lift the fill above the surface and
+   outline it so the control's shape is defined whether it is on or off. The
+   :checked rule above wins by specificity, so the on-state primary fill is kept. */
+[data-theme="dark"] .switch-track {
+  background: #3a4250;
+  border: 1px solid var(--color-border);
+}
 
 /* marker-write confirmation dialog: a themed centered modal over a dimmed page */
 .confirm-dialog {
