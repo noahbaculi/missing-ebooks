@@ -1,8 +1,21 @@
+// @ts-check
 // missing-ebooks client behavior. The pre-paint theme resolver runs inline in
 // <head>; this file owns the rest: the theme control, the settings panel sync,
 // and the marker-write confirmation. Loaded at the end of <body>, after htmx.
 (function () {
   "use strict";
+
+  /**
+   * Look up an element the page always renders. Throws if it is absent, which
+   * only happens if the markup and this script fall out of step.
+   * @param {string} id
+   * @returns {HTMLElement}
+   */
+  function need(id) {
+    var el = document.getElementById(id);
+    if (!el) throw new Error("missing #" + id);
+    return el;
+  }
 
   var THEME_KEY = "theme";
   var CONFIRM_KEY = "confirmMarks";
@@ -10,29 +23,44 @@
 
   // ---- theme ----
 
-  // The theme to paint for a stored choice. "system" and an absent value follow
-  // the OS preference.
+  /**
+   * The theme to paint for a stored choice. "system" and an absent value follow
+   * the OS preference.
+   * @param {string | undefined} choice
+   * @returns {"light" | "dark"}
+   */
   function resolveTheme(choice) {
     if (choice === "light" || choice === "dark") return choice;
     return darkQuery.matches ? "dark" : "light";
   }
 
-  // The stored choice, normalized so an absent or unknown value reads as "system".
+  /**
+   * The stored choice, normalized so an absent or unknown value reads as "system".
+   * @returns {string}
+   */
   function storedTheme() {
     var saved = localStorage.getItem(THEME_KEY);
     return saved === "light" || saved === "dark" ? saved : "system";
   }
 
-  // Apply a choice, persist it, and highlight the matching segment.
+  /**
+   * Apply a choice, persist it, and highlight the matching segment.
+   * @param {string} choice
+   */
   function setTheme(choice) {
     localStorage.setItem(THEME_KEY, choice);
     document.documentElement.dataset.theme = resolveTheme(choice);
     markActiveTheme(choice);
   }
 
-  // Mark the active theme segment and clear the others.
+  /**
+   * Mark the active theme segment and clear the others.
+   * @param {string} choice
+   */
   function markActiveTheme(choice) {
-    var segs = document.querySelectorAll("[data-theme-choice]");
+    var segs = /** @type {NodeListOf<HTMLElement>} */ (
+      document.querySelectorAll("[data-theme-choice]")
+    );
     for (var i = 0; i < segs.length; i++) {
       var on = segs[i].dataset.themeChoice === choice;
       segs[i].classList.toggle("segment-active", on);
@@ -53,11 +81,15 @@
 
   // ---- confirm-before-marking preference ----
 
-  // On by default: only the literal "off" disables it, so the key need not exist.
+  /**
+   * On by default: only the literal "off" disables it, so the key need not exist.
+   * @returns {boolean}
+   */
   function confirmEnabled() {
     return localStorage.getItem(CONFIRM_KEY) !== "off";
   }
 
+  /** @param {boolean} on */
   function setConfirmEnabled(on) {
     localStorage.setItem(CONFIRM_KEY, on ? "on" : "off");
   }
@@ -66,7 +98,7 @@
   // opens, so the switch reflects a "Don't ask again" choice made in the dialog.
   function syncSettings() {
     markActiveTheme(storedTheme());
-    var sw = document.getElementById("confirm-toggle");
+    var sw = /** @type {HTMLInputElement | null} */ (document.getElementById("confirm-toggle"));
     if (sw) sw.checked = confirmEnabled();
   }
 
@@ -78,45 +110,56 @@
 
     var segs = document.querySelectorAll("[data-theme-choice]");
     for (var i = 0; i < segs.length; i++) {
-      segs[i].addEventListener("click", function () {
-        setTheme(this.dataset.themeChoice);
+      segs[i].addEventListener("click", function (e) {
+        var el = /** @type {HTMLElement} */ (e.currentTarget);
+        setTheme(el.dataset.themeChoice || "system");
       });
     }
 
     var sw = document.getElementById("confirm-toggle");
     if (sw) {
-      sw.addEventListener("change", function () {
-        setConfirmEnabled(this.checked);
+      sw.addEventListener("change", function (e) {
+        var el = /** @type {HTMLInputElement} */ (e.currentTarget);
+        setConfirmEnabled(el.checked);
       });
     }
   });
 
   // ---- marker-write confirmation ----
 
+  /** @type {HTMLDialogElement | null} */
   var dialog = null;
+  /** @type {HtmxConfirmDetail | null} */
   var pending = null;
 
-  // Fill the dialog from the button that fired, and reveal its marker glyph.
+  /**
+   * Fill the dialog from the button that fired, and reveal its marker glyph.
+   * @param {HTMLElement} btn
+   */
   function fillDialog(btn) {
-    var action = btn.dataset.confirmAction;
-    var file = btn.dataset.confirmFile;
-    document.getElementById("confirm-title").textContent = action + "?";
-    document.getElementById("confirm-folder").textContent = btn.dataset.confirmFolder;
-    document.getElementById("confirm-file").textContent = file;
-    document.getElementById("confirm-accept-label").textContent = action;
-    var icons = dialog.querySelectorAll("[data-confirm-icon]");
+    if (!dialog) return;
+    var action = /** @type {string} */ (btn.dataset.confirmAction);
+    var file = /** @type {string} */ (btn.dataset.confirmFile);
+    need("confirm-title").textContent = action + "?";
+    need("confirm-folder").textContent = /** @type {string} */ (btn.dataset.confirmFolder);
+    need("confirm-file").textContent = file;
+    need("confirm-accept-label").textContent = action;
+    var icons = /** @type {NodeListOf<HTMLElement>} */ (
+      dialog.querySelectorAll("[data-confirm-icon]")
+    );
     for (var i = 0; i < icons.length; i++) {
       icons[i].hidden = icons[i].dataset.confirmIcon !== file;
     }
-    document.getElementById("confirm-again").checked = false;
+    /** @type {HTMLInputElement} */ (need("confirm-again")).checked = false;
   }
 
   // Send the held request. Capture it before close(), since the close handler
   // clears pending.
   function acceptConfirm() {
+    if (!dialog) return;
     var held = pending;
     pending = null;
-    if (document.getElementById("confirm-again").checked) {
+    if (/** @type {HTMLInputElement} */ (need("confirm-again")).checked) {
       setConfirmEnabled(false);
     }
     dialog.close();
@@ -124,11 +167,11 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    dialog = document.getElementById("confirm-mark");
+    dialog = /** @type {HTMLDialogElement | null} */ (document.getElementById("confirm-mark"));
     if (!dialog) return;
-    document.getElementById("confirm-accept").addEventListener("click", acceptConfirm);
-    document.getElementById("confirm-cancel").addEventListener("click", function () {
-      dialog.close();
+    need("confirm-accept").addEventListener("click", acceptConfirm);
+    need("confirm-cancel").addEventListener("click", function () {
+      if (dialog) dialog.close();
     });
     // Esc, a backdrop click, or Cancel all fire close: drop the held request so
     // nothing is sent.
@@ -157,10 +200,13 @@
 
   // ---- mark: hold the row in place while saving, collapse only once confirmed ----
 
-  // Collapse a row's <li> and fade it so the rows below glide up through normal
-  // reflow. The section swap is delayed (the marker form's hx-swap "swap:" modifier)
-  // to let this play, then it reconciles the fresh section. li.leaving owns the
-  // timing, fade, and reduced-motion.
+  /**
+   * Collapse a row's <li> and fade it so the rows below glide up through normal
+   * reflow. The section swap is delayed (the marker form's hx-swap "swap:" modifier)
+   * to let this play, then it reconciles the fresh section. li.leaving owns the
+   * timing, fade, and reduced-motion.
+   * @param {Element | null} li
+   */
   function collapseRow(li) {
     if (!li || li.classList.contains("leaving")) return;
     // Walk up from the marked leaf, collecting each row that is the sole `:scope > li`
@@ -169,10 +215,13 @@
     // ancestors stay. The result is the single-child spine above the leaf, up to and
     // including the highest emptied row, so an author or series row whose last gap is
     // being marked leaves together with the leaf instead of snapping out on the swap.
+    /** @type {HTMLElement[]} */
     var rows = [];
-    var node = li;
+    /** @type {HTMLElement | null} */
+    var node = /** @type {HTMLElement} */ (li);
     while (node && !node.classList.contains("leaving")) {
       rows.push(node);
+      /** @type {HTMLElement | null} */
       var list = node.parentElement;
       if (!list || list.querySelectorAll(":scope > li").length > 1) break;
       node = list.parentElement && list.parentElement.closest("li");
@@ -190,9 +239,13 @@
     });
   }
 
-  // Toggle a gaps-only row's in-flight "saving" state: dim it, hide its actions, and
-  // show a spinner with a "Saving…" label. Idempotent, so a retry's beforeRequest is a
-  // no-op rather than a second spinner.
+  /**
+   * Toggle a gaps-only row's in-flight "saving" state: dim it, hide its actions, and
+   * show a spinner with a "Saving…" label. Idempotent, so a retry's beforeRequest is a
+   * no-op rather than a second spinner.
+   * @param {Element | null} row
+   * @param {boolean} on
+   */
   function setSaving(row, on) {
     if (!row) return;
     row.classList.toggle("is-saving", on);
@@ -208,17 +261,25 @@
     }
   }
 
-  // True for any mark button, in either view.
+  /**
+   * True for any mark button, in either view.
+   * @param {Element | null} btn
+   * @returns {boolean}
+   */
   function isMark(btn) {
     return !!(btn && btn.matches && btn.matches('[hx-post="/mark"]'));
   }
 
-  // True for a gaps-only mark request (the kind whose row should collapse on success).
-  // A show-all mark carries view=all and stays put, flipping to covered in place.
+  /**
+   * True for a gaps-only mark request (the kind whose row should collapse on success).
+   * A show-all mark carries view=all and stays put, flipping to covered in place.
+   * @param {Element | null} btn
+   * @returns {boolean}
+   */
   function isCollapsingMark(btn) {
     if (!isMark(btn)) return false;
-    var form = btn.closest("form.mark");
-    var view = form && form.querySelector('input[name="view"]');
+    var form = /** @type {Element} */ (btn).closest("form.mark");
+    var view = form && /** @type {HTMLInputElement | null} */ (form.querySelector('input[name="view"]'));
     return !(view && view.value === "all");
   }
 
@@ -250,17 +311,27 @@
   // request without aborting a legitimately slow big-library rescan.
   if (window.htmx && window.htmx.config) window.htmx.config.timeout = 30000;
 
+  /** @type {HTMLElement | null} */
   var connBanner = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */
   var reconnectTimer = null;
 
-  // Copy for a state, read from the banner's data-msg-* attributes
-  // (data-msg-offline -> dataset.msgOffline, and so on).
+  /**
+   * Copy for a state, read from the banner's data-msg-* attributes
+   * (data-msg-offline -> dataset.msgOffline, and so on).
+   * @param {string} state
+   * @returns {string}
+   */
   function bannerMsg(state) {
     var key = "msg" + state.charAt(0).toUpperCase() + state.slice(1);
     return (connBanner && connBanner.dataset[key]) || "";
   }
 
-  // Reveal the banner in a state, with optional action-specific copy override.
+  /**
+   * Reveal the banner in a state, with optional action-specific copy override.
+   * @param {string} state
+   * @param {string | null} [override]
+   */
   function showBanner(state, override) {
     if (!connBanner) return;
     if (reconnectTimer) {
@@ -292,7 +363,10 @@
     reconnectTimer = setTimeout(hideBanner, 2000);
   }
 
-  // True while the banner is showing something the user should see resolve.
+  /**
+   * True while the banner is showing something the user should see resolve.
+   * @returns {boolean}
+   */
   function bannerShowsProblem() {
     return (
       !!connBanner &&
@@ -320,7 +394,11 @@
 
   var suppressConfirm = false;
 
-  // The op a request belongs to ("mark" / "rescan"), or null if we don't manage it.
+  /**
+   * The op a request belongs to ("mark" / "rescan"), or null if we don't manage it.
+   * @param {Element | null} elt
+   * @returns {"mark" | "rescan" | null}
+   */
   function opOf(elt) {
     var post = elt && elt.getAttribute && elt.getAttribute("hx-post");
     if (post === "/mark") return "mark";
@@ -328,8 +406,13 @@
     return null;
   }
 
-  // A failure worth retrying: a dropped connection, a timeout, or a gateway error
-  // from a proxy / restarting server. A plain 4xx/5xx is a real server error.
+  /**
+   * A failure worth retrying: a dropped connection, a timeout, or a gateway error
+   * from a proxy / restarting server. A plain 4xx/5xx is a real server error.
+   * @param {string} kind
+   * @param {XMLHttpRequest} [xhr]
+   * @returns {boolean}
+   */
   function isRetryable(kind, xhr) {
     if (kind === "sendError" || kind === "timeout") return true;
     if (kind === "responseError" && xhr) {
@@ -338,20 +421,29 @@
     return false;
   }
 
+  /**
+   * @param {HTMLElement} form
+   * @returns {Record<string, string>}
+   */
   function formValues(form) {
+    /** @type {Record<string, string>} */
     var v = {};
-    form.querySelectorAll("input[name]").forEach(function (i) {
+    /** @type {NodeListOf<HTMLInputElement>} */ (form.querySelectorAll("input[name]")).forEach(function (i) {
       v[i.name] = i.value;
     });
     return v;
   }
 
-  // Re-send a request htmx already sent, reusing its verb, target, swap, and values.
-  // suppressConfirm keeps the mark confirm dialog from re-prompting on a resend.
+  /**
+   * Re-send a request htmx already sent, reusing its verb, target, swap, and values.
+   * suppressConfirm keeps the mark confirm dialog from re-prompting on a resend.
+   * @param {HTMLElement} elt
+   * @param {string} op
+   */
   function reissue(elt, op) {
     if (op === "mark") {
       // elt is the mark button; its form holds the hidden fields and the hx-swap.
-      var form = elt.closest("form.mark");
+      var form = /** @type {HTMLElement | null} */ (elt.closest("form.mark"));
       // Bail before arming suppressConfirm if the form is gone, so a stray failure
       // on a detached button can't leave the flag stuck and mute the next confirm.
       if (!form) return;
@@ -384,15 +476,22 @@
   var MARK_WARN_SVG =
     '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
 
-  // A folder renders as a leaf <div.row> or a <summary.row> inside <details>; return
-  // whichever this <li> has, so the failure strip can sit right under the folder's own
-  // line rather than after its whole child subtree.
+  /**
+   * A folder renders as a leaf <div.row> or a <summary.row> inside <details>; return
+   * whichever this <li> has, so the failure strip can sit right under the folder's own
+   * line rather than after its whole child subtree.
+   * @param {Element} li
+   * @returns {Element | null}
+   */
   function rowOf(li) {
     return li.querySelector(":scope > .row") || li.querySelector(":scope > details > .row");
   }
 
-  // Remove the failure strip belonging to this element's row (its immediate next
-  // sibling), if one is showing.
+  /**
+   * Remove the failure strip belonging to this element's row (its immediate next
+   * sibling), if one is showing.
+   * @param {Element} elt
+   */
   function clearMarkFailed(elt) {
     var li = elt.closest("li");
     var row = li && rowOf(li);
@@ -400,18 +499,25 @@
     if (box && box.classList.contains("mark-failed")) box.remove();
   }
 
-  // Re-send a failed action after the user clicks its inline Retry. Starts a fresh
-  // retry sequence.
+  /**
+   * Re-send a failed action after the user clicks its inline Retry. Starts a fresh
+   * retry sequence.
+   * @param {HTMLElement} elt
+   * @param {string} op
+   */
   function manualRetry(elt, op) {
     retryState.delete(elt);
     clearMarkFailed(elt);
     reissue(elt, op);
   }
 
-  // Roll a failed mark back: undo the optimistic collapse and attach an inline error
-  // directly under the folder's own row, naming the folder, with a Retry that re-sends
-  // the same mark. The original mark buttons stay on the row (the section never
-  // swapped), so the user can also just pick again.
+  /**
+   * Roll a failed mark back: undo the optimistic collapse and attach an inline error
+   * directly under the folder's own row, naming the folder, with a Retry that re-sends
+   * the same mark. The original mark buttons stay on the row (the section never
+   * swapped), so the user can also just pick again.
+   * @param {HTMLElement} elt
+   */
   function markTerminalFailure(elt) {
     var li = elt.closest("li");
     if (li) {
@@ -449,8 +555,13 @@
     showBanner("failed");
   }
 
-  // Retry a transient failure a bounded number of times with backoff; once exhausted
-  // (or for a non-retryable failure) fall through to the terminal handler.
+  /**
+   * Retry a transient failure a bounded number of times with backoff; once exhausted
+   * (or for a non-retryable failure) fall through to the terminal handler.
+   * @param {HTMLElement} elt
+   * @param {string} op
+   * @param {boolean} retryable
+   */
   function handleFailure(elt, op, retryable) {
     var st = retryState.get(elt) || { attempts: 0 };
     if (retryable && st.attempts < MAX_RETRIES) {
@@ -467,7 +578,8 @@
     }
   }
 
-  ["htmx:sendError", "htmx:timeout", "htmx:responseError"].forEach(function (type) {
+  /** @type {("htmx:sendError" | "htmx:timeout" | "htmx:responseError")[]} */
+  (["htmx:sendError", "htmx:timeout", "htmx:responseError"]).forEach(function (type) {
     document.body.addEventListener(type, function (evt) {
       var elt = evt.detail.elt;
       var op = opOf(elt);
@@ -497,13 +609,17 @@
 
   var MAX_RETRIES = 3;
   var BACKOFFS = [500, 1500, 3000];
+  /** @type {WeakMap<Element, { attempts: number }>} */
   var retryState = new WeakMap(); // request element -> { attempts }
 
-  // Hold (or release) the rescan skeleton and busy button across backoff gaps, so
-  // the loading state does not flicker between attempts.
+  /**
+   * Hold (or release) the rescan skeleton and busy button across backoff gaps, so
+   * the loading state does not flicker between attempts.
+   * @param {boolean} on
+   */
   function rescanRetryHold(on) {
     var sk = document.getElementById("scan-skeleton");
-    var btn = document.getElementById("rescan-btn");
+    var btn = /** @type {HTMLButtonElement | null} */ (document.getElementById("rescan-btn"));
     if (sk) sk.classList.toggle("is-retrying", on);
     // Holding it disabled carries the dim across the gaps; :disabled is its busy hook.
     if (btn) btn.disabled = on;
@@ -513,7 +629,7 @@
   // and highlight it as the retry.
   function rescanTerminalFailure() {
     rescanRetryHold(false);
-    var btn = document.getElementById("rescan-btn");
+    var btn = /** @type {HTMLButtonElement | null} */ (document.getElementById("rescan-btn"));
     if (btn) {
       btn.disabled = false;
       btn.classList.remove("htmx-request");
@@ -522,6 +638,10 @@
     showBanner("failed", connBanner ? connBanner.dataset.msgFailedRescan : null);
   }
 
+  /**
+   * @param {HTMLElement} elt
+   * @param {string} op
+   */
   function terminalFailure(elt, op) {
     retryState.delete(elt);
     if (op === "mark") markTerminalFailure(elt);
@@ -532,7 +652,9 @@
 
   // Up to three toasts coexist; a fourth evicts the oldest. Each one offers an undo
   // and clears after SUCCESS_MS. Write failures are shown inline by the row instead.
+  /** @type {HTMLElement | null} */
   var stack = null;
+  /** @type {HTMLTemplateElement | null} */
   var template = null;
   var MAX_TOASTS = 3;
   var SUCCESS_MS = 8000;
@@ -547,17 +669,36 @@
   // Map each marker kind to the label shown in the success toast. "No ebook"
   // spells out the row's short "None" button, which has no column header to lean
   // on once it is lifted into a toast.
+  /** @type {Record<string, string>} */
   var KIND_LABEL = { no_ebook: "No ebook", ebook_elsewhere: "Ebook elsewhere" };
 
-  // Remove a toast immediately, clearing its dismiss timer. Used when the stack
-  // evicts to stay within MAX_TOASTS and when Escape clears everything at once.
+  /**
+   * The toast nodes carry private dismiss-timer bookkeeping as expando fields.
+   * @typedef {HTMLElement & {
+   *   _timer?: ReturnType<typeof setTimeout> | null,
+   *   _remaining?: number,
+   *   _start?: number,
+   *   _leaving?: boolean,
+   *   _hovered?: boolean,
+   *   _focused?: boolean,
+   * }} ToastNode
+   */
+
+  /**
+   * Remove a toast immediately, clearing its dismiss timer. Used when the stack
+   * evicts to stay within MAX_TOASTS and when Escape clears everything at once.
+   * @param {ToastNode} node
+   */
   function hardRemove(node) {
     if (node._timer) clearTimeout(node._timer);
     node.remove();
   }
 
-  // Animate a toast out, then remove it. Guards against a second trigger, e.g. a
-  // close click landing while the auto-dismiss is already playing.
+  /**
+   * Animate a toast out, then remove it. Guards against a second trigger, e.g. a
+   * close click landing while the auto-dismiss is already playing.
+   * @param {ToastNode} node
+   */
   function dismissToast(node) {
     if (node._leaving) return;
     node._leaving = true;
@@ -570,17 +711,30 @@
 
   // Drop the oldest toasts until appending one more stays within MAX_TOASTS.
   function evictOldest() {
+    if (!stack) return;
     while (stack.children.length >= MAX_TOASTS) {
-      hardRemove(stack.firstElementChild);
+      hardRemove(/** @type {ToastNode} */ (stack.firstElementChild));
     }
   }
 
-  // A fresh toast node cloned from the page template.
+  /**
+   * A fresh toast node cloned from the page template.
+   * @returns {ToastNode}
+   */
   function newToastNode() {
-    return template.content.firstElementChild.cloneNode(true);
+    if (!template) throw new Error("missing #toast-template");
+    return /** @type {ToastNode} */ (
+      /** @type {Element} */ (template.content.firstElementChild).cloneNode(true)
+    );
   }
 
-  // A fresh element with a class and optional text.
+  /**
+   * A fresh element with a class and optional text.
+   * @param {string} tag
+   * @param {string} cls
+   * @param {string | null} [text]
+   * @returns {HTMLElement}
+   */
   function el(tag, cls, text) {
     var node = document.createElement(tag);
     node.className = cls;
@@ -588,8 +742,12 @@
     return node;
   }
 
-  // Arm (or re-arm) a toast's auto-dismiss for `ms` from now, remembering when
-  // it started and how much time is left so a pause can bank the remainder.
+  /**
+   * Arm (or re-arm) a toast's auto-dismiss for `ms` from now, remembering when
+   * it started and how much time is left so a pause can bank the remainder.
+   * @param {ToastNode} node
+   * @param {number} ms
+   */
   function armToast(node, ms) {
     node._remaining = ms;
     node._start = Date.now();
@@ -598,36 +756,50 @@
     }, ms);
   }
 
-  // Pause the auto-dismiss and bank the time left on the clock. Hover and focus
-  // each pause; a second pause while already paused is a no-op.
+  /**
+   * Pause the auto-dismiss and bank the time left on the clock. Hover and focus
+   * each pause; a second pause while already paused is a no-op.
+   * @param {ToastNode} node
+   */
   function pauseToast(node) {
     if (node._leaving || !node._timer) return;
     clearTimeout(node._timer);
     node._timer = null;
-    node._remaining -= Date.now() - node._start;
+    node._remaining =
+      /** @type {number} */ (node._remaining) - (Date.now() - /** @type {number} */ (node._start));
   }
 
-  // Resume from the banked remainder, but only once the toast is neither hovered
-  // nor focused, so releasing one hold while the other still stands keeps it
-  // paused.
+  /**
+   * Resume from the banked remainder, but only once the toast is neither hovered
+   * nor focused, so releasing one hold while the other still stands keeps it
+   * paused.
+   * @param {ToastNode} node
+   */
   function resumeToast(node) {
     if (node._leaving || node._timer || node._hovered || node._focused) return;
-    armToast(node, Math.max(node._remaining, 0));
+    armToast(node, Math.max(/** @type {number} */ (node._remaining), 0));
   }
 
-  // Whether the viewer asked for less motion. The reflow slide honors it the
-  // same way the CSS animations do (the reduced-motion block already stills the
-  // entry and exit), so a new toast simply appears in place.
+  /**
+   * Whether the viewer asked for less motion. The reflow slide honors it the
+   * same way the CSS animations do (the reduced-motion block already stills the
+   * entry and exit), so a new toast simply appears in place.
+   * @returns {boolean}
+   */
   function prefersReducedMotion() {
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }
 
-  // Add a toast to the stack, sliding the toasts already there from their old
-  // positions to their new ones instead of letting them jump up. FLIP: record
-  // each current top (First), append the newcomer so the layout settles (Last),
-  // offset each existing toast back to where it sat (Invert), then transition
-  // that offset away on the next frame (Play).
+  /**
+   * Add a toast to the stack, sliding the toasts already there from their old
+   * positions to their new ones instead of letting them jump up. FLIP: record
+   * each current top (First), append the newcomer so the layout settles (Last),
+   * offset each existing toast back to where it sat (Invert), then transition
+   * that offset away on the next frame (Play).
+   * @param {ToastNode} node
+   */
   function reflowStack(node) {
+    if (!stack) return;
     if (prefersReducedMotion()) {
       stack.appendChild(node);
       return;
@@ -656,11 +828,15 @@
     });
   }
 
-  // Append a built node, wire its close button and pause-on-interaction, and
-  // start its dismiss timer.
+  /**
+   * Append a built node, wire its close button and pause-on-interaction, and
+   * start its dismiss timer.
+   * @param {ToastNode} node
+   * @param {number} timeoutMs
+   */
   function pushToast(node, timeoutMs) {
     evictOldest();
-    node.querySelector(".toast-close").addEventListener("click", function () {
+    /** @type {Element} */ (node.querySelector(".toast-close")).addEventListener("click", function () {
       dismissToast(node);
     });
     node.addEventListener("mouseenter", function () {
@@ -678,7 +854,7 @@
     // focusout also fires when focus moves between controls inside the toast;
     // only treat it as leaving when focus has actually left the node.
     node.addEventListener("focusout", function (evt) {
-      if (node.contains(evt.relatedTarget)) return;
+      if (node.contains(/** @type {Node | null} */ (evt.relatedTarget))) return;
       node._focused = false;
       resumeToast(node);
     });
@@ -686,14 +862,17 @@
     reflowStack(node);
   }
 
-  // Show the success variant: an undo offer that clears after SUCCESS_MS.
+  /**
+   * Show the success variant: an undo offer that clears after SUCCESS_MS.
+   * @param {MarkedDetail} detail
+   */
   function showSuccessToast(detail) {
     if (!stack || !template || !detail) return;
     var node = newToastNode();
     node.classList.add("toast--success");
     node.setAttribute("role", "status");
     node.setAttribute("aria-live", "polite");
-    node.querySelector(".toast-undo").addEventListener("click", function () {
+    /** @type {Element} */ (node.querySelector(".toast-undo")).addEventListener("click", function () {
       dismissToast(node);
       htmx.ajax("POST", "/unmark", {
         target: '[data-root="' + detail.root + '"]',
@@ -714,18 +893,18 @@
     name.title = detail.name;
     var outcome = el("div", "toast-detail");
     outcome.append("Marked as ", el("span", "toast-kind", label));
-    node.querySelector(".toast-msg").append(name, outcome);
+    /** @type {Element} */ (node.querySelector(".toast-msg")).append(name, outcome);
   }
 
   // Clear the whole stack at once (Escape) without waiting on exit animations.
   function clearToasts() {
     if (!stack) return;
-    while (stack.firstElementChild) hardRemove(stack.firstElementChild);
+    while (stack.firstElementChild) hardRemove(/** @type {ToastNode} */ (stack.firstElementChild));
   }
 
   document.addEventListener("DOMContentLoaded", function () {
     stack = document.getElementById("toast-stack");
-    template = document.getElementById("toast-template");
+    template = /** @type {HTMLTemplateElement | null} */ (document.getElementById("toast-template"));
   });
 
   // htmx dispatches `marked` from the HX-Trigger header on a successful /mark
@@ -743,9 +922,13 @@
   // visible when its own name matches the query or any descendant matches, so the
   // path to a match reads correctly; non-matching branches collapse. The summary is
   // never touched here: filtering changes what is visible, not how many gaps exist.
+  /** @type {HTMLInputElement | null} */
   var searchInput = null;
+  /** @type {HTMLElement | null} */
   var searchEmpty = null;
+  /** @type {HTMLElement | null} */
   var searchClear = null; // the themed × button, shown only when the box holds text
+  /** @type {HTMLAnchorElement | null} */
   var viewLink = null; // the inactive view-toggle segment (an <a>), or null
   var viewLinkBase = ""; // its pristine href, before any filter query is appended
 
@@ -756,23 +939,36 @@
     if (box) box.hidden = false;
   }
 
-  // The visible name on a row's own line (leaf div.row or folder summary.row),
-  // lowercased for a case-insensitive compare.
+  /**
+   * The visible name on a row's own line (leaf div.row or folder summary.row),
+   * lowercased for a case-insensitive compare.
+   * @param {Element} li
+   * @returns {string}
+   */
   function rowName(li) {
     var row = li.querySelector(":scope > .row, :scope > details > summary.row");
     var name = row && row.querySelector(".name");
-    return name ? name.textContent.toLowerCase() : "";
+    return name && name.textContent ? name.textContent.toLowerCase() : "";
   }
 
-  // The child <li> nodes under a node, whether it is a leaf (none) or a folder.
+  /**
+   * The child <li> nodes under a node, whether it is a leaf (none) or a folder.
+   * @param {Element} li
+   * @returns {ArrayLike<Element>}
+   */
   function childItems(li) {
     var list = li.querySelector(":scope > details > ul, :scope > ul");
     return list ? list.querySelectorAll(":scope > li") : [];
   }
 
-  // Filter one <li> against the lowercased query, recursing into its children.
-  // Force a folder on the path to a deeper match open, tagging it so clearFilter
-  // can re-close only the folds the filter forced. Returns whether the <li> stays.
+  /**
+   * Filter one <li> against the lowercased query, recursing into its children.
+   * Force a folder on the path to a deeper match open, tagging it so clearFilter
+   * can re-close only the folds the filter forced. Returns whether the <li> stays.
+   * @param {Element} li
+   * @param {string} query
+   * @returns {boolean}
+   */
   function filterItem(li, query) {
     var selfMatch = rowName(li).indexOf(query) !== -1;
     var kids = childItems(li);
@@ -782,7 +978,7 @@
     }
     var visible = selfMatch || descendantMatch;
     li.classList.toggle("filter-hidden", !visible);
-    var details = li.querySelector(":scope > details");
+    var details = /** @type {HTMLDetailsElement | null} */ (li.querySelector(":scope > details"));
     if (details && descendantMatch && !details.open) {
       details.open = true;
       details.dataset.filterOpened = "1";
@@ -790,8 +986,12 @@
     return visible;
   }
 
-  // Run the filter across every root; return how many top-level items stay visible,
-  // so the caller can decide whether to show the "no matches" line.
+  /**
+   * Run the filter across every root; return how many top-level items stay visible,
+   * so the caller can decide whether to show the "no matches" line.
+   * @param {string} query
+   * @returns {number}
+   */
   function filterTree(query) {
     var q = query.toLowerCase();
     var tops = document.querySelectorAll("#roots .menu > li");
@@ -816,7 +1016,9 @@
     for (var i = 0; i < hidden.length; i++) {
       hidden[i].classList.remove("filter-hidden");
     }
-    var opened = document.querySelectorAll("#roots details[data-filter-opened]");
+    var opened = /** @type {NodeListOf<HTMLDetailsElement>} */ (
+      document.querySelectorAll("#roots details[data-filter-opened]")
+    );
     for (var j = 0; j < opened.length; j++) {
       opened[j].open = false;
       delete opened[j].dataset.filterOpened;
@@ -856,17 +1058,20 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     revealSearch();
-    searchInput = document.getElementById("search-input");
+    searchInput = /** @type {HTMLInputElement | null} */ (document.getElementById("search-input"));
     searchEmpty = document.getElementById("search-empty");
     searchClear = document.getElementById("search-clear");
-    viewLink = document.querySelector('.segmented[aria-label="View"] a.segment');
-    if (viewLink) viewLinkBase = viewLink.getAttribute("href");
+    viewLink = /** @type {HTMLAnchorElement | null} */ (
+      document.querySelector('.segmented[aria-label="View"] a.segment')
+    );
+    if (viewLink) viewLinkBase = viewLink.getAttribute("href") || "";
     if (searchInput) {
       searchInput.addEventListener("input", applyFilter);
       if (searchClear) {
         // Empty the box, run the clear path (restore the tree, hide the no-matches
         // line, drop q, hide this button), and hand focus back to the input.
         searchClear.addEventListener("click", function () {
+          if (!searchInput) return;
           searchInput.value = "";
           clearFilter();
           searchInput.focus();
@@ -888,13 +1093,18 @@
   // The summary always reflects the whole library, not the active filter, so the
   // recompute counts flagged rows regardless of visibility, excluding only rows
   // mid-collapse (already resolved) so the count leads the delayed section swap.
+  /** @type {HTMLElement | null} */
   var summary = null;
   var sessionBaseline = 0;
 
-  // Gap rows under `scope`, mid-collapse rows excluded. `.leaving` rides the
-  // collapsing ancestor <li>, not the flagged row inside it, so test the ancestor:
-  // this lets the count drop the moment a row starts leaving, leading the delayed
-  // swap, rather than waiting for the fresh section to land.
+  /**
+   * Gap rows under `scope`, mid-collapse rows excluded. `.leaving` rides the
+   * collapsing ancestor <li>, not the flagged row inside it, so test the ancestor:
+   * this lets the count drop the moment a row starts leaving, leading the delayed
+   * swap, rather than waiting for the fresh section to land.
+   * @param {Element} scope
+   * @returns {number}
+   */
   function countGapRows(scope) {
     var rows = scope.querySelectorAll(".row.flagged");
     var n = 0;
@@ -910,6 +1120,10 @@
     return roots ? countGapRows(roots) : 0;
   }
 
+  /**
+   * @param {string} id
+   * @param {string} text
+   */
   function setText(id, text) {
     var el = document.getElementById(id);
     if (el) el.textContent = text;
@@ -930,7 +1144,7 @@
     var chips = document.querySelectorAll("#gap-chips .gap-chip");
     for (var i = 0; i < chips.length; i++) {
       if (chips[i].classList.contains("gap-chip-error")) continue;
-      var root = chips[i].getAttribute("data-root");
+      var root = chips[i].getAttribute("data-root") || "";
       var section = document.querySelector('section.root[data-root="' + root + '"]');
       var num = chips[i].querySelector(".gap-chip-num");
       if (section && num) {
@@ -940,9 +1154,13 @@
     updateSessionBar(total);
   }
 
-  // The session bar: gaps resolved this sitting (baseline minus what is left) over
-  // the baseline, clamped so it never reads negative or past full.
+  /**
+   * The session bar: gaps resolved this sitting (baseline minus what is left) over
+   * the baseline, clamped so it never reads negative or past full.
+   * @param {number} total
+   */
   function updateSessionBar(total) {
+    if (!summary) return;
     var bar = summary.querySelector(".gap-bar");
     var fill = document.getElementById("gap-bar-fill");
     if (!bar || !fill) return;
@@ -967,7 +1185,7 @@
   document.addEventListener("DOMContentLoaded", function () {
     summary = document.getElementById("gap-summary");
     if (summary) {
-      sessionBaseline = parseInt(summary.dataset.gapsAtLoad, 10) || 0;
+      sessionBaseline = parseInt(summary.dataset.gapsAtLoad || "", 10) || 0;
     }
   });
 
@@ -994,24 +1212,36 @@
   // the settings popover; Escape clears the filter or, with an empty box, drops the
   // highlight. The highlight is a real focus target so keyboard and screen-reader
   // users land on the same row.
+  /** @type {HTMLElement | null} */
   var activeRow = null;
 
-  // A target we must not hijack typing from.
+  /**
+   * A target we must not hijack typing from.
+   * @param {EventTarget | null} el
+   * @returns {boolean}
+   */
   function isEditable(el) {
     if (!el) return false;
-    var tag = el.tagName;
+    var node = /** @type {HTMLElement} */ (el);
+    var tag = node.tagName;
     return (
       tag === "INPUT" ||
       tag === "TEXTAREA" ||
       tag === "SELECT" ||
-      el.isContentEditable
+      node.isContentEditable
     );
   }
 
-  // Visible gap rows in document order: flagged, not mid-collapse, and on screen
-  // (offsetParent is null when hidden by the filter or inside a closed fold).
+  /**
+   * Visible gap rows in document order: flagged, not mid-collapse, and on screen
+   * (offsetParent is null when hidden by the filter or inside a closed fold).
+   * @returns {HTMLElement[]}
+   */
   function visibleGapRows() {
-    var all = document.querySelectorAll("#roots .row.flagged:not(.leaving)");
+    var all = /** @type {NodeListOf<HTMLElement>} */ (
+      document.querySelectorAll("#roots .row.flagged:not(.leaving)")
+    );
+    /** @type {HTMLElement[]} */
     var out = [];
     for (var i = 0; i < all.length; i++) {
       if (all[i].offsetParent !== null) out.push(all[i]);
@@ -1019,9 +1249,12 @@
     return out;
   }
 
-  // Move the highlight to a row: clear the old, mark and focus the new so keyboard
-  // and screen-reader users land together, and scroll it into view (instant under
-  // reduced motion).
+  /**
+   * Move the highlight to a row: clear the old, mark and focus the new so keyboard
+   * and screen-reader users land together, and scroll it into view (instant under
+   * reduced motion).
+   * @param {HTMLElement | null} row
+   */
   function setActiveRow(row) {
     if (activeRow && activeRow !== row) {
       activeRow.classList.remove("row-active");
@@ -1047,8 +1280,11 @@
     activeRow = null;
   }
 
-  // Step the highlight forward (+1) or backward (-1) through the visible gap rows,
-  // clamped at both ends. With nothing highlighted, either direction lands first.
+  /**
+   * Step the highlight forward (+1) or backward (-1) through the visible gap rows,
+   * clamped at both ends. With nothing highlighted, either direction lands first.
+   * @param {number} delta
+   */
   function moveHighlight(delta) {
     var rows = visibleGapRows();
     if (!rows.length) return;
@@ -1092,7 +1328,7 @@
         break;
       case "r":
         evt.preventDefault();
-        var rescanBtn = document.getElementById("rescan-btn");
+        var rescanBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById("rescan-btn"));
         if (rescanBtn && !rescanBtn.disabled) rescanBtn.click();
         break;
       case "/":

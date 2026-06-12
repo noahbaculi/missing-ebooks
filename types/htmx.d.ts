@@ -34,6 +34,12 @@ interface HtmxRequestDetail {
   successful?: boolean;
 }
 
+// htmx:afterSwap fires after a response is swapped in; detail.target is the
+// element that received the swap.
+interface HtmxAfterSwapDetail {
+  target?: Element;
+}
+
 // The app's own success event, dispatched from the HX-Trigger header on /mark.
 interface MarkedDetail {
   root: string;
@@ -51,5 +57,6 @@ interface HTMLElementEventMap {
   "htmx:sendError": CustomEvent<HtmxRequestDetail>;
   "htmx:timeout": CustomEvent<HtmxRequestDetail>;
   "htmx:responseError": CustomEvent<HtmxRequestDetail>;
+  "htmx:afterSwap": CustomEvent<HtmxAfterSwapDetail>;
   marked: CustomEvent<MarkedDetail>;
 }
