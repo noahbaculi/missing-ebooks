@@ -2545,7 +2545,7 @@ mod tests {
         )
         .await;
         // j/k move a focusable highlight through the visible gap rows; r rescans;
-        // / focuses the filter; ? opens the cheatsheet; Escape clears or drops.
+        // / focuses the filter; ? opens the settings popover; Escape clears or drops.
         assert!(body.contains("moveHighlight"));
         assert!(body.contains("visibleGapRows"));
         assert!(body.contains("row-active"));
