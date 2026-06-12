@@ -572,6 +572,9 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   min-width: 15rem;
   padding: 0.4rem;
   background: var(--color-base-100);
+  /* a popover's UA color is CanvasText (black), not the inherited theme color;
+     restore it so panel text reads in dark, as .confirm-dialog already does. */
+  color: var(--color-base-content);
   border: var(--border) solid var(--color-border);
   border-radius: var(--radius-field);
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
