@@ -1082,30 +1082,25 @@ mod tests {
         assert!(body.contains(r#"data-theme-choice="dark""#));
         assert!(body.contains(r#"data-theme-choice="system""#));
         // The Theme control's header reuses the .settings-head styling, like the
-        // folder-depth group above it, not the inline .settings-label.
+        // folder-depth group, not the inline .settings-label.
         assert!(body.contains(r#"<div class="settings-head">Theme</div>"#));
         assert!(!body.contains(r#"<span class="settings-label">Theme</span>"#));
         // The confirm-before-marking switch.
         assert!(body.contains(r#"id="confirm-toggle""#));
         // The old two-state toggle is gone.
         assert!(!body.contains("toggleTheme()"));
-        // Confirm-before-marking renders above the theme control.
-        let confirm_at = body.find(r#"id="confirm-toggle""#).unwrap();
-        let theme_at = body.find(r#"data-theme-choice="light""#).unwrap();
-        assert!(
-            confirm_at < theme_at,
-            "the confirm row should render above the theme control"
-        );
-        // The two folder-depth styling switches sit under a "Folder depth styling"
-        // header, between the confirm switch and the theme control, bold then italic.
+        // The panel orders the theme control first, then the confirm switch, then
+        // the two folder-depth styling switches under their header, bold then italic.
         assert!(body.contains("Folder depth styling"));
         assert!(body.contains(r#"id="bold-top-toggle""#));
         assert!(body.contains(r#"id="italic-nested-toggle""#));
+        let theme_at = body.find(r#"data-theme-choice="light""#).unwrap();
+        let confirm_at = body.find(r#"id="confirm-toggle""#).unwrap();
         let bold_at = body.find(r#"id="bold-top-toggle""#).unwrap();
         let italic_at = body.find(r#"id="italic-nested-toggle""#).unwrap();
         assert!(
-            confirm_at < bold_at && bold_at < italic_at && italic_at < theme_at,
-            "the depth switches should render between the confirm switch and the theme control, bold then italic"
+            theme_at < confirm_at && confirm_at < bold_at && bold_at < italic_at,
+            "the panel should order theme, then confirm, then the depth switches bold-then-italic"
         );
     }
 

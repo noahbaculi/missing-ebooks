@@ -107,9 +107,9 @@ fn view_toggle(mode: ViewMode) -> Markup {
     }
 }
 
-/// The navbar settings control: a cog that opens a popover holding the
-/// confirm-before-marking toggle, the folder-depth styling switches, the theme
-/// choice, and a read-only keyboard shortcuts reference. The native popover API
+/// The navbar settings control: a cog that opens a popover holding the theme
+/// choice, the confirm-before-marking toggle, the folder-depth styling switches,
+/// and a read-only keyboard shortcuts reference. The native popover API
 /// drives open/close; the controls' behavior lives in `app.js`, which also opens
 /// this panel on the `?` key. The theme segments and the switches render in their
 /// default state (System, all switches on); `app.js` reconciles them against
@@ -124,6 +124,15 @@ fn settings_menu() -> Markup {
             popovertarget="settings-panel" { (PreEscaped(COG_SVG)) }
         div.settings-panel id="settings-panel" popover="auto" aria-label="Settings" {
             div.settings-head { "Settings" }
+            div.settings-head { "Theme" }
+            div.settings-row.settings-row-theme {
+                div.segmented role="group" aria-label="Theme" {
+                    button.segment type="button" data-theme-choice="light" { "Light" }
+                    button.segment type="button" data-theme-choice="dark" { "Dark" }
+                    button.segment.segment-active type="button"
+                        data-theme-choice="system" aria-current="true" { "System" }
+                }
+            }
             div.settings-row {
                 span.settings-label {
                     "Confirm before marking"
@@ -147,15 +156,6 @@ fn settings_menu() -> Markup {
                 label.switch {
                     input id="italic-nested-toggle" type="checkbox" checked;
                     span.switch-track {}
-                }
-            }
-            div.settings-head { "Theme" }
-            div.settings-row.settings-row-theme {
-                div.segmented role="group" aria-label="Theme" {
-                    button.segment type="button" data-theme-choice="light" { "Light" }
-                    button.segment type="button" data-theme-choice="dark" { "Dark" }
-                    button.segment.segment-active type="button"
-                        data-theme-choice="system" aria-current="true" { "System" }
                 }
             }
             div.settings-shortcuts {
