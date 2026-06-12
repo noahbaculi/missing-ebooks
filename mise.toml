@@ -21,6 +21,10 @@ run = [
   "cargo clippy --locked --all-targets -- -D warnings",
 ]
 
+[tasks.typecheck]
+description = "Type-check the client JS with tsc (check only, no emit)"
+run = "tsc --noEmit"
+
 [tasks."test:hooks"]
 description = "Run the pre-commit hook test"
 run = "sh tests/hooks/pre-commit.sh"

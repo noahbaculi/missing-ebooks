@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "target": "ES2017",
+    "lib": ["DOM", "DOM.Iterable", "ES2017"],
+    "types": []
+  },
+  "include": ["types/htmx.d.ts"],
+  "exclude": ["assets/htmx.min.js"]
+}
