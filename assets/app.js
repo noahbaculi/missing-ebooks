@@ -1,7 +1,7 @@
 // @ts-check
-// missing-ebooks client behavior. The pre-paint bootstrap (theme + depth opt-out)
-// runs inline in <head>; this file owns the rest: the theme control, the depth
-// toggle, the settings panel sync, and the marker-write confirmation. Loaded at
+// missing-ebooks client behavior. The pre-paint bootstrap (theme + depth opt-outs)
+// runs inline in <head>; this file owns the rest: the theme control, the two depth
+// toggles, the settings panel sync, and the marker-write confirmation. Loaded at
 // the end of <body>, after htmx.
 (function () {
   "use strict";
@@ -20,7 +20,8 @@
 
   var THEME_KEY = "theme";
   var CONFIRM_KEY = "confirmMarks";
-  var DEPTH_KEY = "depthType";
+  var BOLD_KEY = "boldTopFolder";
+  var ITALIC_KEY = "italicNestedFolders";
   var darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
   // ---- theme ----
@@ -96,27 +97,34 @@
     localStorage.setItem(CONFIRM_KEY, on ? "on" : "off");
   }
 
-  // ---- folder-depth styling preference ----
+  // ---- folder-depth styling preferences ----
 
   /**
-   * On by default: only the literal "off" disables it, so the key need not exist.
+   * A depth styling preference is on by default: only the literal "off" disables
+   * it, so the key need not exist.
+   * @param {string} key
    * @returns {boolean}
    */
-  function depthEnabled() {
-    return localStorage.getItem(DEPTH_KEY) !== "off";
+  function stylePrefEnabled(key) {
+    return localStorage.getItem(key) !== "off";
   }
 
   /**
-   * Persist a choice and reflect it on <html>. The on state removes the attribute
-   * so the default markup stays attribute-free, matching the pre-paint bootstrap.
+   * Persist a depth styling choice and reflect it on <html> via its data
+   * attribute. The on state removes the attribute so the default markup stays
+   * attribute-free, matching the pre-paint bootstrap. removeAttribute rather than
+   * delete: dataset properties are non-optional under strict tsc, so delete trips
+   * TS2790.
+   * @param {string} key
+   * @param {string} attr
    * @param {boolean} on
    */
-  function setDepth(on) {
-    localStorage.setItem(DEPTH_KEY, on ? "on" : "off");
+  function setStylePref(key, attr, on) {
+    localStorage.setItem(key, on ? "on" : "off");
     if (on) {
-      document.documentElement.removeAttribute("data-depth");
+      document.documentElement.removeAttribute(attr);
     } else {
-      document.documentElement.dataset.depth = "off";
+      document.documentElement.setAttribute(attr, "off");
     }
   }
 
@@ -126,8 +134,10 @@
     markActiveTheme(storedTheme());
     var sw = /** @type {HTMLInputElement | null} */ (document.getElementById("confirm-toggle"));
     if (sw) sw.checked = confirmEnabled();
-    var depthSw = /** @type {HTMLInputElement | null} */ (document.getElementById("depth-toggle"));
-    if (depthSw) depthSw.checked = depthEnabled();
+    var boldSw = /** @type {HTMLInputElement | null} */ (document.getElementById("bold-top-toggle"));
+    if (boldSw) boldSw.checked = stylePrefEnabled(BOLD_KEY);
+    var italicSw = /** @type {HTMLInputElement | null} */ (document.getElementById("italic-nested-toggle"));
+    if (italicSw) italicSw.checked = stylePrefEnabled(ITALIC_KEY);
   }
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -152,11 +162,19 @@
       });
     }
 
-    var depthSw = document.getElementById("depth-toggle");
-    if (depthSw) {
-      depthSw.addEventListener("change", function (e) {
+    var boldSw = document.getElementById("bold-top-toggle");
+    if (boldSw) {
+      boldSw.addEventListener("change", function (e) {
         var el = /** @type {HTMLInputElement} */ (e.currentTarget);
-        setDepth(el.checked);
+        setStylePref(BOLD_KEY, "data-bold-top", el.checked);
+      });
+    }
+
+    var italicSw = document.getElementById("italic-nested-toggle");
+    if (italicSw) {
+      italicSw.addEventListener("change", function (e) {
+        var el = /** @type {HTMLInputElement} */ (e.currentTarget);
+        setStylePref(ITALIC_KEY, "data-italic-nested", el.checked);
       });
     }
   });

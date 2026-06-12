@@ -1057,9 +1057,10 @@ mod tests {
         let body = body_string(response).await;
         assert!(body.contains("setTheme"));
         assert!(body.contains("confirmMarks"));
-        // The depth toggle is wired with its own setter and storage key.
-        assert!(body.contains("setDepth"));
-        assert!(body.contains("depthType"));
+        // The two depth toggles are wired through a shared setter and their keys.
+        assert!(body.contains("setStylePref"));
+        assert!(body.contains("boldTopFolder"));
+        assert!(body.contains("italicNestedFolders"));
     }
 
     #[tokio::test]
