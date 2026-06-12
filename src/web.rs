@@ -332,7 +332,10 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        assert!(body.contains("loose at top"), "the top-level book is marked loose");
+        assert!(
+            body.contains("loose at top"),
+            "the top-level book is marked loose"
+        );
         assert!(
             body.contains("holds audio + subfolders"),
             "the half-sorted author is marked mixed"
@@ -376,7 +379,10 @@ mod tests {
     #[tokio::test]
     async fn mixed_node_shows_its_own_files_above_its_child_gap() {
         let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Terry Pratchett/01 - The Colour of Magic.mp3"));
+        touch(
+            &dir.path()
+                .join("Terry Pratchett/01 - The Colour of Magic.mp3"),
+        );
         touch(&dir.path().join("Terry Pratchett/Going Postal/01.mp3"));
         let body = body_string(
             app_for(dir.path())
