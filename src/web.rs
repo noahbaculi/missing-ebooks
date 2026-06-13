@@ -2341,6 +2341,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn decorative_icons_are_hidden_from_assistive_tech() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The folder glyph renders on every node row; it must be hidden from the
+        // a11y tree (it is paired with the folder name) and not be a tab stop.
+        assert!(body.contains(r#"<svg class="icon" aria-hidden="true" focusable="false""#));
+    }
+
+    #[tokio::test]
     async fn navbar_places_the_spacer_before_the_search_box() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
