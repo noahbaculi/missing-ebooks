@@ -56,6 +56,18 @@ async fn main() -> ExitCode {
     }
     let addr = SocketAddr::new(ip, config.port);
 
+    // Size the scan thread pool by the configured concurrency, not the core
+    // count: the directory walk is bound by network round-trip latency, so the
+    // threads mostly wait on the wire and stay useful well above the CPU count
+    // (and survive a container CPU limit). build_global is called once per
+    // process; a failure leaves rayon's default pool in place.
+    if let Err(err) = rayon::ThreadPoolBuilder::new()
+        .num_threads(config.scan_concurrency.max(1))
+        .build_global()
+    {
+        tracing::warn!(error = %err, "could not size the scan thread pool; using rayon defaults");
+    }
+
     let state = Arc::new(AppState::new(config, settings));
     let app = web::router(state);
 

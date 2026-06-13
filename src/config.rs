@@ -33,6 +33,10 @@ pub struct Config {
     pub port: u16,
     /// Scan-cache staleness backstop, in seconds.
     pub ttl_seconds: u64,
+    /// Directories read at once during a scan. Sizes the scan thread pool. On a
+    /// network mount each directory is a round trip, so reading several at once
+    /// overlaps the waits; size it by the mount speed, not the CPU count.
+    pub scan_concurrency: usize,
     /// Audio extensions counted as audio, compared case-insensitively.
     pub audio_exts: Vec<String>,
     /// Ebook extensions counted as coverage, compared case-insensitively.
@@ -54,6 +58,7 @@ impl Default for Config {
             bind: "127.0.0.1".to_string(),
             port: 13379,
             ttl_seconds: 60,
+            scan_concurrency: 16,
             // Audiobookshelf's full supported sets; see ADR-0006.
             audio_exts: strings(&[
                 ".m4b", ".mp3", ".m4a", ".flac", ".opus", ".ogg", ".oga", ".mp4", ".aac", ".wma",
@@ -163,6 +168,9 @@ fn apply_env_overrides(cfg: &mut Config, getenv: &dyn Fn(&str) -> Option<String>
     if let Some(ttl) = getenv("MISSING_EBOOKS_TTL_SECONDS").and_then(|v| v.parse().ok()) {
         cfg.ttl_seconds = ttl;
     }
+    if let Some(n) = getenv("MISSING_EBOOKS_SCAN_CONCURRENCY").and_then(|v| v.parse().ok()) {
+        cfg.scan_concurrency = n;
+    }
 }
 
 /// Return the commented `config.toml` template that `--print-config` emits.
@@ -197,6 +205,13 @@ port = 13379
 # cache and rescan on every request. /rescan is the primary freshness control.
 # Also settable as MISSING_EBOOKS_TTL_SECONDS.
 ttl_seconds = 60
+
+# Directories the library scan reads at once. The scan is bound by per-directory
+# latency on a network mount (SMB/NFS), where each folder is a round trip, so
+# reading several at once overlaps the waits. Size this by the speed of the
+# mount, not the CPU count: the threads mostly wait on the network. 1 disables
+# the parallelism. Also settable as MISSING_EBOOKS_SCAN_CONCURRENCY.
+scan_concurrency = 16
 
 # File extensions, compared case-insensitively. Leading dot required. The
 # defaults mirror Audiobookshelf's full supported sets (see ADR-0006).
@@ -270,6 +285,7 @@ mod tests {
         assert!(cfg.exclude_globs.is_empty());
         let labels: Vec<&str> = cfg.search_links.iter().map(|l| l.label.as_str()).collect();
         assert_eq!(labels, vec!["Goodreads", "OceanofPDF"]);
+        assert_eq!(cfg.scan_concurrency, 16);
     }
 
     #[test]
@@ -310,6 +326,14 @@ mod tests {
         assert_eq!(cfg.port, 1234);
         assert_eq!(cfg.bind, "0.0.0.0");
         assert_eq!(cfg.ttl_seconds, 60); // unset env leaves the default
+    }
+
+    #[test]
+    fn env_overrides_scan_concurrency() {
+        let mut cfg = Config::default();
+        let env = fake_env(&[("MISSING_EBOOKS_SCAN_CONCURRENCY", "32")]);
+        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned());
+        assert_eq!(cfg.scan_concurrency, 32);
     }
 
     #[test]
@@ -365,5 +389,6 @@ mod tests {
             .map(|l| l.label.as_str())
             .collect();
         assert_eq!(labels, vec!["Goodreads", "OceanofPDF"]);
+        assert_eq!(parsed.scan_concurrency, 16);
     }
 }
