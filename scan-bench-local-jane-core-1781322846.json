@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "tool": "scan_bench",
+  "label": "local",
+  "host": "jane-core",
+  "kernel": "6.12.88+deb13-amd64",
+  "unix_time": 1781322846,
+  "build_profile": "release",
+  "iterations": 5,
+  "drop_caches": true,
+  "roots": [
+    {
+      "path": "/mnt/pool/Entertainment/Audiobooks",
+      "fstype": "fuse.mergerfs",
+      "mount_options": "rw,relatime,user_id=0,group_id=0,default_permissions,allow_other",
+      "modes": {
+        "all": {
+          "dirs_visited": 901,
+          "entries_seen": 8802,
+          "gaps": 258,
+          "audio_files": 5556,
+          "cold": {
+            "iterations_ms": [
+              359.247,
+              339.742,
+              338.169,
+              336.391,
+              372.452
+            ],
+            "median_ms": 339.742,
+            "min_ms": 336.391,
+            "max_ms": 372.452,
+            "ms_per_dir": 0.377
+          },
+          "warm": {
+            "iterations_ms": [
+              126.745,
+              118.52,
+              118.576,
+              116.7,
+              119.571
+            ],
+            "median_ms": 118.576,
+            "min_ms": 116.7,
+            "max_ms": 126.745,
+            "ms_per_dir": 0.132
+          }
+        },
+        "gaps": {
+          "dirs_visited": 901,
+          "entries_seen": 8802,
+          "gaps": 258,
+          "audio_files": 1479,
+          "cold": {
+            "iterations_ms": [
+              326.901,
+              332.729,
+              331.698,
+              329.744,
+              345.463
+            ],
+            "median_ms": 331.698,
+            "min_ms": 326.901,
+            "max_ms": 345.463,
+            "ms_per_dir": 0.368
+          },
+          "warm": {
+            "iterations_ms": [
+              116.923,
+              121.835,
+              117.507,
+              118.092,
+              115.101
+            ],
+            "median_ms": 117.507,
+            "min_ms": 115.101,
+            "max_ms": 121.835,
+            "ms_per_dir": 0.13
+          }
+        }
+      }
+    }
+  ]
+}
