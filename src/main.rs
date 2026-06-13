@@ -69,7 +69,7 @@ async fn main() -> ExitCode {
     }
 
     let state = Arc::new(AppState::new(config, settings));
-    let app = web::router(state);
+    let app = web::router(Arc::clone(&state));
 
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(listener) => listener,
@@ -79,6 +79,23 @@ async fn main() -> ExitCode {
         }
     };
     tracing::info!(url = %format!("http://{addr}"), "missing-ebooks listening");
+
+    // Warm the default (gaps-only) view in the background so the first viewer
+    // after a restart does not pay the cold scan, which is slow over a network
+    // mount. The server starts serving immediately; a request that arrives
+    // before the warm finishes single-flights on the same cache lock, so this
+    // never double-scans. The show-all slot stays lazy until first asked.
+    tokio::spawn({
+        let state = Arc::clone(&state);
+        async move {
+            let _ = missing_ebooks::service::current_view(
+                &state,
+                missing_ebooks::service::ViewMode::GapsOnly,
+            )
+            .await;
+            tracing::debug!("startup cache warm complete");
+        }
+    });
 
     if let Err(err) = axum::serve(listener, app).await {
         tracing::error!(error = %err, "server error");
