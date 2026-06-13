@@ -240,9 +240,14 @@ struct WalkCounts {
     audio_files: usize,
 }
 
+/// The report schema version, bumped when the JSON shape changes so a directory of
+/// mixed-vintage reports stays parseable.
+const SCHEMA_VERSION: u32 = 1;
+
 /// The whole run: environment context plus one entry per root.
 #[derive(Debug, Serialize)]
 struct Report {
+    schema_version: u32,
     tool: &'static str,
     label: String,
     host: String,
@@ -608,6 +613,7 @@ fn main() -> ExitCode {
     }
 
     let report = Report {
+        schema_version: SCHEMA_VERSION,
         tool: "scan_bench",
         label: label.clone(),
         host: host.clone(),
@@ -897,6 +903,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             },
         );
         let report = Report {
+            schema_version: SCHEMA_VERSION,
             tool: "scan_bench",
             label: "local".to_string(),
             host: "kessel".to_string(),
@@ -913,6 +920,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             }],
         };
         let json = serde_json::to_string(&report).unwrap();
+        assert!(json.contains("\"schema_version\":1"));
         assert!(json.contains("\"tool\":\"scan_bench\""));
         assert!(json.contains("\"fstype\":\"ext4\""));
         assert!(json.contains("\"dirs_visited\":3"));
