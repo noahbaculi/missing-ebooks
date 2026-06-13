@@ -904,6 +904,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn prepaint_bootstrap_handles_the_accent_preference() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The inline pre-paint script reads the accent key and derives the ink
+        // before first paint, so a custom accent never flashes the default ink.
+        assert!(body.contains("getItem('accent')"));
+        assert!(body.contains("deriveWarningInk"));
+        assert!(body.contains("--color-warning-text"));
+    }
+
+    #[tokio::test]
     async fn static_route_serves_the_stylesheet() {
         let dir = tempfile::tempdir().unwrap();
         let response = app_for(dir.path())
