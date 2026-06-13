@@ -12,6 +12,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use missing_ebooks::scanner::{self, ScanSettings};
 use serde::Serialize;
 
 /// Round to three decimals so the report and stdout stay readable; sub-millisecond
@@ -230,6 +231,44 @@ fn mount_for_path(mounts: &str, path: &Path) -> Option<(String, String)> {
     best.map(|(_, fstype, options)| (fstype, options))
 }
 
+/// What one walk found: the numbers the report records. `dirs_walked` is `Some`
+/// only for the full walk, which emits a record per directory; the gaps walk
+/// prunes on coverage and leaves it `None`.
+struct WalkCounts {
+    dirs_walked: Option<usize>,
+    gaps: usize,
+    audio_files: usize,
+}
+
+/// Run one read-only walk and tally its counts. A gap is a folder that directly
+/// holds audio and is not covered.
+fn run_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> WalkCounts {
+    match mode {
+        Mode::All => {
+            let folders = scanner::scan_all(root, settings);
+            let gaps = folders
+                .iter()
+                .filter(|f| f.directly_holds_audio && f.missing_ebook)
+                .count();
+            let audio_files = folders.iter().map(|f| f.audio_files.len()).sum();
+            WalkCounts {
+                dirs_walked: Some(folders.len()),
+                gaps,
+                audio_files,
+            }
+        }
+        Mode::Gaps => {
+            let flagged = scanner::scan(root, settings);
+            let audio_files = flagged.iter().map(|f| f.audio_files.len()).sum();
+            WalkCounts {
+                dirs_walked: None,
+                gaps: flagged.len(),
+                audio_files,
+            }
+        }
+    }
+}
+
 fn main() -> ExitCode {
     // Wired in Task 11. The skeleton compiles so earlier tasks can add and test
     // pure helpers against a real target.
@@ -399,5 +438,51 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
     #[test]
     fn mount_lookup_returns_none_without_a_match() {
         assert_eq!(mount_for_path("", std::path::Path::new("/mnt/x")), None);
+    }
+
+    use std::fs;
+
+    fn touch(path: &std::path::Path) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, b"").unwrap();
+    }
+
+    fn bench_settings() -> ScanSettings {
+        let audio: Vec<String> = [".mp3"].iter().map(|s| s.to_string()).collect();
+        let ebook: Vec<String> = [".epub"].iter().map(|s| s.to_string()).collect();
+        ScanSettings::compile(missing_ebooks::scanner::ScanInputs {
+            audio_exts: &audio,
+            ebook_exts: &ebook,
+            excluded_dirs: &[],
+            exclude_globs: &[],
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn run_walk_all_counts_dirs_gaps_and_audio() {
+        let dir = tempfile::tempdir().unwrap();
+        // A gap (audio, no cover) and a covered audiobook (audio + epub).
+        touch(&dir.path().join("Gap/01.mp3"));
+        touch(&dir.path().join("Gap/02.mp3"));
+        touch(&dir.path().join("Covered/01.mp3"));
+        touch(&dir.path().join("Covered/Book.epub"));
+        let counts = run_walk(Mode::All, dir.path(), &bench_settings());
+        // Root + Gap + Covered are all recorded by the full walk.
+        assert_eq!(counts.dirs_walked, Some(3));
+        assert_eq!(counts.gaps, 1);
+        assert_eq!(counts.audio_files, 3);
+    }
+
+    #[test]
+    fn run_walk_gaps_has_no_dir_count() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Gap/01.mp3"));
+        touch(&dir.path().join("Covered/01.mp3"));
+        touch(&dir.path().join("Covered/Book.epub"));
+        let counts = run_walk(Mode::Gaps, dir.path(), &bench_settings());
+        assert_eq!(counts.dirs_walked, None);
+        assert_eq!(counts.gaps, 1);
+        assert_eq!(counts.audio_files, 1);
     }
 }
