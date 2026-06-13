@@ -557,7 +557,10 @@ mod tests {
         touch(&dir.path().join("AuthorA/Book1/01.mp3"));
         touch(&dir.path().join("AuthorA/Book2/01.mp3"));
         let settings = default_settings(&[]);
-        let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(4)
+            .build()
+            .unwrap();
         let (_flagged, stats) = pool.install(|| scan_with_stats(dir.path(), &settings));
         // root + AuthorA + Book1 + Book2.
         assert_eq!(stats.dirs_visited, 4);
@@ -718,7 +721,10 @@ mod tests {
         touch(&dir.path().join("AuthorB/Covered/Disc2/02.mp3"));
         let settings = default_settings(&[]);
         let run = |threads: usize| {
-            let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
             pool.install(|| {
                 scan_all(dir.path(), &settings)
                     .iter()
