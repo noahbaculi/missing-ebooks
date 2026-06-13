@@ -209,7 +209,7 @@ fn search_empty() -> Markup {
 /// The marker-write confirmation, rendered once at the page level so it survives
 /// the htmx section swaps. `app.js` fills the title, folder, file chip, confirm
 /// label, and the matching marker glyph from the button that fired, then opens
-/// it. Without JS the dialog never opens and writes proceed as before.
+/// it. The dialog is opened by `app.js`, and a marker write fires only through it.
 fn confirm_dialog() -> Markup {
     html! {
         dialog.confirm-dialog id="confirm-mark" aria-labelledby="confirm-title" {
@@ -241,7 +241,7 @@ fn confirm_dialog() -> Markup {
 /// in-place rescan runs: it is the `hx-indicator`, so htmx adds `htmx-request` to it
 /// for the request's duration and the stylesheet slides the bar and dims the tree in
 /// place. Both sit behind a CSS show-delay, so a fast scan shows nothing. Hidden
-/// otherwise, and never shown on the no-JS path, which does a full reload.
+/// otherwise.
 fn scan_bar() -> Markup {
     html! {
         div.scan-bar id="scan-bar" aria-hidden="true" {}
@@ -325,8 +325,8 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                 (conn_banner())
                 nav.navbar {
                     // The title is a home link: a plain GET to "/" that survives the
-                    // htmx swaps and works without JS, landing on the default gaps-only
-                    // view with no filter, the conventional reset for a wordmark.
+                    // htmx swaps, landing on the default gaps-only view with no filter,
+                    // the conventional reset for a wordmark.
                     h1 { a href="/" { (PreEscaped(BRAND_SVG)) "Missing Ebooks" } }
                     // The spacer sits right after the title so the title alone pins
                     // left and everything else groups on the right. Mobile reorders
@@ -402,8 +402,8 @@ fn gap_word(n: usize) -> &'static str {
 /// from the `FlaggedView` already on hand, so it needs no scanner change. The hero
 /// gap total, a session coverage readout with its progress bar, and optional
 /// per-root chips for a multi-root setup. `app.js` keeps the hero and readout
-/// current from the DOM as marks land; this render is the first paint and the no-JS
-/// view. `data-gaps-at-load` seeds the session bar's baseline.
+/// current from the DOM as marks land; this render is the first paint.
+/// `data-gaps-at-load` seeds the session bar's baseline.
 fn gap_summary(view: &FlaggedView) -> Markup {
     let total = total_gaps(view);
     html! {

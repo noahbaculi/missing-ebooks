@@ -604,7 +604,7 @@ mod tests {
         )
         .await;
         // Each depth rule has its own guard so the two switches toggle them
-        // independently; the default and the no-JS path leave both attributes absent.
+        // independently; the default leaves both attributes absent.
         assert!(body.contains(r#"html:not([data-bold-top="off"]) .container-top .name"#));
         assert!(body.contains(r#"html:not([data-italic-nested="off"]) .container-nested .name"#));
         assert!(body.contains("font-style: italic"));
