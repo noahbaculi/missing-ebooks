@@ -112,7 +112,7 @@ Extension lists, exclude rules, and search links are file-only. The printed temp
 
 ### Logging
 
-Set `MISSING_EBOOKS_LOG` to control verbosity: `error`, `warn`, `info` (the default), `debug`, or `trace`. It is scoped to this app, so the dependencies stay quiet. `debug` adds per-operation timings (per-root scans, cache hits and misses, marker writes, and request and render latency), the level to run when checking how a real library performs. `trace` adds a line per directory walked. For full control, set `RUST_LOG` to override it with standard `tracing` filter syntax, for example `RUST_LOG=missing_ebooks::scanner=trace`.
+Set `MISSING_EBOOKS_LOG` to control verbosity: `error`, `warn`, `info` (the default), `debug`, or `trace`. Raising it to `debug` or `trace` is scoped to this app, so the dependencies stay quiet; lowering it to `warn` or `error` quiets everything to that level. `debug` adds per-operation timings (per-root scans, cache hits and misses, marker writes, and request and render latency), the level to run when checking how a real library performs. `trace` adds a line per directory walked. For full control, set `RUST_LOG` to override it with standard `tracing` filter syntax, for example `RUST_LOG=missing_ebooks::scanner=trace`.
 
 ## Markers
 
