@@ -814,6 +814,22 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         assert_eq!(got, Some(("ext4".to_string(), "rw,relatime".to_string())));
     }
 
+    const NESTED_MOUNTS: &str = "\
+/dev/sda1 / ext4 rw,relatime 0 0
+//nas/media /mnt/nas cifs vers=3.0 0 0
+//nas/abooks /mnt/nas/Audiobooks cifs vers=3.1.1 0 0";
+
+    #[test]
+    fn mount_lookup_prefers_the_deeper_of_two_nested_mounts() {
+        // Both /mnt/nas and /mnt/nas/Audiobooks prefix the path; the deeper (longer)
+        // mount must win. The differing options expose a shorter-prefix regression.
+        let got = mount_for_path(
+            NESTED_MOUNTS,
+            std::path::Path::new("/mnt/nas/Audiobooks/Author/Book"),
+        );
+        assert_eq!(got, Some(("cifs".to_string(), "vers=3.1.1".to_string())));
+    }
+
     #[test]
     fn mount_lookup_returns_none_without_a_match() {
         assert_eq!(mount_for_path("", std::path::Path::new("/mnt/x")), None);
