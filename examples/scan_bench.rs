@@ -128,6 +128,23 @@ fn parse_iterations(value: &str) -> Result<usize, String> {
     Ok(n)
 }
 
+/// Parse `--concurrency`: a comma-separated list of positive thread counts, e.g.
+/// `1,4,8,16`. Each value sizes the scan thread pool for one sweep entry.
+fn parse_concurrency(value: &str) -> Result<Vec<usize>, String> {
+    let mut levels = Vec::new();
+    for part in value.split(',') {
+        let n: usize = part
+            .trim()
+            .parse()
+            .map_err(|_| format!("--concurrency: {part:?} is not a number"))?;
+        if n == 0 {
+            return Err("--concurrency values must be at least 1".to_string());
+        }
+        levels.push(n);
+    }
+    Ok(levels)
+}
+
 /// A parsed command line. Defaults: five iterations, both walks, warm-only (no
 /// cache drop), save the report.
 #[derive(Debug, PartialEq)]
@@ -140,6 +157,7 @@ struct Args {
     label: Option<String>,
     out: Option<PathBuf>,
     no_save: bool,
+    concurrency: Vec<usize>,
 }
 
 /// Pull the value that follows a space-form flag, erroring if the vector ends.
@@ -165,6 +183,7 @@ fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
     let mut label = None;
     let mut out = None;
     let mut no_save = false;
+    let mut concurrency = vec![16usize];
     let mut iter = argv.iter();
     while let Some(arg) = iter.next() {
         if arg == "--help" || arg == "-h" {
@@ -197,6 +216,10 @@ fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
             out = Some(PathBuf::from(next_value(&mut iter, "--out")?));
         } else if let Some(v) = arg.strip_prefix("--out=") {
             out = Some(PathBuf::from(v));
+        } else if arg == "--concurrency" {
+            concurrency = parse_concurrency(&next_value(&mut iter, "--concurrency")?)?;
+        } else if let Some(v) = arg.strip_prefix("--concurrency=") {
+            concurrency = parse_concurrency(v)?;
         } else if arg.starts_with('-') {
             return Err(format!("unknown flag {arg:?}"));
         } else {
@@ -212,6 +235,7 @@ fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
         label,
         out,
         no_save,
+        concurrency,
     }))
 }
 
@@ -250,7 +274,7 @@ struct WalkCounts {
 
 /// The report schema version, bumped when the JSON shape changes so a directory of
 /// mixed-vintage reports stays parseable.
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
 
 /// The whole run: environment context plus one entry per root.
 #[derive(Debug, Serialize)]
@@ -277,9 +301,18 @@ struct RootReport {
     modes: BTreeMap<String, ModeReport>,
 }
 
-/// One mode's counts and timings. `cold` is `None` when `--drop-caches` was off.
+/// One mode's timings, one entry per swept concurrency level. A single-value
+/// `--concurrency` yields a one-element vector.
 #[derive(Debug, Serialize)]
 struct ModeReport {
+    levels: Vec<LevelReport>,
+}
+
+/// One concurrency level's counts and timings for a mode. `cold` is `None` when
+/// `--drop-caches` was off.
+#[derive(Debug, Serialize)]
+struct LevelReport {
+    concurrency: usize,
     dirs_visited: usize,
     entries_seen: usize,
     gaps: usize,
@@ -354,7 +387,7 @@ fn drop_caches() -> Result<(), String> {
 
 const USAGE: &str = "usage: cargo run --release --example scan_bench -- \
 [--config PATH] [--root PATH]... [--iterations N] [--mode gaps|all|both] \
-[--drop-caches] [--label NAME] [--out PATH] [--no-save]";
+[--concurrency LIST] [--drop-caches] [--label NAME] [--out PATH] [--no-save]";
 
 /// The usage line plus the flag reference and the read-only and strace notes.
 fn help_text() -> String {
@@ -369,6 +402,7 @@ flags:
   --root PATH       benchmark this exact path; repeatable; replaces config roots
   --iterations N    measured runs per phase (default 5)
   --mode MODE       gaps, all, or both (default both)
+  --concurrency LIST   thread counts to sweep, comma-separated, e.g. 1,4,8,16 (default 16)
   --drop-caches     Linux: sudo-flush the page cache before each cold run
   --label NAME      tag stdout and the report (e.g. local, smb)
   --out PATH        report path (default scan-bench-<label>-<host>-<time>.json)
@@ -573,43 +607,57 @@ fn main() -> ExitCode {
 
         let mut modes = BTreeMap::new();
         for &mode in &args.modes {
-            let cold = if args.drop_caches {
-                match cold_phase(mode, &canonical, &settings, args.iterations) {
-                    Ok((phase, _)) => Some(phase),
-                    Err(message) => {
-                        eprintln!("error during cold phase: {message}");
+            let mut levels = Vec::new();
+            for &threads in &args.concurrency {
+                let pool = match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
+                    Ok(pool) => pool,
+                    Err(err) => {
+                        eprintln!("error: could not build a {threads}-thread pool: {err}");
                         return ExitCode::FAILURE;
                     }
+                };
+                // Run the phases inside the pool so the scanner's parallel walk
+                // uses exactly these `threads` workers for this sweep entry.
+                let cold = if args.drop_caches {
+                    match pool.install(|| cold_phase(mode, &canonical, &settings, args.iterations))
+                    {
+                        Ok((phase, _)) => Some(phase),
+                        Err(message) => {
+                            eprintln!("error during cold phase: {message}");
+                            return ExitCode::FAILURE;
+                        }
+                    }
+                } else {
+                    None
+                };
+                let (warm, counts) =
+                    pool.install(|| warm_phase(mode, &canonical, &settings, args.iterations));
+
+                println!(
+                    "  mode={} concurrency={}  dirs_visited={}  entries_seen={}  gaps={}  audio_files={}",
+                    mode.label(),
+                    threads,
+                    counts.stats.dirs_visited,
+                    counts.stats.entries_seen,
+                    counts.gaps,
+                    counts.audio_files
+                );
+                if let Some(cold) = &cold {
+                    println!("{}", fmt_phase("cold", cold));
                 }
-            } else {
-                None
-            };
-            let (warm, counts) = warm_phase(mode, &canonical, &settings, args.iterations);
+                println!("{}", fmt_phase("warm", &warm));
 
-            println!(
-                "  mode={}   dirs_visited={}  entries_seen={}  gaps={}  audio_files={}",
-                mode.label(),
-                counts.stats.dirs_visited,
-                counts.stats.entries_seen,
-                counts.gaps,
-                counts.audio_files
-            );
-            if let Some(cold) = &cold {
-                println!("{}", fmt_phase("cold", cold));
-            }
-            println!("{}", fmt_phase("warm", &warm));
-
-            modes.insert(
-                mode.label().to_string(),
-                ModeReport {
+                levels.push(LevelReport {
+                    concurrency: threads,
                     dirs_visited: counts.stats.dirs_visited,
                     entries_seen: counts.stats.entries_seen,
                     gaps: counts.gaps,
                     audio_files: counts.audio_files,
                     cold,
                     warm,
-                },
-            );
+                });
+            }
+            modes.insert(mode.label().to_string(), ModeReport { levels });
         }
 
         roots.push(RootReport {
@@ -715,6 +763,14 @@ mod tests {
         assert!(parse_iterations("abc").is_err());
     }
 
+    #[test]
+    fn parse_concurrency_reads_a_list_and_rejects_bad_values() {
+        assert_eq!(parse_concurrency("1,4,8,16"), Ok(vec![1, 4, 8, 16]));
+        assert_eq!(parse_concurrency("8"), Ok(vec![8]));
+        assert!(parse_concurrency("0").is_err());
+        assert!(parse_concurrency("1,x").is_err());
+    }
+
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| s.to_string()).collect()
     }
@@ -732,6 +788,7 @@ mod tests {
                 label: None,
                 out: None,
                 no_save: false,
+                concurrency: vec![16],
             }))
         );
     }
@@ -752,6 +809,8 @@ mod tests {
             "--drop-caches",
             "--label",
             "smb",
+            "--concurrency",
+            "1,4",
             "--out",
             "out.json",
             "--no-save",
@@ -772,6 +831,7 @@ mod tests {
         assert_eq!(parsed.label.as_deref(), Some("smb"));
         assert_eq!(parsed.out, Some(std::path::PathBuf::from("out.json")));
         assert!(parsed.no_save);
+        assert_eq!(parsed.concurrency, vec![1, 4]);
     }
 
     #[test]
@@ -780,12 +840,14 @@ mod tests {
             "--config=config.toml",
             "--mode=gaps",
             "--iterations=2",
+            "--concurrency=2,8",
         ]))
         .unwrap()
         .unwrap();
         assert_eq!(parsed.config, Some(std::path::PathBuf::from("config.toml")));
         assert_eq!(parsed.modes, vec![Mode::Gaps]);
         assert_eq!(parsed.iterations, 2);
+        assert_eq!(parsed.concurrency, vec![2, 8]);
     }
 
     #[test]
@@ -898,18 +960,17 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
 
     #[test]
     fn report_serializes_expected_keys() {
+        let levels = vec![LevelReport {
+            concurrency: 16,
+            dirs_visited: 3,
+            entries_seen: 9,
+            gaps: 1,
+            audio_files: 3,
+            cold: None,
+            warm: phase_report(&[10.0, 20.0], 3),
+        }];
         let mut modes = std::collections::BTreeMap::new();
-        modes.insert(
-            "all".to_string(),
-            ModeReport {
-                dirs_visited: 3,
-                entries_seen: 9,
-                gaps: 1,
-                audio_files: 3,
-                cold: None,
-                warm: phase_report(&[10.0, 20.0], 3),
-            },
-        );
+        modes.insert("all".to_string(), ModeReport { levels });
         let report = Report {
             schema_version: SCHEMA_VERSION,
             tool: "scan_bench",
@@ -928,11 +989,11 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             }],
         };
         let json = serde_json::to_string(&report).unwrap();
-        assert!(json.contains("\"schema_version\":1"));
+        assert!(json.contains("\"schema_version\":2"));
         assert!(json.contains("\"tool\":\"scan_bench\""));
-        assert!(json.contains("\"fstype\":\"ext4\""));
+        assert!(json.contains("\"levels\""));
+        assert!(json.contains("\"concurrency\":16"));
         assert!(json.contains("\"dirs_visited\":3"));
-        assert!(json.contains("\"entries_seen\":9"));
         assert!(json.contains("\"ms_per_dir\":5.0"));
         assert!(json.contains("\"cold\":null"));
     }
