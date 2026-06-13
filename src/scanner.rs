@@ -328,26 +328,66 @@ pub fn scan_all_with_stats(
 ) -> (Vec<ScannedFolder>, WalkStats) {
     let mut out = Vec::new();
     let mut stats = WalkStats::default();
-    visit_all(root, root, false, settings, &mut out, &mut stats);
+    // Same level-synchronous walk as the gaps scan, but coverage does not prune:
+    // a covered container is still descended, its children tagged covered through
+    // the inherited flag. The frontier carries each directory's covered-from-above
+    // bit alongside its path.
+    let mut frontier: Vec<(PathBuf, bool)> = vec![(root.to_path_buf(), false)];
+    while !frontier.is_empty() {
+        let level: Vec<AllDir> = frontier
+            .par_iter()
+            .map(|(dir, covered_from_above)| read_dir_all(root, dir, *covered_from_above, settings))
+            .collect();
+        let mut next = Vec::new();
+        for mut dir in level {
+            stats.dirs_visited += dir.stats.dirs_visited;
+            stats.entries_seen += dir.stats.entries_seen;
+            if let Some(folder) = dir.folder.take() {
+                out.push(folder);
+            }
+            for child in dir.children.drain(..) {
+                next.push((child, dir.child_covered));
+            }
+        }
+        frontier = next;
+    }
     (out, stats)
 }
 
-fn visit_all(
+/// One directory's contribution to the full walk: its tagged folder, the
+/// non-excluded children to descend into, the coverage flag those children
+/// inherit, and the walk counts. Unlike the gaps walk, coverage does not prune,
+/// so children are returned even when this directory is covered.
+struct AllDir {
+    folder: Option<ScannedFolder>,
+    children: Vec<PathBuf>,
+    child_covered: bool,
+    stats: WalkStats,
+}
+
+/// Read and classify one directory for the full walk. Read-only.
+fn read_dir_all(
     root: &Path,
     dir: &Path,
     covered_from_above: bool,
     settings: &ScanSettings,
-    out: &mut Vec<ScannedFolder>,
-    stats: &mut WalkStats,
-) {
+) -> AllDir {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(err) => {
             tracing::warn!(dir = %dir.display(), error = %err, "skipping unreadable directory");
-            return;
+            return AllDir {
+                folder: None,
+                children: Vec::new(),
+                child_covered: covered_from_above,
+                stats: WalkStats::default(),
+            };
         }
     };
-    stats.dirs_visited += 1;
+    let mut stats = WalkStats {
+        dirs_visited: 1,
+        entries_seen: 0,
+    };
 
     let mut subdirs: Vec<PathBuf> = Vec::new();
     let mut audio_files: Vec<String> = Vec::new();
@@ -394,21 +434,23 @@ fn visit_all(
 
     audio_files.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
 
-    if let Ok(rel) = dir.strip_prefix(root) {
-        out.push(ScannedFolder {
-            rel_path: rel.to_path_buf(),
-            directly_holds_audio: !audio_files.is_empty(),
-            missing_ebook: !covered,
-            cover_files,
-            audio_files,
-        });
-    }
+    let folder = dir.strip_prefix(root).ok().map(|rel| ScannedFolder {
+        rel_path: rel.to_path_buf(),
+        directly_holds_audio: !audio_files.is_empty(),
+        missing_ebook: !covered,
+        cover_files,
+        audio_files,
+    });
     // Coverage does not stop the descent here; only exclusion does.
-    for sub in subdirs {
-        if is_excluded(root, &sub, settings) {
-            continue;
-        }
-        visit_all(root, &sub, covered, settings, out, stats);
+    let children = subdirs
+        .into_iter()
+        .filter(|sub| !is_excluded(root, sub, settings))
+        .collect();
+    AllDir {
+        folder,
+        children,
+        child_covered: covered,
+        stats,
     }
 }
 
@@ -665,6 +707,35 @@ mod tests {
                 (rel, (f.directly_holds_audio, f.missing_ebook))
             })
             .collect()
+    }
+
+    #[test]
+    fn parallel_full_walk_matches_across_concurrency_levels() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("AuthorA/Book1/01.mp3"));
+        touch(&dir.path().join("AuthorB/Covered/01.mp3"));
+        touch(&dir.path().join("AuthorB/Covered/Book.epub"));
+        touch(&dir.path().join("AuthorB/Covered/Disc2/02.mp3"));
+        let settings = default_settings(&[]);
+        let run = |threads: usize| {
+            let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
+            pool.install(|| {
+                scan_all(dir.path(), &settings)
+                    .iter()
+                    .map(|f| {
+                        let rel = f.rel_path.to_string_lossy().replace('\\', "/");
+                        (rel, (f.directly_holds_audio, f.missing_ebook))
+                    })
+                    .collect::<BTreeMap<String, (bool, bool)>>()
+            })
+        };
+        let one = run(1);
+        let many = run(8);
+        assert_eq!(one, many, "concurrency must not change the full walk");
+        // Disc2 is covered through its ancestor's ebook: holds audio, not missing.
+        assert_eq!(one["AuthorB/Covered/Disc2"], (true, false));
+        // AuthorA/Book1 is a gap: holds audio, missing ebook.
+        assert_eq!(one["AuthorA/Book1"], (true, true));
     }
 
     #[test]
