@@ -132,6 +132,27 @@ fn settings_menu() -> Markup {
                         data-theme-choice="system" aria-current="true" { "System" }
                 }
             }
+            div.settings-row {
+                span.settings-label { "Accent Color" }
+                span.accent-ctl {
+                    span.accent-dots {
+                        button.accent-dot type="button" data-accent="#06b6d4"
+                            style="background:#06b6d4"
+                            aria-label="Teal (default)" title="Teal (default)" {}
+                        button.accent-dot type="button" data-accent="#0e7490"
+                            style="background:#0e7490"
+                            aria-label="Deep teal" title="Deep teal" {}
+                        button.accent-dot type="button" data-accent="#c2410c"
+                            style="background:#c2410c"
+                            aria-label="Rust" title="Rust" {}
+                        button.accent-dot type="button" data-accent="#a21caf"
+                            style="background:#a21caf"
+                            aria-label="Magenta" title="Magenta" {}
+                    }
+                    input.accent-swatch id="accent-input" type="color"
+                        value="#06b6d4" aria-label="Accent color";
+                }
+            }
             div.settings-head { "Settings" }
             div.settings-row {
                 span.settings-label {

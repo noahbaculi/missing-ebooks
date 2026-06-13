@@ -1168,6 +1168,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn panel_renders_the_accent_color_control() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // A regular-weight row label, not a section header.
+        assert!(body.contains(r#"<span class="settings-label">Accent Color</span>"#));
+        // The native color picker.
+        assert!(body.contains(r#"id="accent-input""#));
+        assert!(body.contains(r#"type="color""#));
+        // The four preset quick-pick dots, the default teal first.
+        assert!(body.contains(r##"data-accent="#06b6d4""##));
+        assert!(body.contains(r##"data-accent="#0e7490""##));
+        assert!(body.contains(r##"data-accent="#c2410c""##));
+        assert!(body.contains(r##"data-accent="#a21caf""##));
+        // It sits inside the Theme section: after the theme choices, before the
+        // Settings header.
+        let theme_at = body.find(r#"data-theme-choice="system""#).unwrap();
+        let accent_at = body.find(r#"id="accent-input""#).unwrap();
+        let settings_head_at = body
+            .find(r#"<div class="settings-head">Settings</div>"#)
+            .unwrap();
+        assert!(
+            theme_at < accent_at && accent_at < settings_head_at,
+            "the Accent Color row should sit inside the Theme section, below the theme choices and above the Settings header"
+        );
+    }
+
+    #[tokio::test]
     async fn index_renders_the_hidden_connection_banner() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
