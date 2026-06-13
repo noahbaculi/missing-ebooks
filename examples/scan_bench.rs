@@ -317,6 +317,40 @@ fn write_report(report: &Report, path: &Path) -> Result<(), String> {
     std::fs::write(path, json).map_err(|e| format!("could not write {}: {e}", path.display()))
 }
 
+/// Read a small text file and trim it, or `None` if it is unreadable. Used for
+/// the single-line `/proc` values below; the harness degrades to a placeholder
+/// rather than failing when `/proc` is absent.
+fn read_trimmed(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
+}
+
+fn hostname() -> String {
+    read_trimmed(Path::new("/proc/sys/kernel/hostname")).unwrap_or_else(|| "unknown".to_string())
+}
+
+fn kernel_release() -> String {
+    read_trimmed(Path::new("/proc/sys/kernel/osrelease")).unwrap_or_else(|| "unknown".to_string())
+}
+
+/// `debug` or `release`, so the report flags an un-optimized local baseline.
+fn build_profile() -> &'static str {
+    if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    }
+}
+
+/// Seconds since the unix epoch, for the report and its filename.
+fn unix_time() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 fn main() -> ExitCode {
     // Wired in Task 11. The skeleton compiles so earlier tasks can add and test
     // pure helpers against a real target.
@@ -577,5 +611,19 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             p,
             std::path::PathBuf::from("scan-bench-smb-kessel-1749700000.json")
         );
+    }
+
+    #[test]
+    fn read_trimmed_reads_and_trims_or_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("value");
+        fs::write(&path, "  kessel\n").unwrap();
+        assert_eq!(read_trimmed(&path), Some("kessel".to_string()));
+        assert_eq!(read_trimmed(&dir.path().join("missing")), None);
+    }
+
+    #[test]
+    fn build_profile_reports_a_known_value() {
+        assert!(matches!(build_profile(), "debug" | "release"));
     }
 }
