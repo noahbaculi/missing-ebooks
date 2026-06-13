@@ -351,6 +351,23 @@ fn unix_time() -> u64 {
         .unwrap_or(0)
 }
 
+/// Flush the Linux page cache, dentries, and inodes so the next walk is cold.
+/// Only this step escalates; build and run as the normal user and enter the sudo
+/// password once (or pre-run `sudo -v`). The CIFS client cache lives in these
+/// caches, so this gives a genuine client-side cold walk. The SMB server may
+/// still hold the tree in its own RAM, so the cold number is the client's view.
+fn drop_caches() -> Result<(), String> {
+    let status = std::process::Command::new("sudo")
+        .args(["sh", "-c", "sync && echo 3 > /proc/sys/vm/drop_caches"])
+        .status()
+        .map_err(|e| format!("could not run sudo to drop caches: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("drop-caches command exited with {status}"))
+    }
+}
+
 fn main() -> ExitCode {
     // Wired in Task 11. The skeleton compiles so earlier tasks can add and test
     // pure helpers against a real target.
