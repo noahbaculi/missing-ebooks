@@ -1568,7 +1568,7 @@ li.leaving {
   font-size: 1.6rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: var(--color-warning);
+  color: var(--color-warning-text);
 }
 .gap-hero-label {
   font-size: 0.95rem;
@@ -1648,7 +1648,7 @@ li.leaving {
 }
 .gap-chip-num {
   font-weight: 700;
-  color: var(--color-warning);
+  color: var(--color-warning-text);
 }
 .gap-chip-clean .gap-chip-num {
   color: var(--color-success);
