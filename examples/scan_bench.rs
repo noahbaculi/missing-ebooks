@@ -512,7 +512,10 @@ fn main() -> ExitCode {
     let kernel = kernel_release();
     let profile = build_profile();
     let unix = unix_time();
-    let label = args.label.clone().unwrap_or_else(|| "unlabeled".to_string());
+    let label = args
+        .label
+        .clone()
+        .unwrap_or_else(|| "unlabeled".to_string());
     let mounts = std::fs::read_to_string("/proc/self/mounts").unwrap_or_default();
 
     println!(
@@ -524,9 +527,7 @@ fn main() -> ExitCode {
         println!("  note: build with --release for an honest local baseline");
     }
     if args.drop_caches {
-        println!(
-            "  note: cold means client-side cold; the SMB server may still cache the tree"
-        );
+        println!("  note: cold means client-side cold; the SMB server may still cache the tree");
     }
 
     let mut roots = Vec::new();
@@ -711,23 +712,33 @@ mod tests {
     #[test]
     fn parses_every_flag_in_space_form() {
         let parsed = parse_args(&argv(&[
-            "--config", "config.toml",
-            "--root", "/mnt/a",
-            "--root", "/mnt/b",
-            "--iterations", "3",
-            "--mode", "all",
+            "--config",
+            "config.toml",
+            "--root",
+            "/mnt/a",
+            "--root",
+            "/mnt/b",
+            "--iterations",
+            "3",
+            "--mode",
+            "all",
             "--drop-caches",
-            "--label", "smb",
-            "--out", "out.json",
+            "--label",
+            "smb",
+            "--out",
+            "out.json",
             "--no-save",
         ]))
         .unwrap()
         .unwrap();
         assert_eq!(parsed.config, Some(std::path::PathBuf::from("config.toml")));
-        assert_eq!(parsed.roots, vec![
-            std::path::PathBuf::from("/mnt/a"),
-            std::path::PathBuf::from("/mnt/b"),
-        ]);
+        assert_eq!(
+            parsed.roots,
+            vec![
+                std::path::PathBuf::from("/mnt/a"),
+                std::path::PathBuf::from("/mnt/b"),
+            ]
+        );
         assert_eq!(parsed.iterations, 3);
         assert_eq!(parsed.modes, vec![Mode::All]);
         assert!(parsed.drop_caches);
@@ -738,9 +749,13 @@ mod tests {
 
     #[test]
     fn parses_flags_in_equals_form() {
-        let parsed = parse_args(&argv(&["--config=config.toml", "--mode=gaps", "--iterations=2"]))
-            .unwrap()
-            .unwrap();
+        let parsed = parse_args(&argv(&[
+            "--config=config.toml",
+            "--mode=gaps",
+            "--iterations=2",
+        ]))
+        .unwrap()
+        .unwrap();
         assert_eq!(parsed.config, Some(std::path::PathBuf::from("config.toml")));
         assert_eq!(parsed.modes, vec![Mode::Gaps]);
         assert_eq!(parsed.iterations, 2);
@@ -766,7 +781,10 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
 
     #[test]
     fn mount_lookup_picks_the_longest_matching_prefix() {
-        let got = mount_for_path(MOUNTS, std::path::Path::new("/mnt/nas/Audiobooks/Author/Book"));
+        let got = mount_for_path(
+            MOUNTS,
+            std::path::Path::new("/mnt/nas/Audiobooks/Author/Book"),
+        );
         assert_eq!(
             got,
             Some((
