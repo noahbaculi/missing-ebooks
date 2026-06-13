@@ -77,6 +77,46 @@ fn phase_report(samples: &[f64], dirs: Option<usize>) -> PhaseReport {
     }
 }
 
+/// Which walk to time. `scan` (gaps-only) prunes the descent on coverage; `scan_all`
+/// (full) visits and records every directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Gaps,
+    All,
+}
+
+impl Mode {
+    /// The lowercase name used in stdout and as the report's mode key.
+    fn label(self) -> &'static str {
+        match self {
+            Mode::Gaps => "gaps",
+            Mode::All => "all",
+        }
+    }
+}
+
+/// Map `--mode`. `both` lists `All` first so the full walk's per-directory figure
+/// prints before the gaps walk.
+fn parse_modes(value: &str) -> Result<Vec<Mode>, String> {
+    match value {
+        "gaps" => Ok(vec![Mode::Gaps]),
+        "all" => Ok(vec![Mode::All]),
+        "both" => Ok(vec![Mode::All, Mode::Gaps]),
+        other => Err(format!("--mode: {other:?} must be gaps, all, or both")),
+    }
+}
+
+/// Parse `--iterations`; at least one measured run is required.
+fn parse_iterations(value: &str) -> Result<usize, String> {
+    let n: usize = value
+        .parse()
+        .map_err(|_| format!("--iterations: {value:?} is not a number"))?;
+    if n == 0 {
+        return Err("--iterations must be at least 1".to_string());
+    }
+    Ok(n)
+}
+
 fn main() -> ExitCode {
     // Wired in Task 11. The skeleton compiles so earlier tasks can add and test
     // pure helpers against a real target.
@@ -131,5 +171,20 @@ mod tests {
         let p = phase_report(&[10.0, 20.0], None);
         assert_eq!(p.median_ms, 15.0);
         assert_eq!(p.ms_per_dir, None);
+    }
+
+    #[test]
+    fn parse_modes_maps_each_keyword() {
+        assert_eq!(parse_modes("gaps"), Ok(vec![Mode::Gaps]));
+        assert_eq!(parse_modes("all"), Ok(vec![Mode::All]));
+        assert_eq!(parse_modes("both"), Ok(vec![Mode::All, Mode::Gaps]));
+        assert!(parse_modes("nope").is_err());
+    }
+
+    #[test]
+    fn parse_iterations_rejects_zero_and_non_numbers() {
+        assert_eq!(parse_iterations("5"), Ok(5));
+        assert!(parse_iterations("0").is_err());
+        assert!(parse_iterations("abc").is_err());
     }
 }
