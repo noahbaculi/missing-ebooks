@@ -13,15 +13,17 @@
   --color-muted: #6b7480;
   --color-primary: #605dff;
   --color-primary-content: #ffffff;
-  --color-warning: #f5a524;
-  --color-warning-content: #432a00;
+  /* "warning" is the gap / needs-attention role, rendered teal rather than amber:
+     amber could not clear AA as ink on a light surface without going muddy. Orange
+     is the documented backup. See docs/adr/0017. */
+  --color-warning: #06b6d4;
   --color-success: #00b074;
   --color-error: #ef4565;
   /* Status roles: the base tokens above fill and tint. These -text variants carry
      status color as text or a meaning-bearing icon, where the saturated base fails
      contrast on a light surface. */
   --color-success-text: #046b4d;
-  --color-warning-text: #955800;
+  --color-warning-text: #0e7490;
   --color-error-text: #be123c;
   --guide: #dfe2e7;
   --color-border: #e5e6e9;
@@ -38,12 +40,11 @@
   --color-muted: #a8b1be;
   --color-primary: #7c79ff;
   --color-primary-content: #14181d;
-  --color-warning: #f5a524;
-  --color-warning-content: #2a1a00;
+  --color-warning: #06b6d4;
   --color-success: #00b074;
   --color-error: #ff6b85;
   --color-success-text: #34d399;
-  --color-warning-text: #f5a524;
+  --color-warning-text: #22d3ee;
   --color-error-text: #ff8095;
   --guide: #2b323b;
   --color-border: #333b46;
@@ -243,8 +244,8 @@ details > summary::-webkit-details-marker {
   white-space: nowrap;
 }
 .root-badge-gaps {
-  background: var(--color-warning);
-  color: var(--color-warning-content);
+  background: color-mix(in srgb, var(--color-warning) 16%, var(--color-base-100));
+  color: var(--color-warning-text);
 }
 .root-badge-clean {
   background: color-mix(in srgb, var(--color-success) 18%, var(--color-base-100));
@@ -350,7 +351,7 @@ details[open] > summary .chev {
   color: var(--color-muted);
 }
 /* the kebab stays grey even in flagged rows, where .flagged .icon would
-   otherwise tint it amber along with the folder icon */
+   otherwise tint it teal along with the folder icon */
 .flagged .actions-trigger .icon {
   color: var(--color-muted);
 }
@@ -393,7 +394,7 @@ details[open] > summary .chev {
   color: var(--color-muted);
 }
 /* the search toggle stays grey even in flagged rows, where .flagged .icon
-   would otherwise tint it amber along with the folder icon */
+   would otherwise tint it teal along with the folder icon */
 .flagged .links-toggle .icon {
   color: var(--color-muted);
 }
@@ -440,13 +441,15 @@ details[open] > summary .chev {
   white-space: nowrap;
 }
 .badge-warning {
-  background: var(--color-warning);
-  color: var(--color-warning-content);
+  background: color-mix(in srgb, var(--color-warning) 16%, var(--color-base-100));
+  color: var(--color-warning-text);
 }
 
-/* flagged folders: amber icon + bolder name; the badge carries the label */
+/* flagged folders: teal icon + bolder name; the badge carries the label.
+   The icon is foreground, so it takes the -text variant: the saturated base
+   fails contrast as a glyph on a light surface. Matches .gap-hero-num. */
 .flagged .icon {
-  color: var(--color-warning);
+  color: var(--color-warning-text);
 }
 .flagged .name {
   font-weight: 600;
@@ -454,7 +457,7 @@ details[open] > summary .chev {
 
 /* structural-smell microlabels: a muted organizational note on a flagged row,
    set off by a leading middot. Not a filled badge: organization is a different
-   axis from coverage, so it stays quieter than the amber "needs ebook" badge. */
+   axis from coverage, so it stays quieter than the teal "needs ebook" badge. */
 .smell {
   flex: none;
   font-size: 0.74rem;
@@ -842,10 +845,10 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   .name {
     min-width: 0;
   }
-  /* the "needs ebook" pill collapses to an amber dot. text-indent + overflow hide
+  /* the "needs ebook" pill collapses to a teal dot. text-indent + overflow hide
      the label visually while keeping it in the DOM and the accessibility tree, so
-     screen readers still announce it and the HTML tests still match. the amber fill
-     comes from .badge-warning; .badge already carries flex: none. */
+     screen readers still announce it and the HTML tests still match. .badge already
+     carries flex: none; the solid dot fill is reasserted just below. */
   .badge {
     width: 0.5rem;
     height: 0.5rem;
@@ -855,6 +858,11 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     overflow: hidden;
     white-space: nowrap;
     text-indent: 100%;
+  }
+  /* the collapsed dot needs a solid fill to read at 0.5rem; the desktop tint would
+     wash out, so .badge-warning reasserts the solid teal here. */
+  .badge-warning {
+    background: var(--color-warning-text);
   }
   /* flagged and container rows stay on one line: a long name wraps inside its own
      box instead of bumping the dot and kebab down to a second line. covered rows
