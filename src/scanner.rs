@@ -139,16 +139,42 @@ pub struct FlaggedFolder {
     pub audio_files: Vec<String>,
 }
 
+/// Counts from one walk: the directory and entry totals that drive wall time on a
+/// network mount, where each is roughly a round trip. The scanner records them so a
+/// benchmark can divide its timings without re-walking; production ignores them.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct WalkStats {
+    /// Directories whose entries were read (one successful `read_dir` each).
+    pub dirs_visited: usize,
+    /// Directory entries iterated across every visited directory, i.e. the number of
+    /// `file_type()` calls. Includes files that are neither audio nor ebook.
+    pub entries_seen: usize,
+}
+
 /// Walk `root` and return flagged folders, each with the audio filenames it holds,
 /// as paths relative to `root`. Order is unspecified; the tree builder sorts.
 #[must_use]
 pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<FlaggedFolder> {
-    let mut flagged = Vec::new();
-    visit(root, root, settings, &mut flagged);
-    flagged
+    scan_with_stats(root, settings).0
 }
 
-fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<FlaggedFolder>) {
+/// Like `scan`, but also returns the walk's directory and entry counts. The flagged
+/// folders are identical; only a benchmark needs the counts.
+#[must_use]
+pub fn scan_with_stats(root: &Path, settings: &ScanSettings) -> (Vec<FlaggedFolder>, WalkStats) {
+    let mut flagged = Vec::new();
+    let mut stats = WalkStats::default();
+    visit(root, root, settings, &mut flagged, &mut stats);
+    (flagged, stats)
+}
+
+fn visit(
+    root: &Path,
+    dir: &Path,
+    settings: &ScanSettings,
+    out: &mut Vec<FlaggedFolder>,
+    stats: &mut WalkStats,
+) {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         // Unreadable directory (for example permission denied): log and skip it.
@@ -157,12 +183,14 @@ fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<Flagged
             return;
         }
     };
+    stats.dirs_visited += 1;
 
     let mut subdirs: Vec<PathBuf> = Vec::new();
     let mut audio_files: Vec<String> = Vec::new();
     let mut covered = false;
 
     for entry in entries.flatten() {
+        stats.entries_seen += 1;
         let Ok(file_type) = entry.file_type() else {
             continue;
         };
@@ -213,7 +241,7 @@ fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<Flagged
         if is_excluded(root, &sub, settings) {
             continue;
         }
-        visit(root, &sub, settings, out);
+        visit(root, &sub, settings, out, stats);
     }
 }
 
@@ -244,9 +272,19 @@ pub struct ScannedFolder {
 /// unspecified; the tree builder sorts.
 #[must_use]
 pub fn scan_all(root: &Path, settings: &ScanSettings) -> Vec<ScannedFolder> {
+    scan_all_with_stats(root, settings).0
+}
+
+/// Like `scan_all`, but also returns the walk's directory and entry counts.
+#[must_use]
+pub fn scan_all_with_stats(
+    root: &Path,
+    settings: &ScanSettings,
+) -> (Vec<ScannedFolder>, WalkStats) {
     let mut out = Vec::new();
-    visit_all(root, root, false, settings, &mut out);
-    out
+    let mut stats = WalkStats::default();
+    visit_all(root, root, false, settings, &mut out, &mut stats);
+    (out, stats)
 }
 
 fn visit_all(
@@ -255,6 +293,7 @@ fn visit_all(
     covered_from_above: bool,
     settings: &ScanSettings,
     out: &mut Vec<ScannedFolder>,
+    stats: &mut WalkStats,
 ) {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
@@ -263,6 +302,7 @@ fn visit_all(
             return;
         }
     };
+    stats.dirs_visited += 1;
 
     let mut subdirs: Vec<PathBuf> = Vec::new();
     let mut audio_files: Vec<String> = Vec::new();
@@ -270,6 +310,7 @@ fn visit_all(
     let mut markers: Vec<String> = Vec::new();
 
     for entry in entries.flatten() {
+        stats.entries_seen += 1;
         let Ok(file_type) = entry.file_type() else {
             continue;
         };
@@ -322,7 +363,7 @@ fn visit_all(
         if is_excluded(root, &sub, settings) {
             continue;
         }
-        visit_all(root, &sub, covered, settings, out);
+        visit_all(root, &sub, covered, settings, out, stats);
     }
 }
 
@@ -705,5 +746,53 @@ mod tests {
             .find(|f| f.rel_path == Path::new(""))
             .unwrap();
         assert!(root.audio_files.is_empty());
+    }
+
+    #[test]
+    fn scan_all_with_stats_counts_dirs_and_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Gap/01.mp3"));
+        touch(&dir.path().join("Gap/02.mp3"));
+        touch(&dir.path().join("Covered/01.mp3"));
+        touch(&dir.path().join("Covered/Book.epub"));
+        let (_folders, stats) = scan_all_with_stats(dir.path(), &default_settings(&[]));
+        assert_eq!(stats.dirs_visited, 3); // root, Gap, Covered
+        assert_eq!(stats.entries_seen, 6); // root sees 2 subdirs; Gap and Covered 2 files each
+    }
+
+    #[test]
+    fn scan_with_stats_prunes_covered_subtrees() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Series/Series.epub"));
+        touch(&dir.path().join("Series/Book 1/01.mp3"));
+        let settings = default_settings(&[]);
+        let (_flagged, gaps_stats) = scan_with_stats(dir.path(), &settings);
+        let (_all, all_stats) = scan_all_with_stats(dir.path(), &settings);
+        // The gaps walk stops at the covered Series and never reads Book 1.
+        assert_eq!(gaps_stats.dirs_visited, 2); // root, Series
+        assert_eq!(all_stats.dirs_visited, 3); // root, Series, Book 1
+        assert!(gaps_stats.entries_seen < all_stats.entries_seen);
+    }
+
+    #[test]
+    fn walk_stats_skip_excluded_subtrees() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("@eaDir/01.mp3"));
+        touch(&dir.path().join("@eaDir/02.mp3"));
+        touch(&dir.path().join("Book/01.mp3"));
+        let audio: Vec<String> = [".mp3"].iter().map(|s| s.to_string()).collect();
+        let ebook: Vec<String> = [".epub"].iter().map(|s| s.to_string()).collect();
+        let excluded: Vec<String> = vec!["@eadir".to_string()];
+        let settings = ScanSettings::compile(ScanInputs {
+            audio_exts: &audio,
+            ebook_exts: &ebook,
+            excluded_dirs: &excluded,
+            exclude_globs: &[],
+        })
+        .unwrap();
+        let (_folders, stats) = scan_all_with_stats(dir.path(), &settings);
+        // @eaDir is pruned: root and Book are read, the excluded dir is not.
+        assert_eq!(stats.dirs_visited, 2); // root, Book
+        assert_eq!(stats.entries_seen, 3); // root sees @eaDir + Book; Book sees 01.mp3
     }
 }
