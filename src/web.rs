@@ -1134,6 +1134,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn app_script_defines_the_accent_applier() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The derivation helper, the inline ink token it sets, and the key.
+        assert!(body.contains("deriveWarningInk"));
+        assert!(body.contains("--color-warning-text"));
+        assert!(body.contains(r#""accent""#));
+        // The applier and the persist-and-apply entry point.
+        assert!(body.contains("applyAccent"));
+        assert!(body.contains("setAccent"));
+    }
+
+    #[tokio::test]
     async fn navbar_renders_a_settings_cog_with_theme_and_confirm_controls() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));

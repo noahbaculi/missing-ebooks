@@ -54,6 +54,7 @@
     localStorage.setItem(THEME_KEY, choice);
     document.documentElement.dataset.theme = resolveTheme(choice);
     markActiveTheme(choice);
+    applyAccent(storedAccent());
   }
 
   /**
@@ -79,8 +80,226 @@
   darkQuery.addEventListener("change", function () {
     if (storedTheme() === "system") {
       document.documentElement.dataset.theme = resolveTheme("system");
+      applyAccent(storedAccent());
     }
   });
+
+  // ---- accent color preference ----
+
+  var ACCENT_KEY = "accent";
+  var ACCENT_DEFAULT = "#06b6d4";
+  var ACCENT_RE = /^#[0-9a-fA-F]{6}$/;
+
+  /**
+   * Relative luminance of a #rrggbb hex, per WCAG.
+   * @param {string} hex
+   * @returns {number}
+   */
+  function luminance(hex) {
+    var ch = [1, 3, 5].map(function (i) {
+      var c = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  }
+
+  /**
+   * WCAG contrast ratio between two #rrggbb hexes.
+   * @param {string} a
+   * @param {string} b
+   * @returns {number}
+   */
+  function contrastRatio(a, b) {
+    var l1 = luminance(a);
+    var l2 = luminance(b);
+    var hi = Math.max(l1, l2);
+    var lo = Math.min(l1, l2);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  /**
+   * Blend `pct`% of `hex` into `surf` in sRGB, matching CSS color-mix.
+   * @param {string} hex
+   * @param {number} pct
+   * @param {string} surf
+   * @returns {string}
+   */
+  function mixColors(hex, pct, surf) {
+    var f = pct / 100;
+    var out = "#";
+    for (var i = 1; i < 6; i += 2) {
+      var h = parseInt(hex.slice(i, i + 2), 16);
+      var s = parseInt(surf.slice(i, i + 2), 16);
+      out += Math.round(h * f + s * (1 - f))
+        .toString(16)
+        .padStart(2, "0");
+    }
+    return out;
+  }
+
+  /**
+   * Convert a #rrggbb hex to HSL (h in degrees, s and l in percent).
+   * @param {string} hex
+   * @returns {{ h: number, s: number, l: number }}
+   */
+  function hexToHsl(hex) {
+    var r = parseInt(hex.slice(1, 3), 16) / 255;
+    var g = parseInt(hex.slice(3, 5), 16) / 255;
+    var b = parseInt(hex.slice(5, 7), 16) / 255;
+    var mx = Math.max(r, g, b);
+    var mn = Math.min(r, g, b);
+    var l = (mx + mn) / 2;
+    var h = 0;
+    var s = 0;
+    if (mx !== mn) {
+      var d = mx - mn;
+      s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+      if (mx === r) h = (g - b) / d + (g < b ? 6 : 0);
+      else if (mx === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h /= 6;
+    }
+    return { h: h * 360, s: s * 100, l: l * 100 };
+  }
+
+  /**
+   * Convert HSL (h degrees, s and l percent) to a #rrggbb hex.
+   * @param {number} h
+   * @param {number} s
+   * @param {number} l
+   * @returns {string}
+   */
+  function hslToHex(h, s, l) {
+    h /= 360;
+    s /= 100;
+    l /= 100;
+    /**
+     * @param {number} p
+     * @param {number} q
+     * @param {number} t
+     * @returns {number}
+     */
+    function hue2(p, q, t) {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    }
+    var r = l;
+    var g = l;
+    var b = l;
+    if (s !== 0) {
+      var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      var p = 2 * l - q;
+      r = hue2(p, q, h + 1 / 3);
+      g = hue2(p, q, h);
+      b = hue2(p, q, h - 1 / 3);
+    }
+    return (
+      "#" +
+      [r, g, b]
+        .map(function (v) {
+          return Math.round(v * 255)
+            .toString(16)
+            .padStart(2, "0");
+        })
+        .join("")
+    );
+  }
+
+  /**
+   * Derive a readable ink for the gap role from a base color, for one theme. The
+   * pill background is `mixColors(base, 16, surface)`; scan lightness at the base
+   * hue for the most vivid shade that clears AA against it, dark ink for light
+   * and light ink for dark. Falls back to a clamped extreme if nothing reaches
+   * AA. Keep this in sync with the duplicate in the pre-paint bootstrap
+   * (`PREPAINT_JS` in src/web/render.rs).
+   * @param {string} base
+   * @param {"light" | "dark"} theme
+   * @returns {string}
+   */
+  function deriveWarningInk(base, theme) {
+    var surf = theme === "dark" ? "#1d232a" : "#ffffff";
+    var bg = mixColors(base, 16, surf);
+    var hsl = hexToHsl(base);
+    var sat = Math.max(hsl.s, 42);
+    /** @type {{ c: string, l: number }[]} */
+    var strong = [];
+    /** @type {{ c: string, l: number }[]} */
+    var ok = [];
+    for (var L = 8; L <= 94; L++) {
+      var c = hslToHex(hsl.h, sat, L);
+      var r = contrastRatio(c, bg);
+      if (r >= 5.5) strong.push({ c: c, l: L });
+      else if (r >= 4.5) ok.push({ c: c, l: L });
+    }
+    var pool = strong.length ? strong : ok;
+    if (pool.length) {
+      var best = pool[0];
+      for (var i = 1; i < pool.length; i++) {
+        var better = theme === "dark" ? pool[i].l < best.l : pool[i].l > best.l;
+        if (better) best = pool[i];
+      }
+      return best.c;
+    }
+    return hslToHex(hsl.h, sat, theme === "dark" ? 90 : 15);
+  }
+
+  /**
+   * The stored accent base, or the default when unset or malformed.
+   * @returns {string}
+   */
+  function storedAccent() {
+    var v = localStorage.getItem(ACCENT_KEY);
+    return v && ACCENT_RE.test(v) ? v : ACCENT_DEFAULT;
+  }
+
+  /**
+   * Ring the quick-pick dot matching the current base, clear the rest.
+   * @param {string} base
+   */
+  function markActiveAccent(base) {
+    var dots = document.querySelectorAll("[data-accent]");
+    for (var i = 0; i < dots.length; i++) {
+      var dot = /** @type {HTMLElement} */ (dots[i]);
+      var on = (dot.dataset.accent || "").toLowerCase() === base.toLowerCase();
+      dot.classList.toggle("accent-dot-active", on);
+    }
+  }
+
+  /**
+   * Paint the accent. The default writes no override, so the stylesheet's tuned
+   * tokens apply; a custom color sets the base and the per-theme derived ink
+   * inline on <html>, which outranks the stylesheet. Reflects the active dot.
+   * @param {string} base
+   */
+  function applyAccent(base) {
+    var root = document.documentElement;
+    if (base.toLowerCase() === ACCENT_DEFAULT) {
+      root.style.removeProperty("--color-warning");
+      root.style.removeProperty("--color-warning-text");
+    } else {
+      var theme = resolveTheme(storedTheme());
+      root.style.setProperty("--color-warning", base);
+      root.style.setProperty("--color-warning-text", deriveWarningInk(base, theme));
+    }
+    markActiveAccent(base);
+  }
+
+  /**
+   * Persist a chosen accent and apply it. The default clears the stored key.
+   * @param {string} base
+   */
+  function setAccent(base) {
+    if (base.toLowerCase() === ACCENT_DEFAULT) {
+      localStorage.removeItem(ACCENT_KEY);
+    } else {
+      localStorage.setItem(ACCENT_KEY, base);
+    }
+    applyAccent(base);
+  }
 
   // ---- confirm-before-marking preference ----
 
@@ -138,6 +357,9 @@
     if (boldSw) boldSw.checked = stylePrefEnabled(BOLD_KEY);
     var italicSw = /** @type {HTMLInputElement | null} */ (document.getElementById("italic-nested-toggle"));
     if (italicSw) italicSw.checked = stylePrefEnabled(ITALIC_KEY);
+    var accentInput = /** @type {HTMLInputElement | null} */ (document.getElementById("accent-input"));
+    if (accentInput) accentInput.value = storedAccent();
+    markActiveAccent(storedAccent());
   }
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -175,6 +397,22 @@
       italicSw.addEventListener("change", function (e) {
         var el = /** @type {HTMLInputElement} */ (e.currentTarget);
         setStylePref(ITALIC_KEY, "data-italic-nested", el.checked);
+      });
+    }
+
+    var accentInput = document.getElementById("accent-input");
+    if (accentInput) {
+      accentInput.addEventListener("input", function (e) {
+        var el = /** @type {HTMLInputElement} */ (e.currentTarget);
+        setAccent(el.value);
+      });
+    }
+
+    var accentDots = document.querySelectorAll("[data-accent]");
+    for (var d = 0; d < accentDots.length; d++) {
+      accentDots[d].addEventListener("click", function (e) {
+        var el = /** @type {HTMLElement} */ (e.currentTarget);
+        setAccent(el.dataset.accent || ACCENT_DEFAULT);
       });
     }
   });
