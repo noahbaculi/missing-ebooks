@@ -110,6 +110,10 @@ These environment variables override the file when set:
 
 Extension lists, exclude rules, and search links are file-only. The printed template documents every key.
 
+### Logging
+
+Set `MISSING_EBOOKS_LOG` to control verbosity: `error`, `warn`, `info` (the default), `debug`, or `trace`. It is scoped to this app, so the dependencies stay quiet. `debug` adds per-operation timings (per-root scans, cache hits and misses, marker writes, and request and render latency), the level to run when checking how a real library performs. `trace` adds a line per directory walked. For full control, set `RUST_LOG` to override it with standard `tracing` filter syntax, for example `RUST_LOG=missing_ebooks::scanner=trace`.
+
 ## Markers
 
 Two fixed marker files mark a folder as covered on purpose. The names are not configurable.

@@ -15,6 +15,9 @@ services:
       PGID: 1000
       MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks
       # MISSING_EBOOKS_TTL_SECONDS: 60
+      # Log verbosity: error, warn, info (default), debug, or trace. debug shows
+      # per-operation timings; trace adds a line per directory.
+      # MISSING_EBOOKS_LOG: debug
     volumes:
       # Mount your library read-write (the app writes marker files into it).
       - /mnt/nas/Audiobooks:/audiobooks

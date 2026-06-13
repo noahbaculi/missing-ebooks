@@ -178,6 +178,11 @@ pub const CONFIG_TEMPLATE: &str = r##"# One or more library roots. Each is scann
 library_roots = []
 # Example: library_roots = ["/mnt/jane-nas/Entertainment/Audiobooks"]
 
+# Logging is set with the MISSING_EBOOKS_LOG environment variable, not in this
+# file: error, warn, info (default), debug, or trace. debug adds per-operation
+# timings (scans, cache, marker writes, requests); trace adds a line per
+# directory. RUST_LOG, if set, overrides it with full tracing filter syntax.
+
 # Address the HTTP server binds. Loopback by default (see ADR-0003). Set
 # "0.0.0.0" to listen on all interfaces; the server logs a warning at startup
 # when bound to a non-loopback address. Also settable as MISSING_EBOOKS_BIND.
