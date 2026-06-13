@@ -244,35 +244,6 @@ struct WalkCounts {
     audio_files: usize,
 }
 
-/// Run one read-only walk and tally its counts. A gap is a folder that directly
-/// holds audio and is not covered.
-fn run_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> WalkCounts {
-    match mode {
-        Mode::All => {
-            let folders = scanner::scan_all(root, settings);
-            let gaps = folders
-                .iter()
-                .filter(|f| f.directly_holds_audio && f.missing_ebook)
-                .count();
-            let audio_files = folders.iter().map(|f| f.audio_files.len()).sum();
-            WalkCounts {
-                dirs_walked: Some(folders.len()),
-                gaps,
-                audio_files,
-            }
-        }
-        Mode::Gaps => {
-            let flagged = scanner::scan(root, settings);
-            let audio_files = flagged.iter().map(|f| f.audio_files.len()).sum();
-            WalkCounts {
-                dirs_walked: None,
-                gaps: flagged.len(),
-                audio_files,
-            }
-        }
-    }
-}
-
 /// The whole run: environment context plus one entry per root.
 #[derive(Debug, Serialize)]
 struct Report {
@@ -400,12 +371,44 @@ time only. For a syscall-level cross-check, run once under
     )
 }
 
-/// Time one read-only walk and return its wall-clock in milliseconds and counts.
-fn time_once(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCounts) {
-    let start = Instant::now();
-    let counts = run_walk(mode, root, settings);
-    let ms = round3(start.elapsed().as_secs_f64() * 1000.0);
-    (ms, counts)
+/// Time one read-only walk and tally what it found. Only the walk sits inside the
+/// `Instant`; the gap and audio counts are derived from the result after the clock
+/// stops, so the in-memory tally never inflates the measured wall-clock.
+fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCounts) {
+    match mode {
+        Mode::All => {
+            let start = Instant::now();
+            let folders = scanner::scan_all(root, settings);
+            let ms = round3(start.elapsed().as_secs_f64() * 1000.0);
+            let gaps = folders
+                .iter()
+                .filter(|f| f.directly_holds_audio && f.missing_ebook)
+                .count();
+            let audio_files = folders.iter().map(|f| f.audio_files.len()).sum();
+            (
+                ms,
+                WalkCounts {
+                    dirs_walked: Some(folders.len()),
+                    gaps,
+                    audio_files,
+                },
+            )
+        }
+        Mode::Gaps => {
+            let start = Instant::now();
+            let flagged = scanner::scan(root, settings);
+            let ms = round3(start.elapsed().as_secs_f64() * 1000.0);
+            let audio_files = flagged.iter().map(|f| f.audio_files.len()).sum();
+            (
+                ms,
+                WalkCounts {
+                    dirs_walked: None,
+                    gaps: flagged.len(),
+                    audio_files,
+                },
+            )
+        }
+    }
 }
 
 /// Cold phase: drop the cache before each of `iterations` runs, so every sample
@@ -420,7 +423,7 @@ fn cold_phase(
     let mut counts = None;
     for _ in 0..iterations {
         drop_caches()?;
-        let (ms, c) = time_once(mode, root, settings);
+        let (ms, c) = time_walk(mode, root, settings);
         samples.push(ms);
         counts = Some(c);
     }
@@ -436,10 +439,10 @@ fn warm_phase(
     settings: &ScanSettings,
     iterations: usize,
 ) -> (PhaseReport, WalkCounts) {
-    let (_, counts) = time_once(mode, root, settings);
+    let (_, counts) = time_walk(mode, root, settings);
     let mut samples = Vec::with_capacity(iterations);
     for _ in 0..iterations {
-        let (ms, _) = time_once(mode, root, settings);
+        let (ms, _) = time_walk(mode, root, settings);
         samples.push(ms);
     }
     (phase_report(&samples, counts.dirs_walked), counts)
@@ -855,14 +858,14 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
     }
 
     #[test]
-    fn run_walk_all_counts_dirs_gaps_and_audio() {
+    fn time_walk_all_counts_dirs_gaps_and_audio() {
         let dir = tempfile::tempdir().unwrap();
         // A gap (audio, no cover) and a covered audiobook (audio + epub).
         touch(&dir.path().join("Gap/01.mp3"));
         touch(&dir.path().join("Gap/02.mp3"));
         touch(&dir.path().join("Covered/01.mp3"));
         touch(&dir.path().join("Covered/Book.epub"));
-        let counts = run_walk(Mode::All, dir.path(), &bench_settings());
+        let (_ms, counts) = time_walk(Mode::All, dir.path(), &bench_settings());
         // Root + Gap + Covered are all recorded by the full walk.
         assert_eq!(counts.dirs_walked, Some(3));
         assert_eq!(counts.gaps, 1);
@@ -870,12 +873,12 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
     }
 
     #[test]
-    fn run_walk_gaps_has_no_dir_count() {
+    fn time_walk_gaps_has_no_dir_count() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Gap/01.mp3"));
         touch(&dir.path().join("Covered/01.mp3"));
         touch(&dir.path().join("Covered/Book.epub"));
-        let counts = run_walk(Mode::Gaps, dir.path(), &bench_settings());
+        let (_ms, counts) = time_walk(Mode::Gaps, dir.path(), &bench_settings());
         assert_eq!(counts.dirs_walked, None);
         assert_eq!(counts.gaps, 1);
         assert_eq!(counts.audio_files, 1);
