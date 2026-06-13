@@ -252,7 +252,7 @@ details > summary::-webkit-details-marker {
 }
 .root-badge-error {
   background: color-mix(in srgb, var(--color-error) 16%, var(--color-base-100));
-  color: var(--color-error);
+  color: var(--color-error-text);
 }
 
 /* menu / tree */
@@ -556,7 +556,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   color: var(--color-base-content);
 }
 .alert .icon {
-  color: var(--color-error);
+  color: var(--color-error-text);
 }
 
 .empty {
@@ -1227,7 +1227,7 @@ li.leaving {
 }
 .conn-banner.is-failed {
   background: color-mix(in srgb, var(--color-error) 14%, var(--color-base-100));
-  color: var(--color-error);
+  color: var(--color-error-text);
   border-bottom-color: color-mix(in srgb, var(--color-error) 35%, transparent);
 }
 .conn-banner.is-reconnected {
@@ -1313,7 +1313,7 @@ li.leaving {
   border-left: 2px solid color-mix(in srgb, var(--color-error) 50%, transparent);
   background: color-mix(in srgb, var(--color-error) 9%, var(--color-base-100));
   font-size: 0.78rem;
-  color: var(--color-error);
+  color: var(--color-error-text);
 }
 .mark-failed-icon {
   flex: none;
@@ -1332,7 +1332,7 @@ li.leaving {
   flex: none;
   margin-left: auto;
   border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
-  color: var(--color-error);
+  color: var(--color-error-text);
 }
 
 /* ---- saving: a gaps-only row waits in place until the write is confirmed ---- */
@@ -1654,7 +1654,7 @@ li.leaving {
   color: var(--color-success-text);
 }
 .gap-chip-error .gap-chip-num {
-  color: var(--color-error);
+  color: var(--color-error-text);
   font-weight: 600;
 }
 
