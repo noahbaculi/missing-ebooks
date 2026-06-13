@@ -265,6 +265,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_or_build_single_flights_a_cold_slot() {
+        // Two readers race a cold slot at once. The lock is held across build, so
+        // one builds and the other returns the stored view rather than building a
+        // second time. This is the guarantee the startup warm leans on to not
+        // double-scan a request that races it (see main.rs).
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let cache = test_cache(Some(Duration::from_secs(600)));
+        let builds = AtomicUsize::new(0);
+        let build = || async {
+            builds.fetch_add(1, Ordering::SeqCst);
+            // Yield while holding the lock so the other reader actually contends.
+            tokio::task::yield_now().await;
+            sample_view("built")
+        };
+        let (first, second) = tokio::join!(
+            cache.get_or_build(ViewMode::GapsOnly, build),
+            cache.get_or_build(ViewMode::GapsOnly, build),
+        );
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "both readers must see the one stored view"
+        );
+        assert_eq!(
+            builds.load(Ordering::SeqCst),
+            1,
+            "a cold slot must build exactly once under contention"
+        );
+    }
+
+    #[tokio::test]
     async fn rebuild_always_builds_and_stores_for_its_mode() {
         let cache = test_cache(Some(Duration::from_secs(600)));
         let first = cache
