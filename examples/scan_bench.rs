@@ -8,6 +8,7 @@
 //! entries and names; nothing here writes to the library. The single privileged
 //! action is the optional `--drop-caches` page-cache flush on Linux.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -205,6 +206,30 @@ fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
     }))
 }
 
+/// Given the text of `/proc/self/mounts` and an absolute path, return the
+/// `(fstype, options)` of the mount whose mount point is the longest prefix of
+/// the path. Columns are device, mount point, fstype, options; anything shorter
+/// is skipped. Good enough for naming the filesystem under a root; it does not
+/// decode the octal escapes `/proc` uses for spaces in mount points.
+fn mount_for_path(mounts: &str, path: &Path) -> Option<(String, String)> {
+    let mut best: Option<(usize, String, String)> = None;
+    for line in mounts.lines() {
+        let mut cols = line.split_whitespace();
+        let (_device, Some(mountpoint), Some(fstype), Some(options)) =
+            (cols.next(), cols.next(), cols.next(), cols.next())
+        else {
+            continue;
+        };
+        if path.starts_with(Path::new(mountpoint)) {
+            let len = mountpoint.len();
+            if best.as_ref().is_none_or(|(best_len, _, _)| len > *best_len) {
+                best = Some((len, fstype.to_string(), options.to_string()));
+            }
+        }
+    }
+    best.map(|(_, fstype, options)| (fstype, options))
+}
+
 fn main() -> ExitCode {
     // Wired in Task 11. The skeleton compiles so earlier tasks can add and test
     // pure helpers against a real target.
@@ -346,5 +371,33 @@ mod tests {
         assert!(parse_args(&argv(&["--nope"])).is_err());
         assert!(parse_args(&argv(&["--config"])).is_err());
         assert!(parse_args(&argv(&["stray"])).is_err());
+    }
+
+    const MOUNTS: &str = "\
+/dev/sda1 / ext4 rw,relatime 0 0
+//nas/abooks /mnt/nas/Audiobooks cifs rw,vers=3.1.1,cache=strict,actimeo=1 0 0
+tmpfs /tmp tmpfs rw,nosuid 0 0";
+
+    #[test]
+    fn mount_lookup_picks_the_longest_matching_prefix() {
+        let got = mount_for_path(MOUNTS, std::path::Path::new("/mnt/nas/Audiobooks/Author/Book"));
+        assert_eq!(
+            got,
+            Some((
+                "cifs".to_string(),
+                "rw,vers=3.1.1,cache=strict,actimeo=1".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn mount_lookup_falls_back_to_root() {
+        let got = mount_for_path(MOUNTS, std::path::Path::new("/home/noah/abooks"));
+        assert_eq!(got, Some(("ext4".to_string(), "rw,relatime".to_string())));
+    }
+
+    #[test]
+    fn mount_lookup_returns_none_without_a_match() {
+        assert_eq!(mount_for_path("", std::path::Path::new("/mnt/x")), None);
     }
 }
