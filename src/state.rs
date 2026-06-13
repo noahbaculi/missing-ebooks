@@ -88,8 +88,10 @@ impl Cache {
             && let Some(ttl) = self.ttl
             && entry.stored_at.elapsed() < ttl
         {
+            tracing::debug!(mode = mode.as_query(), "cache hit");
             return Arc::clone(&entry.view);
         }
+        tracing::debug!(mode = mode.as_query(), "cache miss");
         let view = build().await;
         store_fresh(slots.slot(mode), view)
     }
