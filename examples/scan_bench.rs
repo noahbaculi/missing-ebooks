@@ -7,6 +7,14 @@
 //! cache conditions, then saves a JSON report. The walks only read directory
 //! entries and names; nothing here writes to the library. The single privileged
 //! action is the optional `--drop-caches` page-cache flush on Linux.
+//!
+//! On a prod box: build and run with `--release` so the timings reflect the
+//! shipped binary, not a debug build. `--drop-caches` flushes the page cache for
+//! the cold runs and needs root on Linux, so run that invocation under `sudo`;
+//! omit the flag for warm-only numbers. With no Rust toolchain on the box, build
+//! `target/release/examples/scan_bench` on a machine of matching OS and arch and
+//! copy the binary over. Point it at the real mounts with `--config config.toml`,
+//! repeated `--root PATH`, or `MISSING_EBOOKS_LIBRARY_ROOTS`.
 
 use std::collections::BTreeMap;
 use std::path::Path;
