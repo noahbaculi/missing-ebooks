@@ -490,8 +490,8 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // The root sections live inside a positioned wrapper so the rescan skeleton
-        // can overlay them, and inside #roots so htmx can swap them in place.
+        // The root sections live inside a positioned wrapper so the rescan bar
+        // can pin above them, and inside #roots so htmx can swap them in place.
         assert!(body.contains(r#"class="roots-wrap""#));
         assert!(body.contains(r#"id="roots""#));
         // The sections themselves are unchanged.
@@ -621,7 +621,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rescan_is_an_in_place_htmx_swap_with_a_skeleton() {
+    async fn rescan_is_an_in_place_htmx_swap_with_a_progress_bar() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let body = body_string(
@@ -634,13 +634,13 @@ mod tests {
         // Rescan posts via htmx and swaps the fresh sections into #roots.
         assert!(body.contains(r#"hx-post="/rescan""#));
         assert!(body.contains(r##"hx-target="#roots""##));
-        // The skeleton lights up as an indicator, and the button is disabled for the
-        // request so a second click cannot fire a second scan.
-        assert!(body.contains(r##"hx-indicator="#scan-skeleton, #rescan-btn""##));
+        // The progress bar lights up as the indicator, and the button is disabled for
+        // the request so a second click cannot fire a second scan.
+        assert!(body.contains(r##"hx-indicator="#scan-bar, #rescan-btn""##));
         assert!(body.contains(r##"hx-disabled-elt="#rescan-btn""##));
-        // The skeleton overlay is present and wired as the htmx indicator.
-        assert!(body.contains(r#"id="scan-skeleton""#));
-        assert!(body.contains("htmx-indicator"));
+        // The bar is present and wired as the indicator; the old skeleton id is gone.
+        assert!(body.contains(r#"id="scan-bar""#));
+        assert!(!body.contains(r#"id="scan-skeleton""#));
         // The button keeps its constant "Rescan" label and locks via hx-disabled-elt
         // (asserted above); it no longer relabels while the scan runs.
         assert!(body.contains(r#"id="rescan-btn""#));
@@ -676,7 +676,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stylesheet_carries_the_scan_skeleton_shimmer() {
+    async fn stylesheet_carries_the_scan_bar_indeterminate() {
         let dir = tempfile::tempdir().unwrap();
         let body = body_string(
             app_for(dir.path())
@@ -690,11 +690,18 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // The rescan placeholder is a positioned overlay with a shimmer animation.
-        assert!(body.contains(".scan-skeleton"));
-        assert!(body.contains("@keyframes shimmer"));
-        // The wrapper is positioned so the overlay can pin to it.
+        // The rescan indicator is a slim indeterminate bar; the skeleton shimmer is gone.
+        assert!(body.contains(".scan-bar"));
+        assert!(body.contains("@keyframes scan-indeterminate"));
+        assert!(!body.contains(".scan-skeleton"));
+        assert!(!body.contains("@keyframes shimmer"));
+        // htmx-request is what reveals the bar; without this rule the indicator would
+        // stay invisible for the whole scan, so guard the show rule itself.
+        assert!(body.contains(".scan-bar.htmx-request"));
+        // The bar pins to the positioned wrapper, and the tree dims in place rather than
+        // being hidden, so the user keeps their spot.
         assert!(body.contains(".roots-wrap"));
+        assert!(body.contains(".roots-wrap:has(.scan-bar.htmx-request) #roots"));
         // The rescan button dims and shows a locked cursor while disabled.
         assert!(body.contains("#rescan-btn:disabled"));
     }

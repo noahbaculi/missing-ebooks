@@ -234,17 +234,14 @@ fn confirm_dialog() -> Markup {
     }
 }
 
-/// The rescan placeholder. It overlays `#roots` while an in-place rescan is in
-/// flight: htmx adds `htmx-request` to it for the duration (its bundled indicator
-/// styles fade it in), and the shimmer reads as work in progress. Hidden
+/// The rescan progress bar. A slim indeterminate bar pinned above `#roots` while an
+/// in-place rescan runs: it is the `hx-indicator`, so htmx adds `htmx-request` to it
+/// for the request's duration and the stylesheet slides the bar and dims the tree in
+/// place. Both sit behind a CSS show-delay, so a fast scan shows nothing. Hidden
 /// otherwise, and never shown on the no-JS path, which does a full reload.
-fn scan_skeleton() -> Markup {
+fn scan_bar() -> Markup {
     html! {
-        div.scan-skeleton.htmx-indicator id="scan-skeleton" aria-hidden="true" {
-            @for _ in 0..5 {
-                div.sk-row { span.sk.sk-icon {} span.sk.sk-name {} }
-            }
-        }
+        div.scan-bar id="scan-bar" aria-hidden="true" {}
     }
 }
 
@@ -332,7 +329,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                     (settings_menu())
                     form method="post" action="/rescan"
                         hx-post="/rescan" hx-target="#roots" hx-swap="innerHTML"
-                        hx-indicator="#scan-skeleton, #rescan-btn"
+                        hx-indicator="#scan-bar, #rescan-btn"
                         hx-disabled-elt="#rescan-btn" {
                         input type="hidden" name="view" value=(mode.as_query());
                         // The button sits in the nav, outside the swapped #roots, so htmx
@@ -347,7 +344,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                     main id="roots" {
                         (roots(view, links, mode))
                     }
-                    (scan_skeleton())
+                    (scan_bar())
                     (search_empty())
                 }
                 (confirm_dialog())

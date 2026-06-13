@@ -1099,86 +1099,77 @@ li.leaving {
   cursor: not-allowed;
 }
 
-/* ---- rescan skeleton ---- */
-/* The placeholder overlays #roots while an in-place rescan runs. htmx toggles its
-   opacity through the htmx-indicator class (its bundled indicator styles), and the
-   shimmer sweep reads as work in progress. The wrapper is the positioning context. */
+/* ---- rescan progress bar ---- */
+/* The bar is the hx-indicator: htmx adds htmx-request to it for the request's
+   duration. Rather than replace the tree, we keep #roots on screen, dim it, and slide
+   a slim bar above it, so a rescan reads as a refresh, not a collapse. The wrapper is
+   the positioning context for the bar. */
 .roots-wrap {
   position: relative;
 }
-/* Hidden until a rescan is in flight. htmx adds htmx-request to the skeleton (its
-   hx-indicator) for the request's duration; we show it then and collapse the stale
-   tree via :has, so the loading state is a compact panel sized to its rows rather
-   than a full-height overlay with a large empty area below them. */
-.scan-skeleton {
-  display: none;
-  padding: 1rem 1.1rem;
-  background: var(--color-base-100);
-  border: var(--border) solid var(--color-base-300);
-  border-radius: var(--radius-box);
+/* The 0.2s transition-delay on the active rule is the show-delay: htmx removes
+   htmx-request the instant the scan ends, so a fast scan reverts before the delayed
+   fade-in starts and never flashes. The base rule has no delay, so the bar clears
+   immediately on completion. */
+.scan-bar {
+  position: absolute;
+  top: -0.55rem;
+  /* Centered and capped at 52rem so the bar tracks the content column (the navbar
+     and cards share this max-width) rather than stretching the full wrapper. */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 52rem;
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  opacity: 0;
+  transition: opacity 0.15s ease;
   pointer-events: none;
 }
-.scan-skeleton.htmx-request {
-  display: block;
+/* The sliding segment; the track stays put while this loops across it. */
+.scan-bar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--color-primary);
 }
-.roots-wrap:has(.scan-skeleton.htmx-request) #roots {
-  display: none;
+.scan-bar.htmx-request {
+  opacity: 1;
+  transition: opacity 0.15s ease 0.2s;
 }
-.sk-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.45rem 0.5rem;
+.scan-bar.htmx-request::before {
+  animation: scan-indeterminate 1.05s ease-in-out infinite;
 }
-.sk {
-  border-radius: 0.4rem;
-  background: linear-gradient(
-    90deg,
-    var(--color-base-200) 25%,
-    var(--color-base-300) 37%,
-    var(--color-base-200) 63%
-  );
-  background-size: 400% 100%;
-  animation: shimmer 1.3s ease infinite;
+/* The tree dims in place behind the same show-delay, so dim and bar arrive together
+   and a fast scan leaves the tree untouched. The base #roots rule restores instantly. */
+#roots {
+  transition: opacity 0.15s ease;
 }
-.sk-icon {
-  width: 1.05rem;
-  height: 1.05rem;
-  flex: none;
+.roots-wrap:has(.scan-bar.htmx-request) #roots {
+  opacity: 0.4;
+  pointer-events: none;
+  transition: opacity 0.15s ease 0.2s;
 }
-.sk-name {
-  height: 0.8rem;
-  flex: 1;
-}
-/* Vary the placeholder widths so the loading state reads as content rather than a
-   uniform block, while still filling most of the row the way the real result rows
-   do, so the swap to results is not a jarring narrow-to-wide jump. */
-.sk-row:nth-child(1) .sk-name {
-  max-width: 82%;
-}
-.sk-row:nth-child(2) .sk-name {
-  max-width: 64%;
-}
-.sk-row:nth-child(3) .sk-name {
-  max-width: 91%;
-}
-.sk-row:nth-child(4) .sk-name {
-  max-width: 54%;
-}
-.sk-row:nth-child(5) .sk-name {
-  max-width: 73%;
-}
-@keyframes shimmer {
+@keyframes scan-indeterminate {
   from {
-    background-position: 100% 0;
+    left: -40%;
   }
   to {
-    background-position: 0 0;
+    left: 100%;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sk {
-    animation: none;
+  .scan-bar::before {
+    animation: none !important;
+    left: 0;
+    width: 100%;
+    opacity: 0.55;
   }
 }
 
@@ -1248,14 +1239,19 @@ li.leaving {
 
 /* ---- retry-held states ---- */
 /* While a rescan auto-retry runs across backoff gaps, the connection JS holds the
-   skeleton with .is-retrying, independent of htmx's per-attempt htmx-request
+   bar with .is-retrying, independent of htmx's per-attempt htmx-request
    toggling, so it does not flicker between tries. The button stays disabled across
    the gaps (JS sets btn.disabled), so its dim is carried by the :disabled rule above. */
-.scan-skeleton.is-retrying {
-  display: block;
+.scan-bar.is-retrying {
+  opacity: 1;
+  transition: none;
 }
-.roots-wrap:has(.scan-skeleton.is-retrying) #roots {
-  display: none;
+.scan-bar.is-retrying::before {
+  animation: scan-indeterminate 1.05s ease-in-out infinite;
+}
+.roots-wrap:has(.scan-bar.is-retrying) #roots {
+  opacity: 0.4;
+  pointer-events: none;
 }
 /* After a rescan fails for good, the Rescan button itself is the retry: a focus
    ring draws the eye to it. */

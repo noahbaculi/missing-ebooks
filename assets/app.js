@@ -668,19 +668,19 @@
   var retryState = new WeakMap(); // request element -> { attempts }
 
   /**
-   * Hold (or release) the rescan skeleton and busy button across backoff gaps, so
+   * Hold (or release) the rescan bar and busy button across backoff gaps, so
    * the loading state does not flicker between attempts.
    * @param {boolean} on
    */
   function rescanRetryHold(on) {
-    var sk = document.getElementById("scan-skeleton");
+    var sk = document.getElementById("scan-bar");
     var btn = /** @type {HTMLButtonElement | null} */ (document.getElementById("rescan-btn"));
     if (sk) sk.classList.toggle("is-retrying", on);
     // Holding it disabled carries the dim across the gaps; :disabled is its busy hook.
     if (btn) btn.disabled = on;
   }
 
-  // A rescan that failed for good: drop the skeleton, re-enable the Rescan button,
+  // A rescan that failed for good: drop the bar, re-enable the Rescan button,
   // and highlight it as the retry.
   function rescanTerminalFailure() {
     rescanRetryHold(false);
