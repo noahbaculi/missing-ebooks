@@ -272,7 +272,8 @@
   /**
    * Paint the accent. The default writes no override, so the stylesheet's tuned
    * tokens apply; a custom color sets the base and the per-theme derived ink
-   * inline on <html>, which outranks the stylesheet. Reflects the active dot.
+   * inline on <html>, which outranks the stylesheet. Reflects the active dot and
+   * the color input, so a preset pick moves the swatch too.
    * @param {string} base
    */
   function applyAccent(base) {
@@ -286,6 +287,8 @@
       root.style.setProperty("--color-warning-text", deriveWarningInk(base, theme));
     }
     markActiveAccent(base);
+    var input = /** @type {HTMLInputElement | null} */ (document.getElementById("accent-input"));
+    if (input) input.value = base;
   }
 
   /**
