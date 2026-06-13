@@ -15,6 +15,11 @@ name = "explore"
 path = "examples/explore.rs"
 test = true
 
+[[example]]
+name = "scan_bench"
+path = "examples/scan_bench.rs"
+test = true
+
 [dependencies]
 anyhow = "1.0.102"
 axum = "0.8.9"
