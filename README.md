@@ -99,20 +99,29 @@ exclude_globs = ["**/*(abridged)*"]
 
 These environment variables override the file when set:
 
-| Variable                       | Sets                                     |
-| ------------------------------ | ---------------------------------------- |
-| `MISSING_EBOOKS_LIBRARY_ROOTS` | `library_roots` (OS path-separated list) |
-| `MISSING_EBOOKS_BIND`          | `bind`                                   |
-| `MISSING_EBOOKS_PORT`          | `port`                                   |
-| `MISSING_EBOOKS_TTL_SECONDS`   | `ttl_seconds`                            |
-| `PUID`                         | Container run-as user ID (Docker only)   |
-| `PGID`                         | Container run-as group ID (Docker only)  |
+| Variable                          | Sets                                     |
+| --------------------------------- | ---------------------------------------- |
+| `MISSING_EBOOKS_LIBRARY_ROOTS`    | `library_roots` (OS path-separated list) |
+| `MISSING_EBOOKS_BIND`             | `bind`                                   |
+| `MISSING_EBOOKS_PORT`             | `port`                                   |
+| `MISSING_EBOOKS_TTL_SECONDS`      | `ttl_seconds`                            |
+| `MISSING_EBOOKS_SCAN_CONCURRENCY` | `scan_concurrency`                       |
+| `PUID`                            | Container run-as user ID (Docker only)   |
+| `PGID`                            | Container run-as group ID (Docker only)  |
 
 Extension lists, exclude rules, and search links are file-only. The printed template documents every key.
 
 ### Logging
 
 Set `MISSING_EBOOKS_LOG` to control verbosity: `error`, `warn`, `info` (the default), `debug`, or `trace`. Raising it to `debug` or `trace` is scoped to this app, so the dependencies stay quiet; lowering it to `warn` or `error` quiets everything to that level. `debug` adds per-operation timings (per-root scans, cache hits and misses, marker writes, and request and render latency), the level to run when checking how a real library performs. `trace` adds a line per directory walked. For full control, set `RUST_LOG` to override it with standard `tracing` filter syntax, for example `RUST_LOG=missing_ebooks::scanner=trace`.
+
+## Network shares
+
+Pointing a library root at an SMB or NFS mount is supported and common, but scans run much slower than on local disk. Each folder is a single network round trip and the walk reads every folder, so scan time scales with the number of folders rather than the number of files. A benchmark of one 900-folder library measured about 340 ms on local disk against 2.2 s over an SMB mount, and the gap widens with the library: a few thousand folders becomes a multi-second scan.
+
+Two settings cushion this. `scan_concurrency` reads that many folders at once so their round trips overlap; set it by the speed of your NAS rather than your CPU count, because the reads spend almost all their time waiting on the network, so the threads sit idle and cost little CPU even well above the core count. Raising a container's `--cpus` does not help, since the CPU is not the bottleneck. `ttl_seconds` keeps a scanned view cached so repeat page loads do not rescan; the OS cache that speeds a second local walk does little over SMB, so this in-process cache is what spares the repeat cost. Raise it on a slow mount and treat the rescan button as the deliberate refresh.
+
+A local mount is faster when it is an option.
 
 ## Markers
 
