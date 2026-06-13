@@ -33,11 +33,12 @@ fn median(samples: &[f64]) -> f64 {
     let mut v = samples.to_vec();
     v.sort_by(f64::total_cmp);
     let n = v.len();
-    if n % 2 == 1 {
+    let mid = if n % 2 == 1 {
         v[n / 2]
     } else {
-        round3((v[n / 2 - 1] + v[n / 2]) / 2.0)
-    }
+        (v[n / 2 - 1] + v[n / 2]) / 2.0
+    };
+    round3(mid)
 }
 
 fn min_of(samples: &[f64]) -> f64 {
