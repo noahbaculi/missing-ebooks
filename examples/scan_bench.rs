@@ -12,7 +12,9 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Instant;
 
+use missing_ebooks::config::Config;
 use missing_ebooks::scanner::{self, ScanSettings};
 use serde::Serialize;
 
@@ -368,11 +370,257 @@ fn drop_caches() -> Result<(), String> {
     }
 }
 
+const USAGE: &str = "usage: cargo run --release --example scan_bench -- \
+[--config PATH] [--root PATH]... [--iterations N] [--mode gaps|all|both] \
+[--drop-caches] [--label NAME] [--out PATH] [--no-save]";
+
+/// The usage line plus the flag reference and the read-only and strace notes.
+fn help_text() -> String {
+    format!(
+        "{USAGE}
+
+Times the real scanner (read-only) against each library root and saves a JSON
+report. Roots come from --root, --config, or MISSING_EBOOKS_LIBRARY_ROOTS.
+
+flags:
+  --config PATH     load the real config.toml (extensions, exclusions, roots)
+  --root PATH       benchmark this exact path; repeatable; replaces config roots
+  --iterations N    measured runs per phase (default 5)
+  --mode MODE       gaps, all, or both (default both)
+  --drop-caches     Linux: sudo-flush the page cache before each cold run
+  --label NAME      tag stdout and the report (e.g. local, smb)
+  --out PATH        report path (default scan-bench-<label>-<host>-<time>.json)
+  --no-save         do not write the report file
+  --help, -h        this message
+
+The full walk reports ms/dir, the headline figure; the gaps walk reports total
+time only. For a syscall-level cross-check, run once under
+`strace -f -e trace=getdents64,newfstatat -c`."
+    )
+}
+
+/// Time one read-only walk and return its wall-clock in milliseconds and counts.
+fn time_once(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCounts) {
+    let start = Instant::now();
+    let counts = run_walk(mode, root, settings);
+    let ms = round3(start.elapsed().as_secs_f64() * 1000.0);
+    (ms, counts)
+}
+
+/// Cold phase: drop the cache before each of `iterations` runs, so every sample
+/// is cold. Returns the summary and the counts observed.
+fn cold_phase(
+    mode: Mode,
+    root: &Path,
+    settings: &ScanSettings,
+    iterations: usize,
+) -> Result<(PhaseReport, WalkCounts), String> {
+    let mut samples = Vec::with_capacity(iterations);
+    let mut counts = None;
+    for _ in 0..iterations {
+        drop_caches()?;
+        let (ms, c) = time_once(mode, root, settings);
+        samples.push(ms);
+        counts = Some(c);
+    }
+    let counts = counts.expect("iterations >= 1 guarantees a sample");
+    Ok((phase_report(&samples, counts.dirs_walked), counts))
+}
+
+/// Warm phase: one discarded warmup run, then `iterations` consecutive measured
+/// runs with no cache drop.
+fn warm_phase(
+    mode: Mode,
+    root: &Path,
+    settings: &ScanSettings,
+    iterations: usize,
+) -> (PhaseReport, WalkCounts) {
+    let (_, counts) = time_once(mode, root, settings);
+    let mut samples = Vec::with_capacity(iterations);
+    for _ in 0..iterations {
+        let (ms, _) = time_once(mode, root, settings);
+        samples.push(ms);
+    }
+    (phase_report(&samples, counts.dirs_walked), counts)
+}
+
+/// One phase line for stdout, with the per-directory figure when present.
+fn fmt_phase(name: &str, p: &PhaseReport) -> String {
+    let runs: Vec<String> = p.iterations_ms.iter().map(|ms| format!("{ms}")).collect();
+    let per_dir = match p.ms_per_dir {
+        Some(d) => format!(" ({d} ms/dir)"),
+        None => String::new(),
+    };
+    format!(
+        "    {name}:  runs [{}] ms  ->  median {} ms{}  min {}  max {}",
+        runs.join(", "),
+        p.median_ms,
+        per_dir,
+        p.min_ms,
+        p.max_ms
+    )
+}
+
+/// Resolve the config: a file when `--config` is set, else env-only when no
+/// `--root` was given, else defaults whose roots `--root` supplies. `--root`
+/// always replaces the roots so the run benchmarks exactly the named paths.
+fn resolve_config(args: &Args) -> Result<Config, String> {
+    let mut config = match args.config.as_deref() {
+        Some(path) => Config::load(Some(path)).map_err(|e| e.to_string())?,
+        None if args.roots.is_empty() => Config::load(None).map_err(|e| e.to_string())?,
+        None => Config::default(),
+    };
+    if !args.roots.is_empty() {
+        config.library_roots = args.roots.clone();
+    }
+    Ok(config)
+}
+
 fn main() -> ExitCode {
-    // Wired in Task 11. The skeleton compiles so earlier tasks can add and test
-    // pure helpers against a real target.
-    eprintln!("scan_bench is not wired up yet");
-    ExitCode::FAILURE
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    let args = match parse_args(&argv) {
+        Ok(Some(args)) => args,
+        Ok(None) => {
+            println!("{}", help_text());
+            return ExitCode::SUCCESS;
+        }
+        Err(message) => {
+            eprintln!("error: {message}\n\n{}", help_text());
+            return ExitCode::from(2);
+        }
+    };
+
+    // Scanner warnings (an unreadable root, a covering root) should be visible.
+    tracing_subscriber::fmt::init();
+
+    let config = match resolve_config(&args) {
+        Ok(config) => config,
+        Err(message) => {
+            eprintln!("error: {message}\n\n{}", help_text());
+            return ExitCode::from(2);
+        }
+    };
+    let settings = match ScanSettings::compile(config.scan_inputs()) {
+        Ok(settings) => settings,
+        Err(err) => {
+            eprintln!("invalid scan settings: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let host = hostname();
+    let kernel = kernel_release();
+    let profile = build_profile();
+    let unix = unix_time();
+    let label = args.label.clone().unwrap_or_else(|| "unlabeled".to_string());
+    let mounts = std::fs::read_to_string("/proc/self/mounts").unwrap_or_default();
+
+    println!(
+        "scan_bench [{label}] host={host} kernel={kernel} profile={profile} \
+         iterations={} drop_caches={}",
+        args.iterations, args.drop_caches
+    );
+    if profile == "debug" {
+        println!("  note: build with --release for an honest local baseline");
+    }
+    if args.drop_caches {
+        println!(
+            "  note: cold means client-side cold; the SMB server may still cache the tree"
+        );
+    }
+
+    let mut roots = Vec::new();
+    for root in &config.library_roots {
+        let canonical = std::fs::canonicalize(root).unwrap_or_else(|_| root.clone());
+        let (fstype, options) = mount_for_path(&mounts, &canonical)
+            .unwrap_or_else(|| ("unknown".to_string(), String::new()));
+        if options.is_empty() {
+            println!("\n[{label}] {}  (fstype: {fstype})", canonical.display());
+        } else {
+            println!(
+                "\n[{label}] {}  (fstype: {fstype}, options: {options})",
+                canonical.display()
+            );
+        }
+
+        let mut modes = BTreeMap::new();
+        for &mode in &args.modes {
+            let cold = if args.drop_caches {
+                match cold_phase(mode, &canonical, &settings, args.iterations) {
+                    Ok((phase, _)) => Some(phase),
+                    Err(message) => {
+                        eprintln!("error during cold phase: {message}");
+                        return ExitCode::FAILURE;
+                    }
+                }
+            } else {
+                None
+            };
+            let (warm, counts) = warm_phase(mode, &canonical, &settings, args.iterations);
+
+            let dirs = counts
+                .dirs_walked
+                .map_or_else(|| "n/a".to_string(), |n| n.to_string());
+            println!(
+                "  mode={}   dirs_walked={dirs}  gaps={}  audio_files={}",
+                mode.label(),
+                counts.gaps,
+                counts.audio_files
+            );
+            if let Some(cold) = &cold {
+                println!("{}", fmt_phase("cold", cold));
+            }
+            println!("{}", fmt_phase("warm", &warm));
+
+            modes.insert(
+                mode.label().to_string(),
+                ModeReport {
+                    dirs_walked: counts.dirs_walked,
+                    gaps: counts.gaps,
+                    audio_files: counts.audio_files,
+                    cold,
+                    warm,
+                },
+            );
+        }
+
+        roots.push(RootReport {
+            path: canonical.display().to_string(),
+            fstype,
+            mount_options: options,
+            modes,
+        });
+    }
+
+    let report = Report {
+        tool: "scan_bench",
+        label: label.clone(),
+        host: host.clone(),
+        kernel,
+        unix_time: unix,
+        build_profile: profile,
+        iterations: args.iterations,
+        drop_caches: args.drop_caches,
+        roots,
+    };
+
+    if args.no_save {
+        println!("\n--no-save: report not written");
+    } else {
+        let path = args
+            .out
+            .clone()
+            .unwrap_or_else(|| default_report_path(&label, &host, unix));
+        match write_report(&report, &path) {
+            Ok(()) => println!("\nsaved report to {}", path.display()),
+            Err(message) => {
+                eprintln!("\n{message}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+
+    ExitCode::SUCCESS
 }
 
 #[cfg(test)]
