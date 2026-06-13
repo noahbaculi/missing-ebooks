@@ -352,7 +352,7 @@ details[open] > summary .chev {
   color: var(--color-muted);
 }
 /* the kebab stays grey even in flagged rows, where .flagged .icon would
-   otherwise tint it teal along with the folder icon */
+   otherwise tint it amber along with the folder icon */
 .flagged .actions-trigger .icon {
   color: var(--color-muted);
 }
@@ -395,7 +395,7 @@ details[open] > summary .chev {
   color: var(--color-muted);
 }
 /* the search toggle stays grey even in flagged rows, where .flagged .icon
-   would otherwise tint it teal along with the folder icon */
+   would otherwise tint it amber along with the folder icon */
 .flagged .links-toggle .icon {
   color: var(--color-muted);
 }
@@ -446,7 +446,7 @@ details[open] > summary .chev {
   color: var(--color-warning-text);
 }
 
-/* flagged folders: teal icon + bolder name; the badge carries the label.
+/* flagged folders: amber icon + bolder name; the badge carries the label.
    The icon is foreground, so it takes the -text variant: the saturated base
    fails contrast as a glyph on a light surface. Matches .gap-hero-num. */
 .flagged .icon {
@@ -458,7 +458,7 @@ details[open] > summary .chev {
 
 /* structural-smell microlabels: a muted organizational note on a flagged row,
    set off by a leading middot. Not a filled badge: organization is a different
-   axis from coverage, so it stays quieter than the teal "needs ebook" badge. */
+   axis from coverage, so it stays quieter than the amber "needs ebook" badge. */
 .smell {
   flex: none;
   font-size: 0.74rem;
@@ -899,7 +899,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   .name {
     min-width: 0;
   }
-  /* the "needs ebook" pill collapses to a teal dot. text-indent + overflow hide
+  /* the "needs ebook" pill collapses to an amber dot. text-indent + overflow hide
      the label visually while keeping it in the DOM and the accessibility tree, so
      screen readers still announce it and the HTML tests still match. .badge already
      carries flex: none; the solid dot fill is reasserted just below. */
@@ -914,7 +914,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     text-indent: 100%;
   }
   /* the collapsed dot needs a solid fill to read at 0.5rem; the desktop tint would
-     wash out, so .badge-warning reasserts the solid teal here. */
+     wash out, so .badge-warning reasserts the solid amber here. */
   .badge-warning {
     background: var(--color-warning-text);
   }
