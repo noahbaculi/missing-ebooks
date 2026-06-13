@@ -533,7 +533,20 @@ fn main() -> ExitCode {
 
     let mut roots = Vec::new();
     for root in &config.library_roots {
-        let canonical = std::fs::canonicalize(root).unwrap_or_else(|_| root.clone());
+        // A canonicalize failure means a missing or unreadable root. Warn loudly:
+        // the raw path won't match any mount (so fstype reads "unknown") and the
+        // scanner skips it, which would otherwise pass for a successful zero-gap run.
+        let canonical = match std::fs::canonicalize(root) {
+            Ok(path) => path,
+            Err(err) => {
+                eprintln!(
+                    "warning: could not resolve {}: {err}; \
+                     timing the raw path, fstype and counts may be unreliable",
+                    root.display()
+                );
+                root.clone()
+            }
+        };
         let (fstype, options) = mount_for_path(&mounts, &canonical)
             .unwrap_or_else(|| ("unknown".to_string(), String::new()));
         if options.is_empty() {
