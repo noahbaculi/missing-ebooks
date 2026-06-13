@@ -600,7 +600,10 @@ mod tests {
                 rel_path: "Author".to_string(),
                 directly_holds_audio: false,
                 missing_ebook: true,
-                children: vec![gap_leaf("Book", "Author/Book"), gap_leaf("Two", "Author/Two")],
+                children: vec![
+                    gap_leaf("Book", "Author/Book"),
+                    gap_leaf("Two", "Author/Two"),
+                ],
                 cover_files: Vec::new(),
                 audio_files: Vec::new(),
             }]),
