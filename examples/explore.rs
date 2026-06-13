@@ -169,7 +169,7 @@ async fn main() -> ExitCode {
 
     // Initialize tracing only once we are committed to serving, so the warnings
     // the scanner emits (an unreadable root, for example) are visible.
-    tracing_subscriber::fmt::init();
+    missing_ebooks::telemetry::init();
 
     let temp = match tempfile::Builder::new()
         .prefix("explore-")

@@ -47,7 +47,7 @@ async fn run_reaper(state: Arc<DemoState>) {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    missing_ebooks::telemetry::init();
     let demo_config = load_config()?;
 
     // Resolve the scenario first, so an unknown name fails fast.
