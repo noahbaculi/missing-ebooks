@@ -10,6 +10,8 @@
 
 use std::process::ExitCode;
 
+use serde::Serialize;
+
 /// Round to three decimals so the report and stdout stay readable; sub-millisecond
 /// warm scans still keep enough precision to compare.
 fn round3(x: f64) -> f64 {
@@ -50,6 +52,31 @@ fn per_dir_ms(median_ms: f64, dirs: Option<usize>) -> Option<f64> {
     }
 }
 
+/// One cache condition's timing summary for one root and mode.
+#[derive(Debug, Serialize)]
+struct PhaseReport {
+    /// Each measured iteration's wall-clock, in milliseconds, in run order.
+    iterations_ms: Vec<f64>,
+    median_ms: f64,
+    min_ms: f64,
+    max_ms: f64,
+    /// Median divided by directories walked; `None` for the gaps walk.
+    ms_per_dir: Option<f64>,
+}
+
+/// Summarize one phase's samples. `dirs` is the directory count for the median's
+/// per-directory figure; pass `None` to leave it out.
+fn phase_report(samples: &[f64], dirs: Option<usize>) -> PhaseReport {
+    let median_ms = median(samples);
+    PhaseReport {
+        iterations_ms: samples.to_vec(),
+        median_ms,
+        min_ms: min_of(samples),
+        max_ms: max_of(samples),
+        ms_per_dir: per_dir_ms(median_ms, dirs),
+    }
+}
+
 fn main() -> ExitCode {
     // Wired in Task 11. The skeleton compiles so earlier tasks can add and test
     // pure helpers against a real target.
@@ -87,5 +114,22 @@ mod tests {
         assert_eq!(per_dir_ms(100.0, Some(50)), Some(2.0));
         assert_eq!(per_dir_ms(100.0, Some(0)), None);
         assert_eq!(per_dir_ms(100.0, None), None);
+    }
+
+    #[test]
+    fn phase_report_aggregates_samples_with_per_dir() {
+        let p = phase_report(&[10.0, 20.0, 30.0], Some(10));
+        assert_eq!(p.iterations_ms, vec![10.0, 20.0, 30.0]);
+        assert_eq!(p.median_ms, 20.0);
+        assert_eq!(p.min_ms, 10.0);
+        assert_eq!(p.max_ms, 30.0);
+        assert_eq!(p.ms_per_dir, Some(2.0));
+    }
+
+    #[test]
+    fn phase_report_leaves_per_dir_none_without_a_count() {
+        let p = phase_report(&[10.0, 20.0], None);
+        assert_eq!(p.median_ms, 15.0);
+        assert_eq!(p.ms_per_dir, None);
     }
 }
