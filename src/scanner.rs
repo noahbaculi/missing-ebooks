@@ -178,6 +178,16 @@ fn visit(root: &Path, dir: &Path, settings: &ScanSettings, out: &mut Vec<Flagged
         }
     }
 
+    if let Ok(rel) = dir.strip_prefix(root) {
+        tracing::trace!(
+            dir = %rel.display(),
+            subdirs = subdirs.len(),
+            audio = audio_files.len(),
+            covered,
+            "visited directory"
+        );
+    }
+
     // A covering ebook or marker stops the descent and suppresses any flag.
     if covered {
         if dir == root {
@@ -278,6 +288,16 @@ fn visit_all(
 
     // Coverage is monotonic: once an ancestor covers, everything below is covered.
     let covered = covered_from_above || !ebooks.is_empty() || !markers.is_empty();
+
+    if let Ok(rel) = dir.strip_prefix(root) {
+        tracing::trace!(
+            dir = %rel.display(),
+            subdirs = subdirs.len(),
+            audio = audio_files.len(),
+            covered,
+            "visited directory"
+        );
+    }
 
     // Local cover files: ebooks first, then markers, each natural-sorted so the
     // order is stable across filesystems.
