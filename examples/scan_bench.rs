@@ -8,6 +8,7 @@
 //! entries and names; nothing here writes to the library. The single privileged
 //! action is the optional `--drop-caches` page-cache flush on Linux.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -269,6 +270,53 @@ fn run_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> WalkCounts {
     }
 }
 
+/// The whole run: environment context plus one entry per root.
+#[derive(Debug, Serialize)]
+struct Report {
+    tool: &'static str,
+    label: String,
+    host: String,
+    kernel: String,
+    unix_time: u64,
+    build_profile: &'static str,
+    iterations: usize,
+    drop_caches: bool,
+    roots: Vec<RootReport>,
+}
+
+/// One library root: where it is, what filesystem it sits on, and its per-mode
+/// timings keyed by mode label (`all`, `gaps`) for a stable order.
+#[derive(Debug, Serialize)]
+struct RootReport {
+    path: String,
+    fstype: String,
+    mount_options: String,
+    modes: BTreeMap<String, ModeReport>,
+}
+
+/// One mode's counts and timings. `cold` is `None` when `--drop-caches` was off.
+#[derive(Debug, Serialize)]
+struct ModeReport {
+    dirs_walked: Option<usize>,
+    gaps: usize,
+    audio_files: usize,
+    cold: Option<PhaseReport>,
+    warm: PhaseReport,
+}
+
+/// The auto-generated report filename, sortable by the trailing unix seconds.
+fn default_report_path(label: &str, host: &str, unix_time: u64) -> PathBuf {
+    PathBuf::from(format!("scan-bench-{label}-{host}-{unix_time}.json"))
+}
+
+/// Write the report as pretty JSON. Returns the error message on failure so the
+/// caller can surface it without aborting the timing it already printed.
+fn write_report(report: &Report, path: &Path) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(report)
+        .map_err(|e| format!("could not encode the report: {e}"))?;
+    std::fs::write(path, json).map_err(|e| format!("could not write {}: {e}", path.display()))
+}
+
 fn main() -> ExitCode {
     // Wired in Task 11. The skeleton compiles so earlier tasks can add and test
     // pure helpers against a real target.
@@ -484,5 +532,50 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         assert_eq!(counts.dirs_walked, None);
         assert_eq!(counts.gaps, 1);
         assert_eq!(counts.audio_files, 1);
+    }
+
+    #[test]
+    fn report_serializes_expected_keys() {
+        let mut modes = std::collections::BTreeMap::new();
+        modes.insert(
+            "all".to_string(),
+            ModeReport {
+                dirs_walked: Some(3),
+                gaps: 1,
+                audio_files: 3,
+                cold: None,
+                warm: phase_report(&[10.0, 20.0], Some(3)),
+            },
+        );
+        let report = Report {
+            tool: "scan_bench",
+            label: "local".to_string(),
+            host: "kessel".to_string(),
+            kernel: "6.8.0".to_string(),
+            unix_time: 1749700000,
+            build_profile: "release",
+            iterations: 2,
+            drop_caches: false,
+            roots: vec![RootReport {
+                path: "/mnt/a".to_string(),
+                fstype: "ext4".to_string(),
+                mount_options: "rw".to_string(),
+                modes,
+            }],
+        };
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(json.contains("\"tool\":\"scan_bench\""));
+        assert!(json.contains("\"fstype\":\"ext4\""));
+        assert!(json.contains("\"ms_per_dir\":5.0"));
+        assert!(json.contains("\"cold\":null"));
+    }
+
+    #[test]
+    fn default_report_path_is_named_from_label_host_and_time() {
+        let p = default_report_path("smb", "kessel", 1749700000);
+        assert_eq!(
+            p,
+            std::path::PathBuf::from("scan-bench-smb-kessel-1749700000.json")
+        );
     }
 }
