@@ -13,17 +13,18 @@
   --color-muted: #6b7480;
   --color-primary: #605dff;
   --color-primary-content: #ffffff;
-  /* "warning" is the gap / needs-attention role, rendered teal rather than amber:
-     amber could not clear AA as ink on a light surface without going muddy. Orange
-     is the documented backup. See docs/adr/0017. */
-  --color-warning: #06b6d4;
+  /* "warning" is the gap / needs-attention role, amber. The saturated base tints
+     the soft pills; the -text ink is the readable amber shade, since the base
+     fails AA as ink on a light surface. The accent picker recolors this role and
+     derives the same kind of ink for any custom base. See docs/adr/0017. */
+  --color-warning: #f5a524;
   --color-success: #00b074;
   --color-error: #ef4565;
   /* Status roles: the base tokens above fill and tint. These -text variants carry
      status color as text or a meaning-bearing icon, where the saturated base fails
      contrast on a light surface. */
   --color-success-text: #046b4d;
-  --color-warning-text: #0e7490;
+  --color-warning-text: #845406;
   --color-error-text: #be123c;
   --guide: #dfe2e7;
   --color-border: #e5e6e9;
@@ -40,11 +41,11 @@
   --color-muted: #a8b1be;
   --color-primary: #7c79ff;
   --color-primary-content: #14181d;
-  --color-warning: #06b6d4;
+  --color-warning: #f5a524;
   --color-success: #00b074;
   --color-error: #ff6b85;
   --color-success-text: #34d399;
-  --color-warning-text: #22d3ee;
+  --color-warning-text: #f5a11a;
   --color-error-text: #ff8095;
   --guide: #2b323b;
   --color-border: #333b46;
@@ -724,7 +725,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 
 /* accent control: a quick-pick dot row plus the native color picker, in the
    Theme section. The dots are data-accent quick picks; the swatch is the OS
-   picker. The default (#06b6d4) writes no override, so the tokens above apply;
+   picker. The default (#f5a524) writes no override, so the tokens above apply;
    a custom pick is set inline on <html> by app.js. */
 .accent-ctl {
   display: inline-flex;

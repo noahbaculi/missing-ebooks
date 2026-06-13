@@ -109,7 +109,7 @@ const PREPAINT_JS: &str = r#"(function () {
   }
 
   var accent = localStorage.getItem('accent');
-  if (/^#[0-9a-fA-F]{6}$/.test(accent || '') && accent.toLowerCase() !== '#06b6d4') {
+  if (/^#[0-9a-fA-F]{6}$/.test(accent || '') && accent.toLowerCase() !== '#f5a524') {
     document.documentElement.style.setProperty('--color-warning', accent);
     document.documentElement.style.setProperty('--color-warning-text', deriveWarningInk(accent, t));
   }
@@ -224,7 +224,7 @@ fn settings_menu() -> Markup {
                     span.accent-dots {
                         button.accent-dot type="button" data-accent="#06b6d4"
                             style="background:#06b6d4"
-                            aria-label="Teal (default)" title="Teal (default)" {}
+                            aria-label="Teal" title="Teal" {}
                         button.accent-dot type="button" data-accent="#0e7490"
                             style="background:#0e7490"
                             aria-label="Deep teal" title="Deep teal" {}
@@ -236,7 +236,7 @@ fn settings_menu() -> Markup {
                             aria-label="Magenta" title="Magenta" {}
                     }
                     input.accent-swatch id="accent-input" type="color"
-                        value="#06b6d4" aria-label="Accent color";
+                        value="#f5a524" aria-label="Accent color";
                 }
             }
             div.settings-head { "Settings" }

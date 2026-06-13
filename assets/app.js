@@ -87,7 +87,7 @@
   // ---- accent color preference ----
 
   var ACCENT_KEY = "accent";
-  var ACCENT_DEFAULT = "#06b6d4";
+  var ACCENT_DEFAULT = "#f5a524";
   var ACCENT_RE = /^#[0-9a-fA-F]{6}$/;
 
   /**

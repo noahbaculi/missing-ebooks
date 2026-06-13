@@ -916,6 +916,8 @@ mod tests {
         assert!(body.contains("getItem('accent')"));
         assert!(body.contains("deriveWarningInk"));
         assert!(body.contains("--color-warning-text"));
+        // The default writes no override, so it must match the shipped amber.
+        assert!(body.contains("'#f5a524'"));
     }
 
     #[tokio::test]
@@ -1214,10 +1216,12 @@ mod tests {
         let body = body_string(response).await;
         // A regular-weight row label, not a section header.
         assert!(body.contains(r#"<span class="settings-label">Accent Color</span>"#));
-        // The native color picker.
+        // The native color picker, defaulting to the shipped amber.
         assert!(body.contains(r#"id="accent-input""#));
         assert!(body.contains(r#"type="color""#));
-        // The four preset quick-pick dots, the default teal first.
+        assert!(body.contains(r##"value="#f5a524""##));
+        // The four preset quick-pick dots. Amber is the default, so it is not a
+        // preset; the dots offer the alternatives.
         assert!(body.contains(r##"data-accent="#06b6d4""##));
         assert!(body.contains(r##"data-accent="#0e7490""##));
         assert!(body.contains(r##"data-accent="#c2410c""##));
