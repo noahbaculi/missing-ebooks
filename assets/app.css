@@ -14,17 +14,19 @@
   --color-primary: #605dff;
   --color-primary-content: #ffffff;
   /* "warning" is the gap / needs-attention role, amber. The saturated base tints
-     the soft pills; the -text ink is the readable amber shade, since the base
-     fails AA as ink on a light surface. The accent picker recolors this role and
-     derives the same kind of ink for any custom base. See docs/adr/0017. */
+     the soft pills, and by choice it is also the ink: the default keeps the amber
+     look over contrast, so --color-warning-text equals the base and reads below AA
+     on the pale pill. The accent picker still derives a readable per-theme ink for
+     a custom base. See docs/adr/0017. */
   --color-warning: #f5a524;
   --color-success: #00b074;
   --color-error: #ef4565;
-  /* Status roles: the base tokens above fill and tint. These -text variants carry
-     status color as text or a meaning-bearing icon, where the saturated base fails
-     contrast on a light surface. */
+  /* Status roles: the base tokens above fill and tint. The success and error -text
+     variants carry status color as text or a meaning-bearing icon, where the
+     saturated base fails contrast on a light surface. Warning is the exception
+     above: its ink is the base amber. */
   --color-success-text: #046b4d;
-  --color-warning-text: #845406;
+  --color-warning-text: #f5a524;
   --color-error-text: #be123c;
   --guide: #dfe2e7;
   --color-border: #e5e6e9;
@@ -45,7 +47,7 @@
   --color-success: #00b074;
   --color-error: #ff6b85;
   --color-success-text: #34d399;
-  --color-warning-text: #f5a11a;
+  --color-warning-text: #f5a524;
   --color-error-text: #ff8095;
   --guide: #2b323b;
   --color-border: #333b46;
