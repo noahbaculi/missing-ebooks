@@ -3,6 +3,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -305,6 +306,24 @@ pub(crate) fn apply_mark_all(section: &mut RootSection, rel: &str, marker: Marke
     }
 }
 
+/// Count gap folders (`Node::needs_ebook`) anywhere in a node slice. A small
+/// mirror of the renderer's counter; the service layer stays web-agnostic, so it
+/// does not reach into `web::render`.
+fn count_gaps(nodes: &[Node]) -> usize {
+    nodes
+        .iter()
+        .map(|n| usize::from(n.needs_ebook()) + count_gaps(&n.children))
+        .sum()
+}
+
+/// Gaps in one section. `Clean` and `Error` roots contribute none.
+fn section_gaps(section: &RootSection) -> usize {
+    match &section.state {
+        RootState::Forest(nodes) => count_gaps(nodes),
+        RootState::Clean | RootState::Error(_) => 0,
+    }
+}
+
 /// Build the read view for every configured root, in config order. Each root is
 /// scanned on a blocking task so the directory walk does not stall the runtime.
 pub(crate) async fn build_view(
@@ -312,10 +331,19 @@ pub(crate) async fn build_view(
     settings: &Arc<ScanSettings>,
     mode: ViewMode,
 ) -> FlaggedView {
+    let started = Instant::now();
     let mut sections = Vec::with_capacity(config.library_roots.len());
     for root in &config.library_roots {
         sections.push(build_section(root.clone(), Arc::clone(settings), mode).await);
     }
+    let gaps: usize = sections.iter().map(section_gaps).sum();
+    tracing::info!(
+        roots = sections.len(),
+        mode = mode.as_query(),
+        gaps,
+        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+        "scanned library"
+    );
     sections
 }
 
@@ -325,7 +353,9 @@ async fn build_section(
     settings: Arc<ScanSettings>,
     mode: ViewMode,
 ) -> RootSection {
-    match tokio::task::spawn_blocking(move || scan_root(&root, &settings, mode)).await {
+    let started = Instant::now();
+    let section = match tokio::task::spawn_blocking(move || scan_root(&root, &settings, mode)).await
+    {
         Ok(section) => section,
         Err(join_err) => {
             tracing::error!(error = %join_err, "scan task panicked");
@@ -334,7 +364,15 @@ async fn build_section(
                 state: RootState::Error("scan task failed".to_string()),
             }
         }
-    }
+    };
+    tracing::debug!(
+        root = %section.path,
+        mode = mode.as_query(),
+        gaps = section_gaps(&section),
+        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+        "scanned root"
+    );
+    section
 }
 
 /// The synchronous per-root work: canonicalize, scan, build the forest. Runs on a
@@ -533,6 +571,39 @@ mod tests {
             cover_files: Vec::new(),
             audio_files: Vec::new(),
         }
+    }
+
+    #[test]
+    fn section_gaps_counts_each_flagged_folder_in_a_forest() {
+        let section = RootSection {
+            path: "/lib".to_string(),
+            state: RootState::Forest(vec![Node {
+                name: "Author".to_string(),
+                rel_path: "Author".to_string(),
+                directly_holds_audio: false,
+                missing_ebook: true,
+                children: vec![gap_leaf("Book", "Author/Book"), gap_leaf("Two", "Author/Two")],
+                cover_files: Vec::new(),
+                audio_files: Vec::new(),
+            }]),
+        };
+        // Two flagged leaves; the bare container holds no direct audio, so it is
+        // not itself a gap.
+        assert_eq!(section_gaps(&section), 2);
+    }
+
+    #[test]
+    fn section_gaps_is_zero_for_clean_and_error() {
+        let clean = RootSection {
+            path: "/a".to_string(),
+            state: RootState::Clean,
+        };
+        let errored = RootSection {
+            path: "/b".to_string(),
+            state: RootState::Error("nope".to_string()),
+        };
+        assert_eq!(section_gaps(&clean), 0);
+        assert_eq!(section_gaps(&errored), 0);
     }
 
     #[test]
