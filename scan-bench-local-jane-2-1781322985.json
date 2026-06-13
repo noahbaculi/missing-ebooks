@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "tool": "scan_bench",
-  "label": "local",
+  "label": "smb",
   "host": "jane-2",
   "kernel": "6.12.86+deb13-amd64",
   "unix_time": 1781322985,
