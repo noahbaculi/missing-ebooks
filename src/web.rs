@@ -2335,7 +2335,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn navbar_renders_the_hidden_filter_input_and_no_matches_line() {
+    async fn navbar_renders_the_disabled_filter_input_and_no_matches_line() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let body = body_string(
@@ -2345,11 +2345,14 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // A filter input with an accessible name, hidden until app.js reveals it (the
-        // connection banner's pattern), so the no-JS page stays clean.
+        // A filter input with an accessible name. The box renders visible from first
+        // paint so it never reflows in; the input renders `disabled` and app.js clears
+        // that once the tree and handler are wired, so the box is greyed but never a
+        // dead box the user can type into before it works.
         assert!(body.contains(r#"id="search-input""#));
         assert!(body.contains(r#"aria-label="Filter folders""#));
-        assert!(body.contains(r#"id="search" hidden"#));
+        assert!(body.contains(r#"<div class="search" id="search">"#));
+        assert!(body.contains(r#"autocomplete="off" disabled>"#));
         // A polite "no matches" line, hidden until a query matches nothing.
         assert!(body.contains(r#"id="search-empty""#));
         assert!(body.contains(r#"aria-live="polite""#));
@@ -2376,7 +2379,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stylesheet_styles_the_filter_input_and_hidden_states() {
+    async fn stylesheet_styles_the_filter_input_and_disabled_state() {
         let dir = tempfile::tempdir().unwrap();
         let body = body_string(
             app_for(dir.path())
@@ -2390,9 +2393,11 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // The filter input is styled and hidden until JS reveals it.
+        // The filter input is styled, and the disabled load-window state mutes the
+        // whole control until app.js enables it.
         assert!(body.contains(".search-input"));
-        assert!(body.contains(".search[hidden]"));
+        assert!(body.contains(".search:has(.search-input:disabled)"));
+        assert!(body.contains(".search-input:disabled"));
         // Filtered-out branches collapse, and the input drops to its own navbar row on
         // a phone, the way the view toggle already reflows.
         assert!(body.contains(".filter-hidden"));

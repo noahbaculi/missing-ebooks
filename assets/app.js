@@ -987,11 +987,11 @@
   var viewLink = null; // the inactive view-toggle segment (an <a>), or null
   var viewLinkBase = ""; // its pristine href, before any filter query is appended
 
-  // Reveal the navbar filter once JS is running, the hidden-until-ready pattern the
-  // connection banner uses.
-  function revealSearch() {
-    var box = document.getElementById("search");
-    if (box) box.hidden = false;
+  // Enable the navbar filter once JS is running. It renders disabled so the load
+  // window never offers a dead box; clearing `disabled` here, after the input handler
+  // is wired, hands over a live filter without ever reflowing the box in.
+  function enableSearch() {
+    if (searchInput) searchInput.disabled = false;
   }
 
   /**
@@ -1112,7 +1112,6 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    revealSearch();
     searchInput = /** @type {HTMLInputElement | null} */ (document.getElementById("search-input"));
     searchEmpty = document.getElementById("search-empty");
     searchClear = document.getElementById("search-clear");
@@ -1140,6 +1139,8 @@
         searchInput.value = carried;
         applyFilter();
       }
+      // Wired and any carried filter applied: hand over the live box.
+      enableSearch();
     }
   });
 

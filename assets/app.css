@@ -1644,11 +1644,15 @@ li.leaving {
 }
 
 /* ---- navbar filter ---- */
-/* Hidden until app.js reveals it (the connection banner's pattern), so the no-JS
-   page never shows a filter that cannot run. The explicit display:none beats the
-   .search display:flex the way .conn-banner[hidden] does. */
-.search[hidden] {
-  display: none;
+/* The box renders visible from first paint so it holds its navbar slot and never
+   reflows in. app.js renders the input disabled and clears that on DOMContentLoaded;
+   until then the whole control dims so it reads as greyed-but-present, not a dead box
+   to type into. It snaps to live on enable, no transition. */
+.search:has(.search-input:disabled) {
+  opacity: 0.55;
+}
+.search-input:disabled {
+  cursor: not-allowed;
 }
 .search {
   display: inline-flex;

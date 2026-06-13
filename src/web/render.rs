@@ -173,17 +173,20 @@ fn settings_menu() -> Markup {
     }
 }
 
-/// The navbar filter input, hidden until `app.js` reveals it (the connection
-/// banner's hidden-until-ready pattern) so the no-JS page never shows a filter that
-/// cannot run. The `/` key focuses it and Escape clears it; both live in `app.js`.
-/// A themed clear button sits after the input, hidden until the box holds text.
+/// The navbar filter input. The box renders visible from first paint so it holds its
+/// slot in the navbar and never reflows in; the input renders `disabled`, and
+/// `app.js` clears that on `DOMContentLoaded` once the tree and handler are wired.
+/// During that load window the box reads as greyed-but-present, not a dead box the
+/// user can type into before the filter works. The `/` key focuses it and Escape
+/// clears it; both live in `app.js`. A themed clear button sits after the input,
+/// hidden until the box holds text.
 fn search_box() -> Markup {
     html! {
-        div.search id="search" hidden {
+        div.search id="search" {
             (PreEscaped(SEARCH_SVG))
             input.search-input id="search-input" type="search"
                 placeholder="Filter folders" aria-label="Filter folders"
-                autocomplete="off";
+                autocomplete="off" disabled;
             button.search-clear id="search-clear" type="button"
                 aria-label="Clear filter" hidden {
                 (PreEscaped(CLEAR_SVG))
