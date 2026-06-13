@@ -15,7 +15,7 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use missing_ebooks::config::Config;
-use missing_ebooks::scanner::{self, ScanSettings};
+use missing_ebooks::scanner::{self, ScanSettings, WalkStats};
 use serde::Serialize;
 
 /// Round to three decimals so the report and stdout stay readable; sub-millisecond
@@ -49,14 +49,10 @@ fn max_of(samples: &[f64]) -> f64 {
     samples.iter().copied().reduce(f64::max).unwrap_or(0.0)
 }
 
-/// Per-directory latency from the median, defined only when the walk reported a
-/// positive directory count. The gaps walk has no per-directory count, so it
-/// returns `None`.
-fn per_dir_ms(median_ms: f64, dirs: Option<usize>) -> Option<f64> {
-    match dirs {
-        Some(n) if n > 0 => Some(round3(median_ms / n as f64)),
-        _ => None,
-    }
+/// Per-directory latency from the median, defined only when at least one directory
+/// was walked. Returns `None` for an empty or unreadable root.
+fn per_dir_ms(median_ms: f64, dirs: usize) -> Option<f64> {
+    (dirs > 0).then(|| round3(median_ms / dirs as f64))
 }
 
 /// One cache condition's timing summary for one root and mode.
@@ -67,13 +63,13 @@ struct PhaseReport {
     median_ms: f64,
     min_ms: f64,
     max_ms: f64,
-    /// Median divided by directories walked; `None` for the gaps walk.
+    /// Median divided by directories visited; `None` only when no directory was walked.
     ms_per_dir: Option<f64>,
 }
 
 /// Summarize one phase's samples. `dirs` is the directory count for the median's
-/// per-directory figure; pass `None` to leave it out.
-fn phase_report(samples: &[f64], dirs: Option<usize>) -> PhaseReport {
+/// per-directory figure.
+fn phase_report(samples: &[f64], dirs: usize) -> PhaseReport {
     let median_ms = median(samples);
     PhaseReport {
         iterations_ms: samples.to_vec(),
@@ -235,11 +231,11 @@ fn mount_for_path(mounts: &str, path: &Path) -> Option<(String, String)> {
     best.map(|(_, fstype, options)| (fstype, options))
 }
 
-/// What one walk found: the numbers the report records. `dirs_walked` is `Some`
-/// only for the full walk, which emits a record per directory; the gaps walk
-/// prunes on coverage and leaves it `None`.
+/// What one walk found: the counts the report records. `stats` holds the directory
+/// and entry totals from the walk itself; `gaps` and `audio_files` are derived from
+/// the result after the clock stops.
 struct WalkCounts {
-    dirs_walked: Option<usize>,
+    stats: WalkStats,
     gaps: usize,
     audio_files: usize,
 }
@@ -271,7 +267,8 @@ struct RootReport {
 /// One mode's counts and timings. `cold` is `None` when `--drop-caches` was off.
 #[derive(Debug, Serialize)]
 struct ModeReport {
-    dirs_walked: Option<usize>,
+    dirs_visited: usize,
+    entries_seen: usize,
     gaps: usize,
     audio_files: usize,
     cold: Option<PhaseReport>,
@@ -378,7 +375,7 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
     match mode {
         Mode::All => {
             let start = Instant::now();
-            let folders = scanner::scan_all(root, settings);
+            let (folders, stats) = scanner::scan_all_with_stats(root, settings);
             let ms = round3(start.elapsed().as_secs_f64() * 1000.0);
             let gaps = folders
                 .iter()
@@ -388,7 +385,7 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
             (
                 ms,
                 WalkCounts {
-                    dirs_walked: Some(folders.len()),
+                    stats,
                     gaps,
                     audio_files,
                 },
@@ -396,13 +393,13 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
         }
         Mode::Gaps => {
             let start = Instant::now();
-            let flagged = scanner::scan(root, settings);
+            let (flagged, stats) = scanner::scan_with_stats(root, settings);
             let ms = round3(start.elapsed().as_secs_f64() * 1000.0);
             let audio_files = flagged.iter().map(|f| f.audio_files.len()).sum();
             (
                 ms,
                 WalkCounts {
-                    dirs_walked: None,
+                    stats,
                     gaps: flagged.len(),
                     audio_files,
                 },
@@ -428,7 +425,7 @@ fn cold_phase(
         counts = Some(c);
     }
     let counts = counts.expect("iterations >= 1 guarantees a sample");
-    Ok((phase_report(&samples, counts.dirs_walked), counts))
+    Ok((phase_report(&samples, counts.stats.dirs_visited), counts))
 }
 
 /// Warm phase: one discarded warmup run, then `iterations` consecutive measured
@@ -445,7 +442,7 @@ fn warm_phase(
         let (ms, _) = time_walk(mode, root, settings);
         samples.push(ms);
     }
-    (phase_report(&samples, counts.dirs_walked), counts)
+    (phase_report(&samples, counts.stats.dirs_visited), counts)
 }
 
 /// One phase line for stdout, with the per-directory figure when present.
@@ -576,12 +573,11 @@ fn main() -> ExitCode {
             };
             let (warm, counts) = warm_phase(mode, &canonical, &settings, args.iterations);
 
-            let dirs = counts
-                .dirs_walked
-                .map_or_else(|| "n/a".to_string(), |n| n.to_string());
             println!(
-                "  mode={}   dirs_walked={dirs}  gaps={}  audio_files={}",
+                "  mode={}   dirs_visited={}  entries_seen={}  gaps={}  audio_files={}",
                 mode.label(),
+                counts.stats.dirs_visited,
+                counts.stats.entries_seen,
                 counts.gaps,
                 counts.audio_files
             );
@@ -593,7 +589,8 @@ fn main() -> ExitCode {
             modes.insert(
                 mode.label().to_string(),
                 ModeReport {
-                    dirs_walked: counts.dirs_walked,
+                    dirs_visited: counts.stats.dirs_visited,
+                    entries_seen: counts.stats.entries_seen,
                     gaps: counts.gaps,
                     audio_files: counts.audio_files,
                     cold,
@@ -668,14 +665,13 @@ mod tests {
 
     #[test]
     fn per_dir_ms_divides_only_with_a_positive_count() {
-        assert_eq!(per_dir_ms(100.0, Some(50)), Some(2.0));
-        assert_eq!(per_dir_ms(100.0, Some(0)), None);
-        assert_eq!(per_dir_ms(100.0, None), None);
+        assert_eq!(per_dir_ms(100.0, 50), Some(2.0));
+        assert_eq!(per_dir_ms(100.0, 0), None);
     }
 
     #[test]
     fn phase_report_aggregates_samples_with_per_dir() {
-        let p = phase_report(&[10.0, 20.0, 30.0], Some(10));
+        let p = phase_report(&[10.0, 20.0, 30.0], 10);
         assert_eq!(p.iterations_ms, vec![10.0, 20.0, 30.0]);
         assert_eq!(p.median_ms, 20.0);
         assert_eq!(p.min_ms, 10.0);
@@ -684,8 +680,8 @@ mod tests {
     }
 
     #[test]
-    fn phase_report_leaves_per_dir_none_without_a_count() {
-        let p = phase_report(&[10.0, 20.0], None);
+    fn phase_report_leaves_per_dir_none_with_zero_dirs() {
+        let p = phase_report(&[10.0, 20.0], 0);
         assert_eq!(p.median_ms, 15.0);
         assert_eq!(p.ms_per_dir, None);
     }
@@ -858,7 +854,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
     }
 
     #[test]
-    fn time_walk_all_counts_dirs_gaps_and_audio() {
+    fn time_walk_all_counts_dirs_entries_gaps_and_audio() {
         let dir = tempfile::tempdir().unwrap();
         // A gap (audio, no cover) and a covered audiobook (audio + epub).
         touch(&dir.path().join("Gap/01.mp3"));
@@ -866,20 +862,22 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         touch(&dir.path().join("Covered/01.mp3"));
         touch(&dir.path().join("Covered/Book.epub"));
         let (_ms, counts) = time_walk(Mode::All, dir.path(), &bench_settings());
-        // Root + Gap + Covered are all recorded by the full walk.
-        assert_eq!(counts.dirs_walked, Some(3));
+        assert_eq!(counts.stats.dirs_visited, 3); // root, Gap, Covered
+        assert_eq!(counts.stats.entries_seen, 6); // 2 subdirs + 2 + 2 files
         assert_eq!(counts.gaps, 1);
         assert_eq!(counts.audio_files, 3);
     }
 
     #[test]
-    fn time_walk_gaps_has_no_dir_count() {
+    fn time_walk_gaps_counts_visited_dirs() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Gap/01.mp3"));
         touch(&dir.path().join("Covered/01.mp3"));
         touch(&dir.path().join("Covered/Book.epub"));
         let (_ms, counts) = time_walk(Mode::Gaps, dir.path(), &bench_settings());
-        assert_eq!(counts.dirs_walked, None);
+        // The gaps walk reads root, Gap, and Covered; Covered's own directory is read
+        // before the cover is found.
+        assert_eq!(counts.stats.dirs_visited, 3);
         assert_eq!(counts.gaps, 1);
         assert_eq!(counts.audio_files, 1);
     }
@@ -890,11 +888,12 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         modes.insert(
             "all".to_string(),
             ModeReport {
-                dirs_walked: Some(3),
+                dirs_visited: 3,
+                entries_seen: 9,
                 gaps: 1,
                 audio_files: 3,
                 cold: None,
-                warm: phase_report(&[10.0, 20.0], Some(3)),
+                warm: phase_report(&[10.0, 20.0], 3),
             },
         );
         let report = Report {
@@ -916,6 +915,8 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         let json = serde_json::to_string(&report).unwrap();
         assert!(json.contains("\"tool\":\"scan_bench\""));
         assert!(json.contains("\"fstype\":\"ext4\""));
+        assert!(json.contains("\"dirs_visited\":3"));
+        assert!(json.contains("\"entries_seen\":9"));
         assert!(json.contains("\"ms_per_dir\":5.0"));
         assert!(json.contains("\"cold\":null"));
     }
