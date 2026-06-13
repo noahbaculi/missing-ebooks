@@ -14,6 +14,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
+use rayon::prelude::*;
 use thiserror::Error;
 
 use crate::marker::Marker;
@@ -164,26 +165,59 @@ pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<FlaggedFolder> {
 pub fn scan_with_stats(root: &Path, settings: &ScanSettings) -> (Vec<FlaggedFolder>, WalkStats) {
     let mut flagged = Vec::new();
     let mut stats = WalkStats::default();
-    visit(root, root, settings, &mut flagged, &mut stats);
+    // Level-synchronous breadth-first walk: read every directory in the current
+    // level concurrently, then descend into the survivors. Cost over a network
+    // mount is one round trip per directory, so reading a level at once overlaps
+    // the waits. Coverage pruning carries over: a covered directory yields no
+    // children. Order stays unspecified; `tree::build` sorts.
+    let mut frontier = vec![root.to_path_buf()];
+    while !frontier.is_empty() {
+        let level: Vec<GapsDir> = frontier
+            .par_iter()
+            .map(|dir| read_dir_gaps(root, dir, settings))
+            .collect();
+        let mut next = Vec::new();
+        for mut dir in level {
+            stats.dirs_visited += dir.stats.dirs_visited;
+            stats.entries_seen += dir.stats.entries_seen;
+            if let Some(folder) = dir.flagged.take() {
+                flagged.push(folder);
+            }
+            next.append(&mut dir.subdirs);
+        }
+        frontier = next;
+    }
     (flagged, stats)
 }
 
-fn visit(
-    root: &Path,
-    dir: &Path,
-    settings: &ScanSettings,
-    out: &mut Vec<FlaggedFolder>,
-    stats: &mut WalkStats,
-) {
+/// One directory's contribution to the gaps walk: the folder it flags (if any),
+/// the non-excluded subdirectories to descend into next, and its walk counts. A
+/// covered directory returns no subdirectories, which is how coverage prunes.
+struct GapsDir {
+    flagged: Option<FlaggedFolder>,
+    subdirs: Vec<PathBuf>,
+    stats: WalkStats,
+}
+
+/// Read and classify one directory for the gaps walk. Read-only: it only reads
+/// directory entries and their names and types.
+fn read_dir_gaps(root: &Path, dir: &Path, settings: &ScanSettings) -> GapsDir {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         // Unreadable directory (for example permission denied): log and skip it.
         Err(err) => {
             tracing::warn!(dir = %dir.display(), error = %err, "skipping unreadable directory");
-            return;
+            return GapsDir {
+                flagged: None,
+                subdirs: Vec::new(),
+                stats: WalkStats::default(),
+            };
         }
     };
-    stats.dirs_visited += 1;
+    let mut stats = WalkStats {
+        dirs_visited: 1,
+        entries_seen: 0,
+    };
 
     let mut subdirs: Vec<PathBuf> = Vec::new();
     let mut audio_files: Vec<String> = Vec::new();
@@ -225,23 +259,34 @@ fn visit(
                  this blanks the entire tree (see ADR-0005)"
             );
         }
-        return;
+        return GapsDir {
+            flagged: None,
+            subdirs: Vec::new(),
+            stats,
+        };
     }
-    if !audio_files.is_empty()
-        && let Ok(rel) = dir.strip_prefix(root)
-    {
+
+    let flagged = if audio_files.is_empty() {
+        None
+    } else if let Ok(rel) = dir.strip_prefix(root) {
         audio_files.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
-        out.push(FlaggedFolder {
+        Some(FlaggedFolder {
             rel_path: rel.to_path_buf(),
             audio_files,
-        });
-    }
-    // A flag does not stop the descent: a child can be a separate gap.
-    for sub in subdirs {
-        if is_excluded(root, &sub, settings) {
-            continue;
-        }
-        visit(root, &sub, settings, out, stats);
+        })
+    } else {
+        None
+    };
+    // A flag does not stop the descent: a child can be a separate gap. Drop
+    // excluded names here so the driver descends only what survives.
+    let subdirs = subdirs
+        .into_iter()
+        .filter(|sub| !is_excluded(root, sub, settings))
+        .collect();
+    GapsDir {
+        flagged,
+        subdirs,
+        stats,
     }
 }
 
@@ -425,6 +470,55 @@ mod tests {
             .iter()
             .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))
             .collect()
+    }
+
+    /// Run the gaps walk forced onto a pool of exactly `threads` workers, so a
+    /// test can compare a single-threaded walk against a parallel one.
+    fn scan_with_threads(root: &Path, settings: &ScanSettings, threads: usize) -> BTreeSet<String> {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap();
+        pool.install(|| {
+            scan(root, settings)
+                .iter()
+                .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))
+                .collect()
+        })
+    }
+
+    #[test]
+    fn parallel_gaps_walk_matches_across_concurrency_levels() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("AuthorA/Book1/01.mp3"));
+        touch(&dir.path().join("AuthorA/Book2/01.mp3"));
+        touch(&dir.path().join("AuthorB/Series/Book3/01.mp3"));
+        touch(&dir.path().join("AuthorC/Covered/01.mp3"));
+        touch(&dir.path().join("AuthorC/Covered/Book.epub"));
+        let settings = default_settings(&[]);
+        let one = scan_with_threads(dir.path(), &settings, 1);
+        let many = scan_with_threads(dir.path(), &settings, 8);
+        assert_eq!(one, many, "concurrency must not change the flagged set");
+        assert_eq!(
+            one,
+            BTreeSet::from([
+                "AuthorA/Book1".to_string(),
+                "AuthorA/Book2".to_string(),
+                "AuthorB/Series/Book3".to_string(),
+            ])
+        );
+    }
+
+    #[test]
+    fn parallel_gaps_walk_preserves_walk_stats() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("AuthorA/Book1/01.mp3"));
+        touch(&dir.path().join("AuthorA/Book2/01.mp3"));
+        let settings = default_settings(&[]);
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+        let (_flagged, stats) = pool.install(|| scan_with_stats(dir.path(), &settings));
+        // root + AuthorA + Book1 + Book2.
+        assert_eq!(stats.dirs_visited, 4);
     }
 
     #[test]
