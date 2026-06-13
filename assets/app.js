@@ -277,6 +277,8 @@
    * @param {string} base
    */
   function applyAccent(base) {
+    // A malformed base would land in the inline styles; use the default.
+    if (!ACCENT_RE.test(base)) base = ACCENT_DEFAULT;
     var root = document.documentElement;
     if (base.toLowerCase() === ACCENT_DEFAULT) {
       root.style.removeProperty("--color-warning");
@@ -296,6 +298,8 @@
    * @param {string} base
    */
   function setAccent(base) {
+    // Don't persist a malformed pick.
+    if (!ACCENT_RE.test(base)) base = ACCENT_DEFAULT;
     if (base.toLowerCase() === ACCENT_DEFAULT) {
       localStorage.removeItem(ACCENT_KEY);
     } else {
