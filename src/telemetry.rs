@@ -14,7 +14,7 @@ use tracing_subscriber::EnvFilter;
 const LEVELS: [&str; 5] = ["error", "warn", "info", "debug", "trace"];
 
 /// Install the global tracing subscriber: human-readable events to stderr, with
-/// verbosity from the environment (see [`resolve`]). Idempotent via `try_init`, so
+/// verbosity from the environment (see `resolve`). Idempotent via `try_init`, so
 /// a second call (a test, an example) is a no-op, not a panic.
 pub fn init() {
     let resolved = resolve(&|key| std::env::var(key).ok());
