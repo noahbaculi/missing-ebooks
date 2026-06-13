@@ -1,19 +1,11 @@
 # curated fixture
 
-A small, hand-built audiobook tree distilled from
-[`../example-nas/`](../example-nas/), for fast unit tests with known expected
-verdicts. Where `example-nas` is the full real library (8,802 entries) used for
-golden-output and scale tests, this fixture is tiny enough to read by eye and
-verify by hand.
+A small, hand-built audiobook tree distilled from [`../example-nas/`](../example-nas/), for fast unit tests with known expected verdicts. Where `example-nas` is the full real library (8,802 entries) used for golden-output and scale tests, this fixture is tiny enough to read by eye and verify by hand.
 
 ## Layout
 
-- `Audiobooks/` is the library root the scanner points at. These are real (empty)
-  files, so tests walk the tree directly with no rehydrate step.
-- `expected.json` is the expected findings: every flagged folder, covered folder,
-  container, and notable absence, each with the reason. **Read that file alone to
-  know the full expected output. You do not need to walk the tree or open the
-  example-nas snapshot.**
+- `Audiobooks/` is the library root the scanner points at. These are real (empty) files, so tests walk the tree directly with no rehydrate step.
+- `expected.json` is the expected findings: every flagged folder, covered folder, container, and notable absence, each with the reason. **Read that file alone to know the full expected output. You do not need to walk the tree or open the example-nas snapshot.**
 
 ## Cases covered
 
@@ -45,17 +37,6 @@ verify by hand.
 | `James Clear/Atomic Habits (Unabridged)` | flagged | the `**/*(abridged)*` glob must not match `(Unabridged)`; the folder is scanned, not pruned (synthetic) |
 | `missing_ebooks.txt` (root) | ignored | the reference tool's own output file |
 
-The verdicts follow the rules in [`CONTEXT.md`](../../../CONTEXT.md) and are the
-contract the scanner must satisfy. When the scanner changes a rule, update
-`expected.json` in the same change.
+The verdicts follow the rules in [`CONTEXT.md`](../../../CONTEXT.md) and are the contract the scanner must satisfy. When the scanner changes a rule, update `expected.json` in the same change.
 
-`expected.json` also carries three fields beyond the per-folder verdicts.
-`config` is the configuration the whole expected output assumes (the abridged
-exclude glob). `excluded` lists folders an exclusion rule drops, pruning their
-subtree. `notes` holds assertions that are not tied to a single folder, such as
-the root output file being ignored, and a record that the ancestor-coverage,
-AppleDouble-only-ebook, and `(Unabridged)`-glob-guard cases are synthetic: the
-real snapshot has no such instance, so they defend a spec rule rather than
-reproduce observed data. A
-helper, `validate_expected.py`, checks that `expected.json` and the tree stay
-consistent.
+`expected.json` also carries three fields beyond the per-folder verdicts. `config` is the configuration the whole expected output assumes (the abridged exclude glob). `excluded` lists folders an exclusion rule drops, pruning their subtree. `notes` holds assertions that are not tied to a single folder, such as the root output file being ignored, and a record that the ancestor-coverage, AppleDouble-only-ebook, and `(Unabridged)`-glob-guard cases are synthetic: the real snapshot has no such instance, so they defend a spec rule rather than reproduce observed data. A helper, `validate_expected.py`, checks that `expected.json` and the tree stay consistent.
