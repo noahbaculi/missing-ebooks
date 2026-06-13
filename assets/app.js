@@ -90,6 +90,7 @@
   var ACCENT_DEFAULT = "#f5a524";
   var ACCENT_RE = /^#[0-9a-fA-F]{6}$/;
 
+  // ACCENT-DERIVE:BEGIN (mirrored in src/web/render.rs; parity checked by tests/accent/derive.test.mjs)
   /**
    * Relative luminance of a #rrggbb hex, per WCAG.
    * @param {string} hex
@@ -246,6 +247,7 @@
     }
     return hslToHex(hsl.h, sat, theme === "dark" ? 90 : 15);
   }
+  // ACCENT-DERIVE:END
 
   /**
    * The stored accent base, or the default when unset or malformed.

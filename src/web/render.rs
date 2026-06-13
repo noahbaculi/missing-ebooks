@@ -15,8 +15,10 @@ use crate::tree::Node;
 /// same way, and applies a saved custom accent by setting `--color-warning` and
 /// the per-theme-derived `--color-warning-text` inline on <html>. The default
 /// accent writes no override, so the stylesheet's tuned tokens apply. The
-/// `deriveWarningInk` helper here is duplicated in `app.js`; keep them in sync.
-/// The interactive controls live in `app.js`.
+/// `deriveWarningInk` helper here mirrors the one in `app.js`; the `ACCENT-DERIVE`
+/// markers fence the shared block, and `tests/accent/derive.test.mjs` checks the
+/// two copies agree and that the ink clears AA. The interactive controls live in
+/// `app.js`.
 const PREPAINT_JS: &str = r#"(function () {
   var saved = localStorage.getItem('theme');
   var t = (saved === 'light' || saved === 'dark')
@@ -30,6 +32,7 @@ const PREPAINT_JS: &str = r#"(function () {
     document.documentElement.dataset.italicNested = 'off';
   }
 
+  // ACCENT-DERIVE:BEGIN (mirrored in assets/app.js; parity checked by tests/accent/derive.test.mjs)
   function luminance(hex) {
     var ch = [1, 3, 5].map(function (i) {
       var c = parseInt(hex.slice(i, i + 2), 16) / 255;
@@ -107,6 +110,7 @@ const PREPAINT_JS: &str = r#"(function () {
     }
     return hslToHex(hsl.h, sat, theme === 'dark' ? 90 : 15);
   }
+  // ACCENT-DERIVE:END
 
   var accent = localStorage.getItem('accent');
   if (/^#[0-9a-fA-F]{6}$/.test(accent || '') && accent.toLowerCase() !== '#f5a524') {
