@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "tool": "scan_bench",
+  "label": "local",
+  "host": "jane-2",
+  "kernel": "6.12.86+deb13-amd64",
+  "unix_time": 1781322985,
+  "build_profile": "release",
+  "iterations": 5,
+  "drop_caches": true,
+  "roots": [
+    {
+      "path": "/mnt/jane-nas/Entertainment/Audiobooks",
+      "fstype": "cifs",
+      "mount_options": "rw,relatime,vers=3.1.1,cache=strict,upcall_target=app,username=noah,uid=1000,forceuid,gid=1000,forcegid,addr=192.168.0.210,file_mode=0775,dir_mode=0775,soft,nounix,serverino,mapposix,nobrl,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,echo_interval=60,actimeo=1,closetimeo=1",
+      "modes": {
+        "all": {
+          "dirs_visited": 901,
+          "entries_seen": 8802,
+          "gaps": 258,
+          "audio_files": 5556,
+          "cold": {
+            "iterations_ms": [
+              2211.252,
+              2087.963,
+              2336.402,
+              2315.041,
+              2138.725
+            ],
+            "median_ms": 2211.252,
+            "min_ms": 2087.963,
+            "max_ms": 2336.402,
+            "ms_per_dir": 2.454
+          },
+          "warm": {
+            "iterations_ms": [
+              2680.949,
+              2232.273,
+              2202.303,
+              2102.528,
+              2096.762
+            ],
+            "median_ms": 2202.303,
+            "min_ms": 2096.762,
+            "max_ms": 2680.949,
+            "ms_per_dir": 2.444
+          }
+        },
+        "gaps": {
+          "dirs_visited": 901,
+          "entries_seen": 8802,
+          "gaps": 258,
+          "audio_files": 1479,
+          "cold": {
+            "iterations_ms": [
+              2043.011,
+              2070.797,
+              2273.195,
+              2511.943,
+              2679.517
+            ],
+            "median_ms": 2273.195,
+            "min_ms": 2043.011,
+            "max_ms": 2679.517,
+            "ms_per_dir": 2.523
+          },
+          "warm": {
+            "iterations_ms": [
+              2907.896,
+              3101.336,
+              2311.52,
+              3089.343,
+              2998.751
+            ],
+            "median_ms": 2998.751,
+            "min_ms": 2311.52,
+            "max_ms": 3101.336,
+            "ms_per_dir": 3.328
+          }
+        }
+      }
+    }
+  ]
+}
