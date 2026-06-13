@@ -514,41 +514,71 @@ mod tests {
             .collect()
     }
 
-    /// Run the gaps walk forced onto a pool of exactly `threads` workers, so a
-    /// test can compare a single-threaded walk against a parallel one.
-    fn scan_with_threads(root: &Path, settings: &ScanSettings, threads: usize) -> BTreeSet<String> {
+    /// Run the gaps walk forced onto a pool of exactly `threads` workers, returning
+    /// the full flagged Vec so a test can compare order and per-folder file lists,
+    /// not just the flagged set.
+    fn scan_on_pool(root: &Path, settings: &ScanSettings, threads: usize) -> Vec<FlaggedFolder> {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(threads)
             .build()
             .unwrap();
-        pool.install(|| {
-            scan(root, settings)
-                .iter()
-                .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))
-                .collect()
-        })
+        pool.install(|| scan(root, settings))
+    }
+
+    /// Run the full walk forced onto a pool of exactly `threads` workers, returning
+    /// the full Vec so a test can compare order, tags, and per-folder file lists.
+    fn scan_all_on_pool(
+        root: &Path,
+        settings: &ScanSettings,
+        threads: usize,
+    ) -> Vec<ScannedFolder> {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap();
+        pool.install(|| scan_all(root, settings))
     }
 
     #[test]
     fn parallel_gaps_walk_matches_across_concurrency_levels() {
+        // A nested tree with a covered subtree, a glob-pruned subtree, loose audio
+        // in the root, and a multi-file folder, so the comparison exercises Vec
+        // order, per-folder audio_files, glob pruning, and the flaggable root
+        // (ADR-0005) under concurrency, not just the flagged set.
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("AuthorA/Book1/01.mp3"));
+        touch(&dir.path().join("AuthorA/Book1/02.mp3"));
         touch(&dir.path().join("AuthorA/Book2/01.mp3"));
         touch(&dir.path().join("AuthorB/Series/Book3/01.mp3"));
         touch(&dir.path().join("AuthorC/Covered/01.mp3"));
         touch(&dir.path().join("AuthorC/Covered/Book.epub"));
-        let settings = default_settings(&[]);
-        let one = scan_with_threads(dir.path(), &settings, 1);
-        let many = scan_with_threads(dir.path(), &settings, 8);
-        assert_eq!(one, many, "concurrency must not change the flagged set");
+        touch(&dir.path().join("Cycle (Abridged)/Book/01.m4b"));
+        touch(&dir.path().join("01 - Loose Book.mp3"));
+        let settings = default_settings(&["**/*(abridged)*"]);
+        let one = scan_on_pool(dir.path(), &settings, 1);
+        let many = scan_on_pool(dir.path(), &settings, 8);
+        // The whole Vec, order and each folder's audio_files included: a BTreeSet
+        // would hide a reordering or a dropped file.
+        assert_eq!(one, many, "concurrency must not change the flagged Vec");
+        let flagged: BTreeSet<String> = one
+            .iter()
+            .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))
+            .collect();
         assert_eq!(
-            one,
+            flagged,
             BTreeSet::from([
+                String::new(), // loose root audio (ADR-0005)
                 "AuthorA/Book1".to_string(),
                 "AuthorA/Book2".to_string(),
                 "AuthorB/Series/Book3".to_string(),
-            ])
+            ]),
+            "abridged subtree pruned, AuthorC/Covered suppressed"
         );
+        let book1 = one
+            .iter()
+            .find(|f| f.rel_path == Path::new("AuthorA/Book1"))
+            .unwrap();
+        assert_eq!(book1.audio_files, vec!["01.mp3", "02.mp3"]);
     }
 
     #[test]
@@ -714,34 +744,46 @@ mod tests {
 
     #[test]
     fn parallel_full_walk_matches_across_concurrency_levels() {
+        // The covered container is still descended (coverage does not prune the
+        // full walk), the abridged subtree is glob-pruned, and the root holds loose
+        // audio. Comparing the full Vec checks order, tags, cover_files, and
+        // audio_files under concurrency, not just the per-folder tag pair.
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("AuthorA/Book1/01.mp3"));
+        touch(&dir.path().join("AuthorA/Book1/02.mp3"));
         touch(&dir.path().join("AuthorB/Covered/01.mp3"));
         touch(&dir.path().join("AuthorB/Covered/Book.epub"));
         touch(&dir.path().join("AuthorB/Covered/Disc2/02.mp3"));
-        let settings = default_settings(&[]);
-        let run = |threads: usize| {
-            let pool = rayon::ThreadPoolBuilder::new()
-                .num_threads(threads)
-                .build()
-                .unwrap();
-            pool.install(|| {
-                scan_all(dir.path(), &settings)
-                    .iter()
-                    .map(|f| {
-                        let rel = f.rel_path.to_string_lossy().replace('\\', "/");
-                        (rel, (f.directly_holds_audio, f.missing_ebook))
-                    })
-                    .collect::<BTreeMap<String, (bool, bool)>>()
-            })
-        };
-        let one = run(1);
-        let many = run(8);
+        touch(&dir.path().join("Cycle (Abridged)/Book/01.m4b"));
+        touch(&dir.path().join("01 - Loose Book.mp3"));
+        let settings = default_settings(&["**/*(abridged)*"]);
+        let one = scan_all_on_pool(dir.path(), &settings, 1);
+        let many = scan_all_on_pool(dir.path(), &settings, 8);
         assert_eq!(one, many, "concurrency must not change the full walk");
+        let by_path: BTreeMap<String, &ScannedFolder> = one
+            .iter()
+            .map(|f| (f.rel_path.to_string_lossy().replace('\\', "/"), f))
+            .collect();
+        // The abridged subtree is pruned: neither its container nor its book.
+        assert!(!by_path.contains_key("Cycle (Abridged)"));
+        assert!(!by_path.contains_key("Cycle (Abridged)/Book"));
         // Disc2 is covered through its ancestor's ebook: holds audio, not missing.
-        assert_eq!(one["AuthorB/Covered/Disc2"], (true, false));
-        // AuthorA/Book1 is a gap: holds audio, missing ebook.
-        assert_eq!(one["AuthorA/Book1"], (true, true));
+        let disc2 = by_path["AuthorB/Covered/Disc2"];
+        assert_eq!(
+            (disc2.directly_holds_audio, disc2.missing_ebook),
+            (true, false)
+        );
+        // The covered container lists its own ebook as a cover file.
+        assert_eq!(by_path["AuthorB/Covered"].cover_files, vec!["Book.epub"]);
+        // AuthorA/Book1 is a gap that keeps both audio files, natural-sorted.
+        let book1 = by_path["AuthorA/Book1"];
+        assert_eq!(
+            (book1.directly_holds_audio, book1.missing_ebook),
+            (true, true)
+        );
+        assert_eq!(book1.audio_files, vec!["01.mp3", "02.mp3"]);
+        // The loose-root case: the root (empty path) directly holds audio.
+        assert!(by_path[""].directly_holds_audio);
     }
 
     #[test]
