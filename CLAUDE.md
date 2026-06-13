@@ -24,6 +24,8 @@ After changing the rendered UI (HTML in `src/web.rs`, styles in `assets/app.css`
 
 `examples/explore.rs` serves the production router against a synthetic library in a temp directory and tears it down on Ctrl-C. Pick the scenario that exercises the states your change touches: `mixed-forest` (flagship, three roots: two forests and a clean root), `messy-shelf` (inconsistent organization and mixed depth), `clean-error`, `root-flagged`, `pre-marked`, or `big-library` (volume and scroll). Point out what to look at, and stop the harness once the user is done.
 
+Several worktrees can run this harness at once, so the port may already be taken by another agent. Check it is free with `lsof -iTCP:8919 -sTCP:LISTEN` before binding and pick another if it is not. To stop yours, match by working directory instead of killing every `explore`: each worktree has its own `target/`, so `lsof -a -p <pid> -d cwd` shows the owning worktree, and you only stop the instance whose cwd is yours. Never blanket-kill `explore` processes, or you take down another agent's harness.
+
 ## Committing and merging
 
 Work lands on `main` by rebase and fast-forward only, so each commit sits inline on a linear history with no merge commit above it to carry context. Keep commits granular and don't squash (this is pre-release); each one has to read on its own.
