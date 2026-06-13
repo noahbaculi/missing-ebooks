@@ -722,6 +722,59 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   border: 1px solid var(--color-border);
 }
 
+/* accent control: a quick-pick dot row plus the native color picker, in the
+   Theme section. The dots are data-accent quick picks; the swatch is the OS
+   picker. The default (#06b6d4) writes no override, so the tokens above apply;
+   a custom pick is set inline on <html> by app.js. */
+.accent-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: none;
+}
+.accent-dots {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+.accent-dot {
+  width: 1.2rem;
+  height: 1.2rem;
+  padding: 0;
+  border-radius: 50%;
+  border: var(--border) solid var(--color-border);
+  cursor: pointer;
+}
+/* the active quick-pick: a ring offset by a base-100 gap so it reads against the
+   dot's own fill. The 0.5rem dot gap keeps the ring clear of its neighbors. */
+.accent-dot-active {
+  box-shadow:
+    0 0 0 2px var(--color-base-100),
+    0 0 0 4px var(--color-primary);
+}
+/* the native color input, sized to match the panel's controls. The vendor
+   pseudo-elements strip the default inset border so the swatch reads as a clean
+   rounded chip. */
+.accent-swatch {
+  width: 2.1rem;
+  height: 1.7rem;
+  padding: 0;
+  background: none;
+  border: var(--border) solid var(--color-border);
+  border-radius: var(--radius-field);
+  cursor: pointer;
+}
+.accent-swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.accent-swatch::-webkit-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-field) - 2px);
+}
+.accent-swatch::-moz-color-swatch {
+  border: none;
+  border-radius: calc(var(--radius-field) - 2px);
+}
+
 /* marker-write confirmation dialog: a themed centered modal over a dimmed page */
 .confirm-dialog {
   width: min(22rem, calc(100vw - 2rem));

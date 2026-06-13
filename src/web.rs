@@ -1362,6 +1362,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_styles_the_accent_control() {
+        let dir = tempfile::tempdir().unwrap();
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = body_string(response).await;
+        // The quick-pick dots, the active ring, and the native swatch.
+        assert!(body.contains(".accent-dot"));
+        assert!(body.contains(".accent-dot-active"));
+        assert!(body.contains(".accent-swatch"));
+    }
+
+    #[tokio::test]
     async fn stylesheet_defines_the_border_token() {
         let dir = tempfile::tempdir().unwrap();
         let response = app_for(dir.path())
