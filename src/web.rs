@@ -611,6 +611,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stylesheet_styles_the_noscript_notice() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(
+                    Request::builder()
+                        .uri("/static/app.css")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(body.contains(".noscript-notice"));
+    }
+
+    #[tokio::test]
     async fn rescan_is_an_in_place_htmx_swap_with_a_progress_bar() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
@@ -1180,6 +1198,23 @@ mod tests {
         assert!(body.contains(r#"data-msg-reconnected="Reconnected.""#));
         // The message slot the JS fills.
         assert!(body.contains(r#"class="conn-banner-msg""#));
+    }
+
+    #[tokio::test]
+    async fn page_carries_a_noscript_notice() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The UI requires JavaScript; a <noscript> strip is the one thing a
+        // scripting-disabled visitor sees.
+        assert!(body.contains("<noscript>"));
+        assert!(body.contains(r#"<div class="noscript-notice">"#));
+        assert!(body.contains("needs JavaScript to run"));
     }
 
     #[tokio::test]

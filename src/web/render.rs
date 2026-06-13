@@ -317,6 +317,11 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                 link rel="stylesheet" href="/static/app.css";
             }
             body {
+                noscript {
+                    div.noscript-notice {
+                        "Missing Ebooks needs JavaScript to run. Please enable it and reload."
+                    }
+                }
                 (conn_banner())
                 nav.navbar {
                     // The title is a home link: a plain GET to "/" that survives the
