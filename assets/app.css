@@ -17,6 +17,12 @@
   --color-warning-content: #432a00;
   --color-success: #00b074;
   --color-error: #ef4565;
+  /* Status roles: the base tokens above fill and tint. These -text variants carry
+     status color as text or a meaning-bearing icon, where the saturated base fails
+     contrast on a light surface. */
+  --color-success-text: #046b4d;
+  --color-warning-text: #955800;
+  --color-error-text: #be123c;
   --guide: #dfe2e7;
   --color-border: #e5e6e9;
   --radius-box: 1rem;
@@ -36,6 +42,9 @@
   --color-warning-content: #2a1a00;
   --color-success: #00b074;
   --color-error: #ff6b85;
+  --color-success-text: #34d399;
+  --color-warning-text: #f5a524;
+  --color-error-text: #ff8095;
   --guide: #2b323b;
   --color-border: #333b46;
 }
