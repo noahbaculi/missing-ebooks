@@ -4,6 +4,7 @@
 //! affected root's section; the script is vendored and served from `/static`.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use axum::Router;
 use axum::extract::{Form, Query, State};
@@ -63,18 +64,32 @@ pub fn router(state: Arc<AppState>) -> Router {
 }
 
 async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery>) -> Html<String> {
+    let started = Instant::now();
     let mode = ViewMode::from_query(query.view.as_deref());
     let view = service::current_view(&state, mode).await;
-    Html(render::page(&view, &state.config.search_links, mode).into_string())
+    let render_started = Instant::now();
+    let html = render::page(&view, &state.config.search_links, mode).into_string();
+    tracing::debug!(
+        elapsed_ms = render_started.elapsed().as_secs_f64() * 1e3,
+        "rendered page"
+    );
+    tracing::debug!(
+        op = "index",
+        mode = mode.as_query(),
+        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+        "handled request"
+    );
+    Html(html)
 }
 
 async fn mark(
     State(state): State<Arc<AppState>>,
     Form(req): Form<MarkRequest>,
 ) -> axum::response::Response {
+    let started = Instant::now();
     let links = &state.config.search_links;
     let mode = req.view;
-    match service::mark(&state, req.root, &req.rel, req.kind, mode).await {
+    let resp = match service::mark(&state, req.root, &req.rel, req.kind, mode).await {
         Ok(outcome) => {
             let markup =
                 render::render_section(&outcome.view[req.root], req.root, None, links, mode);
@@ -94,16 +109,25 @@ async fn mark(
             )
             .await
         }
-    }
+    };
+    tracing::debug!(
+        op = "mark",
+        root = req.root,
+        rel = %req.rel,
+        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+        "handled request"
+    );
+    resp
 }
 
 async fn unmark(
     State(state): State<Arc<AppState>>,
     Form(req): Form<MarkRequest>,
 ) -> axum::response::Response {
+    let started = Instant::now();
     let links = &state.config.search_links;
     let mode = req.view;
-    match service::unmark(&state, req.root, &req.rel, req.kind, mode).await {
+    let resp = match service::unmark(&state, req.root, &req.rel, req.kind, mode).await {
         Ok(view) => section_response(
             render::render_section(&view[req.root], req.root, None, links, mode),
             None,
@@ -118,7 +142,15 @@ async fn unmark(
             )
             .await
         }
-    }
+    };
+    tracing::debug!(
+        op = "unmark",
+        root = req.root,
+        rel = %req.rel,
+        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+        "handled request"
+    );
+    resp
 }
 
 /// A server-side write failed: re-render the affected root's section with an
@@ -146,9 +178,10 @@ async fn rescan(
     headers: HeaderMap,
     Form(query): Form<ViewQuery>,
 ) -> Response {
+    let started = Instant::now();
     let mode = ViewMode::from_query(query.view.as_deref());
     let view = service::rescan(&state, mode).await;
-    if headers.contains_key("HX-Request") {
+    let resp = if headers.contains_key("HX-Request") {
         // htmx path: swap the fresh sections into #roots, and push the mode path so
         // the address bar tracks the view without ever showing the /rescan POST URL.
         let markup = render::roots(&view, &state.config.search_links, mode);
@@ -161,7 +194,14 @@ async fn rescan(
         // no-JS path: 303 See Other (Post/Redirect/Get), so a refresh does not
         // re-trigger a scan.
         Redirect::to(mode_path(mode)).into_response()
-    }
+    };
+    tracing::debug!(
+        op = "rescan",
+        mode = mode.as_query(),
+        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+        "handled request"
+    );
+    resp
 }
 
 /// The path that renders a given mode, for redirects and links.
