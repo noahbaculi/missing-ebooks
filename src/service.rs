@@ -218,6 +218,7 @@ pub async fn unmark(
 /// when it was already there. Create-only keeps a re-mark a no-op and lets undo
 /// delete only files its own action created.
 fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<bool, DomainError> {
+    let started = Instant::now();
     let canonical_root = std::fs::canonicalize(root).map_err(|_| DomainError::TargetMissing)?;
     let target = if rel == "." {
         canonical_root.clone()
@@ -232,15 +233,23 @@ fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<bool, DomainEr
     if !canonical_target.is_dir() {
         return Err(DomainError::NotADirectory);
     }
-    match std::fs::OpenOptions::new()
+    let created = match std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(canonical_target.join(marker.filename()))
     {
-        Ok(_) => Ok(true),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
-        Err(e) => Err(DomainError::WriteFailed(e)),
-    }
+        Ok(_) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => false,
+        Err(e) => return Err(DomainError::WriteFailed(e)),
+    };
+    tracing::debug!(
+        rel,
+        marker = marker.filename(),
+        created,
+        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+        "wrote marker"
+    );
+    Ok(created)
 }
 
 /// Guard the target and delete the marker file. The guarded mirror of
@@ -248,6 +257,7 @@ fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<bool, DomainEr
 /// tolerant: a missing file or a folder that no longer exists is success, since
 /// the intended end state (no marker) already holds. Runs on a blocking task.
 fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<(), DomainError> {
+    let started = Instant::now();
     let canonical_root = match std::fs::canonicalize(root) {
         Ok(path) => path,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -266,11 +276,19 @@ fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<(), DomainErr
     if !canonical_target.starts_with(&canonical_root) {
         return Err(DomainError::OutsideRoots);
     }
-    match std::fs::remove_file(canonical_target.join(marker.filename())) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(DomainError::WriteFailed(e)),
-    }
+    let removed = match std::fs::remove_file(canonical_target.join(marker.filename())) {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => return Err(DomainError::WriteFailed(e)),
+    };
+    tracing::debug!(
+        rel,
+        marker = marker.filename(),
+        removed,
+        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+        "removed marker"
+    );
+    Ok(())
 }
 
 /// Apply a marker write to one root's section. Marking the root directory covers
