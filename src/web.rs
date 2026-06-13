@@ -8,8 +8,8 @@ use std::time::Instant;
 
 use axum::Router;
 use axum::extract::{Form, Query, State};
-use axum::http::{HeaderMap, HeaderName, HeaderValue};
-use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::http::{HeaderName, HeaderValue};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use maud::Markup;
 use serde::Deserialize;
@@ -170,28 +170,18 @@ async fn failed_write_response(
     section_response(markup, None)
 }
 
-async fn rescan(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-    Form(query): Form<ViewQuery>,
-) -> Response {
+async fn rescan(State(state): State<Arc<AppState>>, Form(query): Form<ViewQuery>) -> Response {
     let started = Instant::now();
     let mode = ViewMode::from_query(query.view.as_deref());
     let view = service::rescan(&state, mode).await;
-    let resp = if headers.contains_key("HX-Request") {
-        // htmx path: swap the fresh sections into #roots, and push the mode path so
-        // the address bar tracks the view without ever showing the /rescan POST URL.
-        let markup = render::roots(&view, &state.config.search_links, mode);
-        (
-            [("HX-Push-Url", mode_path(mode))],
-            Html(markup.into_string()),
-        )
-            .into_response()
-    } else {
-        // no-JS path: 303 See Other (Post/Redirect/Get), so a refresh does not
-        // re-trigger a scan.
-        Redirect::to(mode_path(mode)).into_response()
-    };
+    // Swap the fresh sections into #roots and push the mode path, so the address bar
+    // tracks the view without ever showing the /rescan POST URL.
+    let markup = render::roots(&view, &state.config.search_links, mode);
+    let resp = (
+        [("HX-Push-Url", mode_path(mode))],
+        Html(markup.into_string()),
+    )
+        .into_response();
     tracing::debug!(
         op = "rescan",
         mode = mode.as_query(),
@@ -201,7 +191,7 @@ async fn rescan(
     resp
 }
 
-/// The path that renders a given mode, for redirects and links.
+/// The path that renders a given mode, for the pushed URL and links.
 fn mode_path(mode: ViewMode) -> &'static str {
     match mode {
         ViewMode::GapsOnly => "/",
@@ -1431,7 +1421,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rescan_redirects_to_root() {
+    async fn rescan_without_htmx_still_returns_sections() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let response = app_for(dir.path())
@@ -1445,8 +1435,12 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::SEE_OTHER);
-        assert_eq!(response.headers().get("location").unwrap(), "/");
+        // There is no no-JS redirect: every rescan renders the sections and pushes
+        // the view URL, whether or not the request came from htmx.
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers().get("HX-Push-Url").unwrap(), "/");
+        let body = body_string(response).await;
+        assert!(body.contains(r#"class="card root""#));
     }
 
     #[tokio::test]
@@ -1591,25 +1585,6 @@ mod tests {
         // The book stays in the tree (covered), not removed.
         assert!(body.contains("Book"));
         assert!(dir.path().join("Author/Book/.no_ebook").exists());
-    }
-
-    #[tokio::test]
-    async fn rescan_preserves_the_current_view() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Author/Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/rescan")
-                    .header("content-type", "application/x-www-form-urlencoded")
-                    .body(Body::from("view=all"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::SEE_OTHER);
-        assert_eq!(response.headers().get("location").unwrap(), "/?view=all");
     }
 
     #[tokio::test]
