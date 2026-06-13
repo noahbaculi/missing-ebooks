@@ -35,7 +35,9 @@ pub struct Config {
     pub ttl_seconds: u64,
     /// Directories read at once during a scan. Sizes the scan thread pool. On a
     /// network mount each directory is a round trip, so reading several at once
-    /// overlaps the waits; size it by the mount speed, not the CPU count.
+    /// overlaps the waits; size it by the mount speed, not the CPU count. One
+    /// pool serves the whole process, so concurrent scans share it rather than
+    /// each getting this many readers.
     pub scan_concurrency: usize,
     /// Audio extensions counted as audio, compared case-insensitively.
     pub audio_exts: Vec<String>,
@@ -209,8 +211,9 @@ ttl_seconds = 60
 # Directories the library scan reads at once. The scan is bound by per-directory
 # latency on a network mount (SMB/NFS), where each folder is a round trip, so
 # reading several at once overlaps the waits. Size this by the speed of the
-# mount, not the CPU count: the threads mostly wait on the network. 1 disables
-# the parallelism. Also settable as MISSING_EBOOKS_SCAN_CONCURRENCY.
+# mount, not the CPU count: the threads mostly wait on the network. One pool
+# serves the whole process, so concurrent scans share it. 1 disables the
+# parallelism. Also settable as MISSING_EBOOKS_SCAN_CONCURRENCY.
 scan_concurrency = 16
 
 # File extensions, compared case-insensitively. Leading dot required. The
