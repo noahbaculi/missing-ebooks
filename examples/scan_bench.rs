@@ -8,6 +8,7 @@
 //! entries and names; nothing here writes to the library. The single privileged
 //! action is the optional `--drop-caches` page-cache flush on Linux.
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use serde::Serialize;
@@ -117,6 +118,93 @@ fn parse_iterations(value: &str) -> Result<usize, String> {
     Ok(n)
 }
 
+/// A parsed command line. Defaults: five iterations, both walks, warm-only (no
+/// cache drop), save the report.
+#[derive(Debug, PartialEq)]
+struct Args {
+    config: Option<PathBuf>,
+    roots: Vec<PathBuf>,
+    iterations: usize,
+    modes: Vec<Mode>,
+    drop_caches: bool,
+    label: Option<String>,
+    out: Option<PathBuf>,
+    no_save: bool,
+}
+
+/// Pull the value that follows a space-form flag, erroring if the vector ends.
+fn next_value<'a>(
+    iter: &mut impl Iterator<Item = &'a String>,
+    flag: &str,
+) -> Result<String, String> {
+    iter.next()
+        .cloned()
+        .ok_or_else(|| format!("{flag} needs a value"))
+}
+
+/// Parse the argument vector (already stripped of the program name). `Ok(None)`
+/// means help was requested; `Ok(Some(args))` is a run request; `Err(message)` is
+/// a usage error the caller prints beside the help text. Hand-rolled to match
+/// `explore.rs`; no clap.
+fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
+    let mut config = None;
+    let mut roots = Vec::new();
+    let mut iterations = 5usize;
+    let mut modes = vec![Mode::All, Mode::Gaps];
+    let mut drop_caches = false;
+    let mut label = None;
+    let mut out = None;
+    let mut no_save = false;
+    let mut iter = argv.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--help" || arg == "-h" {
+            return Ok(None);
+        } else if arg == "--drop-caches" {
+            drop_caches = true;
+        } else if arg == "--no-save" {
+            no_save = true;
+        } else if arg == "--config" {
+            config = Some(PathBuf::from(next_value(&mut iter, "--config")?));
+        } else if let Some(v) = arg.strip_prefix("--config=") {
+            config = Some(PathBuf::from(v));
+        } else if arg == "--root" {
+            roots.push(PathBuf::from(next_value(&mut iter, "--root")?));
+        } else if let Some(v) = arg.strip_prefix("--root=") {
+            roots.push(PathBuf::from(v));
+        } else if arg == "--iterations" {
+            iterations = parse_iterations(&next_value(&mut iter, "--iterations")?)?;
+        } else if let Some(v) = arg.strip_prefix("--iterations=") {
+            iterations = parse_iterations(v)?;
+        } else if arg == "--mode" {
+            modes = parse_modes(&next_value(&mut iter, "--mode")?)?;
+        } else if let Some(v) = arg.strip_prefix("--mode=") {
+            modes = parse_modes(v)?;
+        } else if arg == "--label" {
+            label = Some(next_value(&mut iter, "--label")?);
+        } else if let Some(v) = arg.strip_prefix("--label=") {
+            label = Some(v.to_string());
+        } else if arg == "--out" {
+            out = Some(PathBuf::from(next_value(&mut iter, "--out")?));
+        } else if let Some(v) = arg.strip_prefix("--out=") {
+            out = Some(PathBuf::from(v));
+        } else if arg.starts_with('-') {
+            return Err(format!("unknown flag {arg:?}"));
+        } else {
+            return Err(format!("unexpected positional argument {arg:?}"));
+        }
+    }
+    Ok(Some(Args {
+        config,
+        roots,
+        iterations,
+        modes,
+        drop_caches,
+        label,
+        out,
+        no_save,
+    }))
+}
+
 fn main() -> ExitCode {
     // Wired in Task 11. The skeleton compiles so earlier tasks can add and test
     // pure helpers against a real target.
@@ -186,5 +274,77 @@ mod tests {
         assert_eq!(parse_iterations("5"), Ok(5));
         assert!(parse_iterations("0").is_err());
         assert!(parse_iterations("abc").is_err());
+    }
+
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parses_defaults_with_no_flags() {
+        assert_eq!(
+            parse_args(&argv(&[])),
+            Ok(Some(Args {
+                config: None,
+                roots: vec![],
+                iterations: 5,
+                modes: vec![Mode::All, Mode::Gaps],
+                drop_caches: false,
+                label: None,
+                out: None,
+                no_save: false,
+            }))
+        );
+    }
+
+    #[test]
+    fn parses_every_flag_in_space_form() {
+        let parsed = parse_args(&argv(&[
+            "--config", "config.toml",
+            "--root", "/mnt/a",
+            "--root", "/mnt/b",
+            "--iterations", "3",
+            "--mode", "all",
+            "--drop-caches",
+            "--label", "smb",
+            "--out", "out.json",
+            "--no-save",
+        ]))
+        .unwrap()
+        .unwrap();
+        assert_eq!(parsed.config, Some(std::path::PathBuf::from("config.toml")));
+        assert_eq!(parsed.roots, vec![
+            std::path::PathBuf::from("/mnt/a"),
+            std::path::PathBuf::from("/mnt/b"),
+        ]);
+        assert_eq!(parsed.iterations, 3);
+        assert_eq!(parsed.modes, vec![Mode::All]);
+        assert!(parsed.drop_caches);
+        assert_eq!(parsed.label.as_deref(), Some("smb"));
+        assert_eq!(parsed.out, Some(std::path::PathBuf::from("out.json")));
+        assert!(parsed.no_save);
+    }
+
+    #[test]
+    fn parses_flags_in_equals_form() {
+        let parsed = parse_args(&argv(&["--config=config.toml", "--mode=gaps", "--iterations=2"]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.config, Some(std::path::PathBuf::from("config.toml")));
+        assert_eq!(parsed.modes, vec![Mode::Gaps]);
+        assert_eq!(parsed.iterations, 2);
+    }
+
+    #[test]
+    fn help_short_circuits_to_none() {
+        assert_eq!(parse_args(&argv(&["--help"])), Ok(None));
+        assert_eq!(parse_args(&argv(&["-h"])), Ok(None));
+    }
+
+    #[test]
+    fn rejects_unknown_flag_missing_value_and_positional() {
+        assert!(parse_args(&argv(&["--nope"])).is_err());
+        assert!(parse_args(&argv(&["--config"])).is_err());
+        assert!(parse_args(&argv(&["stray"])).is_err());
     }
 }
