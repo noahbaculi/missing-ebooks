@@ -225,9 +225,6 @@ fn settings_menu() -> Markup {
                         button.accent-dot type="button" data-accent="#06b6d4"
                             style="background:#06b6d4"
                             aria-label="Teal" title="Teal" {}
-                        button.accent-dot type="button" data-accent="#0e7490"
-                            style="background:#0e7490"
-                            aria-label="Deep teal" title="Deep teal" {}
                         button.accent-dot type="button" data-accent="#c2410c"
                             style="background:#c2410c"
                             aria-label="Rust" title="Rust" {}

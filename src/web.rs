@@ -1220,10 +1220,9 @@ mod tests {
         assert!(body.contains(r#"id="accent-input""#));
         assert!(body.contains(r#"type="color""#));
         assert!(body.contains(r##"value="#f5a524""##));
-        // The four preset quick-pick dots. Amber is the default, so it is not a
+        // The three preset quick-pick dots. Amber is the default, so it is not a
         // preset; the dots offer the alternatives.
         assert!(body.contains(r##"data-accent="#06b6d4""##));
-        assert!(body.contains(r##"data-accent="#0e7490""##));
         assert!(body.contains(r##"data-accent="#c2410c""##));
         assert!(body.contains(r##"data-accent="#a21caf""##));
         // It sits inside the Theme section: after the theme choices, before the
