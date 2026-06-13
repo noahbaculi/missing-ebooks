@@ -722,6 +722,12 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   background: #3a4250;
   border: 1px solid var(--color-border);
 }
+/* On, the primary fill defines the track, so drop the off-state outline for
+   parity with light. Transparent rather than removed so the box keeps its size
+   across states. */
+[data-theme="dark"] .switch input:checked + .switch-track {
+  border-color: transparent;
+}
 
 /* accent control: a quick-pick dot row plus the native color picker, in the
    Theme section. The dots are data-accent quick picks; the swatch is the OS
