@@ -248,7 +248,7 @@ details > summary::-webkit-details-marker {
 }
 .root-badge-clean {
   background: color-mix(in srgb, var(--color-success) 18%, var(--color-base-100));
-  color: var(--color-success);
+  color: var(--color-success-text);
 }
 .root-badge-error {
   background: color-mix(in srgb, var(--color-error) 16%, var(--color-base-100));
@@ -509,7 +509,7 @@ details[open] > summary .chev {
   align-items: center;
 }
 .covered .status .icon {
-  color: var(--color-success);
+  color: var(--color-success-text);
 }
 
 /* depth typography: bold the top container of each tree, italicize the
@@ -568,7 +568,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   font-size: 0.85rem;
 }
 .empty .icon {
-  color: var(--color-success);
+  color: var(--color-success-text);
 }
 
 /* settings menu: a cog-triggered popover panel (desktop) / bottom sheet (mobile) */
@@ -1426,7 +1426,7 @@ li.leaving {
 }
 .toast--success .toast-icon-success {
   display: inline-flex;
-  color: var(--color-success);
+  color: var(--color-success-text);
   background: color-mix(in srgb, var(--color-success) 16%, var(--color-base-100));
 }
 /* the message column: a primary line plus a quieter detail line */
@@ -1463,7 +1463,7 @@ li.leaving {
   border-radius: 999px;
   padding: 0.05rem 0.4rem;
   background: color-mix(in srgb, var(--color-success) 18%, var(--color-base-100));
-  color: var(--color-success);
+  color: var(--color-success-text);
 }
 /* undo: an accent text action, lighter than an outlined button */
 .toast .toast-undo {
@@ -1613,7 +1613,7 @@ li.leaving {
   gap: 0.5rem;
   margin: 0;
   font-weight: 600;
-  color: var(--color-success);
+  color: var(--color-success-text);
 }
 .gap-summary-clear .icon {
   width: 1.15rem;
@@ -1651,7 +1651,7 @@ li.leaving {
   color: var(--color-warning-text);
 }
 .gap-chip-clean .gap-chip-num {
-  color: var(--color-success);
+  color: var(--color-success-text);
 }
 .gap-chip-error .gap-chip-num {
   color: var(--color-error);
