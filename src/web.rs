@@ -70,12 +70,9 @@ async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery
     let render_started = Instant::now();
     let html = render::page(&view, &state.config.search_links, mode).into_string();
     tracing::debug!(
-        elapsed_ms = render_started.elapsed().as_secs_f64() * 1e3,
-        "rendered page"
-    );
-    tracing::debug!(
         op = "index",
         mode = mode.as_query(),
+        render_ms = render_started.elapsed().as_secs_f64() * 1e3,
         elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
         "handled request"
     );
