@@ -330,16 +330,17 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                     (search_box())
                     (view_toggle(mode))
                     (settings_menu())
-                    form method="post" action="/rescan"
-                        hx-post="/rescan" hx-target="#roots" hx-swap="innerHTML"
+                    form hx-target="#roots" hx-swap="innerHTML"
                         hx-indicator="#scan-bar, #rescan-btn"
                         hx-disabled-elt="#rescan-btn" {
                         input type="hidden" name="view" value=(mode.as_query());
-                        // The button sits in the nav, outside the swapped #roots, so htmx
-                        // keeps it across the request: hx-disabled-elt locks it so a second
-                        // click cannot double-scan, and the disabled state dims it (app.css).
-                        // The label stays put; both clear once the swap settles.
-                        button.btn.btn-primary id="rescan-btn" type="submit" { "Rescan" }
+                        // The button posts via htmx (like the marker buttons) and sits in
+                        // the nav, outside the swapped #roots, so htmx keeps it across the
+                        // request: hx-disabled-elt locks it so a second click cannot
+                        // double-scan, and the disabled state dims it (app.css). The label
+                        // stays put; both clear once the swap settles.
+                        button.btn.btn-primary id="rescan-btn" type="button"
+                            hx-post="/rescan" hx-include="closest form" { "Rescan" }
                     }
                 }
                 (gap_summary(view))

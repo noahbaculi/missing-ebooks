@@ -636,8 +636,11 @@ mod tests {
         assert!(body.contains(r#"id="rescan-btn""#));
         assert!(body.contains("Rescan"));
         assert!(!body.contains("Rescanning"));
-        // The plain form action survives for the no-JS path.
-        assert!(body.contains(r#"action="/rescan""#));
+        // Rescan is htmx-driven, not a native form submit: the button posts via
+        // hx-post and the form carries no method/action.
+        assert!(!body.contains(r#"action="/rescan""#));
+        assert!(!body.contains(r#"method="post""#));
+        assert!(body.contains(r#"id="rescan-btn" type="button" hx-post="/rescan""#));
     }
 
     #[tokio::test]
