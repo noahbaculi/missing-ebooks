@@ -10,6 +10,8 @@
 | `scan-bench-local-jane-core-1781329903.json` | jane-core | fuse.mergerfs | 2 | concurrency sweep 1,4,8,16,32 |
 | `scan-bench-smb-jane-2-1781322985.json` | jane-2 | cifs | 1 | one concurrency, pre-sweep |
 | `scan-bench-smb-jane-2-1781329970.json` | jane-2 | cifs | 2 | concurrency sweep 1,4,8,16,32 |
+| `scan-bench-smb_single_channel-jane-2-1781418650.json` | jane-2 | cifs | 2 | caching on, single channel, sweep 1,4,8,16,32 |
+| `scan-bench-smb_multi_channel-jane-2-1781419177.json` | jane-2 | cifs | 2 | caching on, multichannel, sweep 1,4,8,16,32 |
 
 Schema 2 adds the per-concurrency `levels` array; schema 1 reports a single concurrency inline. The trailing number is the unix time, so the files sort by run.
 
@@ -49,6 +51,8 @@ Re-run the sweep on both hosts unchanged, so the rest read against a current bas
 
 On jane-2, add `actimeo=30` to the CIFS line in fstab and remount; then try `cache=loose` separately. Re-run the SMB sweep. Confirmed if warm drops well below the ~1.8 s baseline while cold is unchanged, meaning the second walk within the window now hits the client cache. Trade-off: a newly written ebook or marker appears up to `actimeo` seconds later, which the rescan button covers.
 
+Result (2026-06-14, jane-2): rejected, reverted to the CIFS defaults. Against the `cache=strict,actimeo=1` baseline, `cache=loose,actimeo=30` cut the serial walk by about 14% and lowered the curve a little, but warm still ran even with cold (1653 against 1714 ms at 16 threads). The walk waits on per-directory readdir round trips, which the attribute cache does not serve, not the per-file stats `actimeo` caches, so the gain is serial-only, not worth an up-to-30 s staleness window for a gap finder. Reports: `scan-bench-smb-jane-2-1781329970.json` (defaults baseline) against `scan-bench-smb_single_channel-jane-2-1781418650.json` (caching on).
+
 ### 2. SMB3 multichannel
 
 Needs both ends. On jane-core, set `server multi channel support = yes` in `smb.conf` and restart Samba. On jane-2, the CIFS client will not open extra channels unless told, so add `multichannel,max_channels=4` to the mount options and remount. Confirm channels actually opened before trusting the timing:
@@ -58,6 +62,8 @@ cat /proc/fs/cifs/DebugData   # expect more than one channel listed
 ```
 
 Re-run the SMB sweep. Confirmed if the SMB curve starts scaling with concurrency the way the local curve does, beating serial by more than the current 1.3x. This is the only lever that could break the single-connection ceiling. Samba multichannel is still flagged experimental, so it is the most likely to come back negative.
+
+Result (2026-06-14, jane-2): shelved (not disproven) and reverted on both ends. The full warm walk gained 1.27x serial-to-best on single channel against 1.26x on multichannel, within noise at every matched concurrency, so the curve never started scaling. DebugData (`cifs-debugdata-jane-2-redacted.txt`) shows why: the connection allocated exactly one channel. The server had multichannel on and advertised four interfaces, but the one the mount uses reports `Capabilities: None` (no RSS, so no second channel to the same IP), and its two 10 Gbps interfaces are docker-internal addresses the LAN client cannot reach. Engaged multichannel was therefore never tested. This is inapplicable on this host rather than a lever that failed to help. A revisit needs an RSS-capable interface or a second reachable NIC, with Samba's advertised `interfaces` restricted so it stops offering docker IPs, and more than one allocated channel confirmed in DebugData before trusting the timing. Reports: `scan-bench-smb_single_channel-jane-2-1781418650.json` against `scan-bench-smb_multi_channel-jane-2-1781419177.json`.
 
 ### Recording results
 
