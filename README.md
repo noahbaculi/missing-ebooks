@@ -117,7 +117,7 @@ Set `MISSING_EBOOKS_LOG` to control verbosity: `error`, `warn`, `info` (the defa
 
 ## Network shares
 
-Pointing a library root at an SMB or NFS mount is supported and common, but the scan is far slower than on local disk and there is a firm limit on how much that can be sped up. The walk reads every folder, and each folder is a separate network round trip, so scan time scales with the number of folders rather than the number of files.
+Pointing a library root at an SMB or NFS mount is supported and common, but the scan is far slower than on local disk and there is a firm limit on how much that can be sped up. The walk reads every folder, and each folder costs a handful of round trips to open, list, and close it, with none per file, so scan time scales with the number of folders rather than the number of files.
 
 The largest lever is where the server runs. On the machine that holds the library, when that is an option, the scan is far faster: at the default concurrency a benchmark of one ~900-folder library scanned in tens of milliseconds on its local disk against about two seconds over an SMB mount of the same library, and the gap widens as the library grows.
 
