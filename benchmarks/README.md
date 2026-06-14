@@ -39,7 +39,7 @@ cargo run --release --example scan_bench -- --root /mnt/jane-nas/Entertainment/A
 
 ## SMB deployment experiments
 
-A protocol for the levers that might cut SMB scan time, to run before any of them reach the README "Network shares" section. Run each on jane-core (the storage host and Samba server) and jane-2 (the CIFS client), measure with `scan_bench`, and keep only the levers that move the numbers. The config changes live in the server-configs repo: jane-2 fstab and jane-core `smb.conf`.
+A protocol for the levers that might cut SMB scan time and the checks that bound it, to run before any of them reach the README "Network shares" section. Run each on jane-core (the storage host and Samba server) and jane-2 (the CIFS client), measure with `scan_bench`, and keep only the levers that move the numbers. The config changes live in the server-configs repo: jane-2 fstab and jane-core `smb.conf`.
 
 Baseline, measured 2026-06-13: full walk, warm, 16 threads is about 1.8 s over SMB and about 17 ms local; SMB warm equals cold; SMB concurrency tops out near 1.3x.
 
@@ -64,6 +64,12 @@ cat /proc/fs/cifs/DebugData   # expect more than one channel listed
 Re-run the SMB sweep. Confirmed if the SMB curve starts scaling with concurrency the way the local curve does, beating serial by more than the current 1.3x. This is the only lever that could break the single-connection ceiling. Samba multichannel is still flagged experimental, so it is the most likely to come back negative.
 
 Result (2026-06-14, jane-2): shelved (not disproven) and reverted on both ends. The full warm walk gained 1.27x serial-to-best on single channel against 1.26x on multichannel, within noise at every matched concurrency, so the curve never started scaling. DebugData (`cifs-debugdata-jane-2-redacted.txt`) shows why: the connection allocated exactly one channel. The server had multichannel on and advertised four interfaces, but the one the mount uses reports `Capabilities: None` (no RSS, so no second channel to the same IP), and its two 10 Gbps interfaces are docker-internal addresses the LAN client cannot reach. Engaged multichannel was therefore never tested. This is inapplicable on this host rather than a lever that failed to help. A revisit needs an RSS-capable interface or a second reachable NIC, with Samba's advertised `interfaces` restricted so it stops offering docker IPs, and more than one allocated channel confirmed in DebugData before trusting the timing. Reports: `scan-bench-smb_single_channel-jane-2-1781418650.json` against `scan-bench-smb_multi_channel-jane-2-1781419177.json`.
+
+### 3. Per-entry round trips in the scanner walk
+
+Not a deployment lever but a check on our own code, run on the CIFS client. The walk calls `entry.file_type()` on every entry, which over CIFS is free when the directory query populated `d_type` and one stat round trip per entry when it returns `DT_UNKNOWN`; the `reparse=nfs,mapposix` mount made the unknown case plausible. Trace a single serial gaps walk under `strace -c -e trace=getdents64,newfstatat,statx,lstat`, diff `/proc/fs/cifs/Stats` around the same walk, and check whether the stat round trips track `dirs_visited` or `entries_seen`. The full method lives in git history, in the experiment spec this result replaced.
+
+Result (2026-06-14, jane-2): confirmed round-trip-minimal, no scanner change warranted. The stat family was three `statx` calls total against 17,604 entry-visits, so `file_type()` is served from `d_type` with no syscall, and `newfstatat` and `lstat` never fired. On the wire `QueryInfos` tracked directories rather than entries (0.06 per entry), while `QueryDirectories`, `Creates`, and `Closes` all tracked directory count. The floor is about seven SMB2 ops per directory (open, two `QUERY_DIRECTORY`, close, plus a little metadata), served in order by one `smbd`, the protocol handshake the kernel CIFS client issues rather than anything the scanner adds. Reports: `cifs-roundtrip-strace-jane-2-1781471709.txt` (Method A, syscalls) against `cifs-roundtrip-stats-jane-2-1781471709.txt` (Method B, wire).
 
 ### Recording results
 
