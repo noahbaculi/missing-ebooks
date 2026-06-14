@@ -1,0 +1,37 @@
+SMB round-trip experiment — Method A (syscall trace)
+----------------------------------------------------
+Host: jane-2  Kernel: 6.12.86+deb13-amd64  strace 6.13
+Root: /mnt/jane-nas/Entertainment/Audiobooks
+Captured: 2026-06-14 (unix 1781471709)
+
+Command:
+  strace -f -c -e trace=getdents64,newfstatat,statx,lstat \
+    target/release/examples/scan_bench \
+    --root /mnt/jane-nas/Entertainment/Audiobooks \
+    --mode gaps --iterations 1 --concurrency 1 --no-save --label roundtrip
+
+scan_bench stdout (one discarded warmup walk + one measured walk = two walks):
+  scan_bench [roundtrip] host=jane-2 kernel=6.12.86+deb13-amd64 profile=release iterations=1 drop_caches=false
+  [roundtrip] /mnt/jane-nas/Entertainment/Audiobooks  (fstype: cifs, options: rw,relatime,vers=3.1.1,cache=strict,upcall_target=app,username=noah,uid=1000,noforceuid,gid=1000,noforcegid,addr=<REDACTED_SERVER_IPV4>,file_mode=0775,dir_mode=0775,soft,nounix,serverino,mapposix,nobrl,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,echo_interval=60,actimeo=1,closetimeo=1)
+    mode=gaps concurrency=1  dirs_visited=901  entries_seen=8802  gaps=258  audio_files=1479
+    warm:  runs [2617.258] ms  ->  median 2617.258 ms (2.905 ms/dir)  min 2617.258  max 2617.258
+
+strace -c summary:
+  strace: Process 3705584 attached
+  [pid 3705584] ???( <detached ...>
+  % time     seconds  usecs/call     calls    errors syscall
+  ------ ----------- ----------- --------- --------- ----------------
+   99.99    0.190868          52      3630           getdents64
+    0.01    0.000020           6         3           statx
+  ------ ----------- ----------- --------- --------- ----------------
+  100.00    0.190888          52      3633           total
+
+Normalization (two walks: 901 dirs x 2 = 1802 dir-visits; 8802 entries x 2 = 17604 entry-visits):
+- getdents64 = 3630  ->  2.01 per dir-visit
+- stat family (newfstatat + statx + lstat) = 3 (statx only)  ->  0.0002 per entry-visit
+
+# Redaction notes
+# - Server IPv4 address (in the mount "addr=" option) replaced with
+#   <REDACTED_SERVER_IPV4>. The strace summary contained no addresses.
+# - All syscall counts, timings, mount options, and scan_bench figures are
+#   verbatim.

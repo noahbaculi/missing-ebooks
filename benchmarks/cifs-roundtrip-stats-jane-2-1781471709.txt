@@ -1,0 +1,42 @@
+SMB round-trip experiment — Method B (wire round trips via /proc/fs/cifs/Stats)
+------------------------------------------------------------------------------
+Host: jane-2  Kernel: 6.12.86+deb13-amd64
+Share: \\<REDACTED_SERVER_IPV4>\pool
+Root: /mnt/jane-nas/Entertainment/Audiobooks
+Captured: 2026-06-14 (unix 1781471709)
+
+Method note: the counter reset (echo 0 > /proc/fs/cifs/Stats) needs root, which
+was not available here, so this uses a before/after delta of the world-readable
+counters instead of a reset. /proc/fs/cifs/Stats was snapshotted, one scan run,
+then snapshotted again; the deltas below are exact. The mount was kept quiet, but
+a delta cannot exclude all background activity the way a reset-and-read can, so
+treat small deltas (single-thousands) as having some noise floor.
+
+Run (one discarded warmup walk + one measured walk = two walks):
+  target/release/examples/scan_bench \
+    --root /mnt/jane-nas/Entertainment/Audiobooks \
+    --mode gaps --iterations 1 --concurrency 1 --no-save --label roundtrip
+  -> dirs_visited=901  entries_seen=8802   (x2 walks: 1802 dir-visits, 17604 entry-visits)
+
+\\<REDACTED_SERVER_IPV4>\pool  SMB2 command counters (totals):
+  counter                  before          after      delta
+  QueryDirectories       27836597       27840438       3841
+  QueryInfos             20668776       20669816       1040
+  Creates                67821777       67825182       3405
+  Closes                 67821640       67824945       3305
+  Reads                  36438232       36438414        182
+  SetInfos                7287882        7288166        284
+  SMBs                  235623237      235635578      12341
+
+Normalization (two walks: 901 dirs x 2 = 1802 dir-visits; 8802 entries x 2 = 17604 entry-visits):
+- QueryDirectories delta 3841  ->  2.13 per dir-visit,   0.218 per entry-visit
+- QueryInfos      delta 1040  ->  0.577 per dir-visit,  0.059 per entry-visit
+- Creates         delta 3405  ->  1.89 per dir-visit
+- Closes          delta 3305  ->  1.83 per dir-visit
+(The mount was kept quiet but not isolated; small deltas carry some background noise.)
+
+# Redaction notes
+# - Server IPv4 address (in the share path "\\...\pool") replaced with
+#   <REDACTED_SERVER_IPV4>. No session ids or serials appear in /proc/fs/cifs/Stats
+#   (those live in DebugData; see cifs-debugdata-jane-2-redacted.txt).
+# - All counter values and deltas are verbatim.
