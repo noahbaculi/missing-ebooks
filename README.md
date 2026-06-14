@@ -117,11 +117,13 @@ Set `MISSING_EBOOKS_LOG` to control verbosity: `error`, `warn`, `info` (the defa
 
 ## Network shares
 
-Pointing a library root at an SMB or NFS mount is supported and common, but scans run much slower than on local disk. Each folder is a single network round trip and the walk reads every folder, so scan time scales with the number of folders rather than the number of files. A benchmark of one 900-folder library measured about 340 ms on local disk against 2.2 s over an SMB mount, and the gap widens with the library: a few thousand folders becomes a multi-second scan.
+Pointing a library root at an SMB or NFS mount is supported and common, but the scan is far slower than on local disk and there is a firm limit on how much that can be sped up. The walk reads every folder, and each folder is a separate network round trip, so scan time scales with the number of folders rather than the number of files.
 
-Two settings cushion this. `scan_concurrency` reads that many folders at once so their round trips overlap; set it by the speed of your NAS rather than your CPU count, because the reads spend almost all their time waiting on the network, so the threads sit idle and cost little CPU even well above the core count. Raising a container's `--cpus` does not help, since the CPU is not the bottleneck. `ttl_seconds` keeps a scanned view cached so repeat page loads do not rescan; the OS cache that speeds a second local walk does little over SMB, so this in-process cache is what spares the repeat cost. Raise it on a slow mount and treat the rescan button as the deliberate refresh.
+The largest lever is where the server runs. On the machine that holds the library, when that is an option, the scan is far faster: at the default concurrency a benchmark of one ~900-folder library scanned in tens of milliseconds on its local disk against about two seconds over an SMB mount of the same library, and the gap widens as the library grows.
 
-A local mount is faster when it is an option.
+Reading more folders at once with `scan_concurrency` overlaps their round trips. On local storage that is a large win, roughly sevenfold at the default. Over SMB it is close to a no-op: the server answers one connection's requests in order, so the extra readers fold back onto one and the walk gains only about a third (see [ADR-0019](docs/adr/0019-scan-walk-parallel-sized-by-concurrency.md)). Set the value by the speed of your NAS, not your CPU count; the readers spend almost all their time waiting on the network, so they cost little CPU even well above the core count, and raising a container's `--cpus` does not help.
+
+`ttl_seconds` keeps a scanned view cached so repeat page loads do not rescan, and this matters more over SMB than locally. The client's own attribute cache ages out within a second, faster than a multi-second walk finishes, so a second walk re-queries the server and runs no faster than the first; the in-process cache is what spares the repeat cost. Raise `ttl_seconds` on a slow mount and treat the rescan button as the deliberate refresh.
 
 ## Markers
 
