@@ -1,0 +1,70 @@
+Display Internal CIFS Data Structures for Debugging
+---------------------------------------------------
+CIFS Version 2.51
+Features: DFS,FSCACHE,STATS2,DEBUG,ALLOW_INSECURE_LEGACY,CIFS_POSIX,UPCALL(SPNEGO),XATTR,ACL
+CIFSMaxBufSize: 16384
+Active VFS Requests: 0
+
+Servers:
+1) ConnectionId: 0x1 Hostname: <REDACTED_SERVER_IPV4>
+ClientGUID: <REDACTED_GUID>
+Number of credits: 8192,1,1 Dialect 0x311
+Server capabilities: 0x300067
+TCP status: 1 Instance: 7
+Local Users To Server: 1 SecMode: 0x1 Req On Wire: 0 Net namespace: 4026531840
+In Send: 0 In MaxReq Wait: 0
+Compression: no built-in support
+
+	Sessions:
+	1) Address: <REDACTED_SERVER_IPV4> Uses: 1 Capability: 0x300067	Session Status: 1
+	Security type: RawNTLMSSP  SessionId: <REDACTED_SESSION_ID> encrypted
+	User: 1000 Cred User: 0
+
+	Shares:
+	0) IPC: \\<REDACTED_SERVER_IPV4>\IPC$ Mounts: 1 DevInfo: 0x0 Attributes: 0x0
+	PathComponentMax: 0 Status: 1 type: 0 Serial Number: 0x0 encrypted
+	Share Capabilities: None	Share Flags: 0x8000
+	tid: <REDACTED_TID>	Maximal Access: 0x1f00a9
+
+	1) \\<REDACTED_SERVER_IPV4>\pool Mounts: 1 DevInfo: 0x20 Attributes: 0x1006f
+	PathComponentMax: 255 Status: 1 type: DISK Serial Number: <REDACTED_SERIAL> encrypted
+	Share Capabilities: None Aligned, Partition Aligned,	Share Flags: 0x8000
+	tid: <REDACTED_TID>	Optimal sector size: 0x200	Maximal Access: 0x1f01ff
+
+
+	Server interfaces: 4	Last updated: 18313435 seconds ago
+	1)	Speed: Unknown
+		Capabilities: None
+		IPv4: <REDACTED_SERVER_IPV4>
+		Weight (cur,total): (1,429496)
+		Allocated channels: 1
+		[CONNECTED]
+
+	2)	Speed: Unknown
+		Capabilities: None
+		IPv6: <REDACTED_SERVER_IPV6>
+		Weight (cur,total): (0,429496)
+		Allocated channels: 0
+
+	3)	Speed: 10Gbps
+		Capabilities: None
+		IPv4: <REDACTED_LOCAL_DOCKER_IPV4>
+		Weight (cur,total): (0,1)
+		Allocated channels: 0
+
+	4)	Speed: 10Gbps
+		Capabilities: None
+		IPv4: <REDACTED_LOCAL_DOCKER_IPV4>
+		Weight (cur,total): (0,1)
+		Allocated channels: 0
+
+
+	MIDs:
+--
+
+# Redaction notes
+# - Server IPv4/IPv6 addresses, ClientGUID, SessionId, tid values, and the
+#   pool volume Serial Number were replaced with <REDACTED_*> placeholders.
+# - Speeds, dialect, capabilities, credit counts, "Last updated" age, weights,
+#   and other structural diagnostics are preserved verbatim for analysis.
+# - Source: /proc/fs/cifs/DebugData on 2026-06-14.
