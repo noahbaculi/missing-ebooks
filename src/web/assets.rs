@@ -85,8 +85,9 @@ pub(crate) async fn app_js(headers: HeaderMap) -> Response {
 }
 
 /// A strong ETag for an asset: a quoted hash of its bytes. It depends only on
-/// content, so it is identical across restarts built from the same bytes, and a
-/// cached validator survives any redeploy that left the asset unchanged.
+/// content, so it is fixed for the life of the process and identical across
+/// restarts built from the same bytes, and a cached validator survives any
+/// redeploy that left the asset unchanged.
 fn asset_etag(body: &str) -> String {
     let mut hasher = DefaultHasher::new();
     body.hash(&mut hasher);
