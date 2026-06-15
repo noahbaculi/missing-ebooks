@@ -88,13 +88,13 @@ fn phase_report(samples: &[f64], dirs: usize) -> PhaseReport {
     }
 }
 
-/// Which walk to time. `Gaps` reduces the full walk to flagged folders; `All`
-/// records every directory; `Incremental` reuses unchanged directories via the
+/// Which walk to time. `Gaps` reduces the full walk to flagged folders, `Full`
+/// records every directory, and `Incremental` reuses unchanged directories via the
 /// mtime index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Gaps,
-    All,
+    Full,
     Incremental,
 }
 
@@ -103,24 +103,41 @@ impl Mode {
     fn label(self) -> &'static str {
         match self {
             Mode::Gaps => "gaps",
-            Mode::All => "all",
+            Mode::Full => "full",
             Mode::Incremental => "incremental",
         }
     }
 }
 
-/// Map `--mode`. `both` lists `All` first so the full walk's per-directory figure
-/// prints before the gaps walk.
+/// Map `--mode`: one keyword or a comma-separated list, e.g. `full,incremental`.
+/// `every` expands to all modes, the comprehensive default. Duplicates collapse,
+/// first occurrence wins, so the listed order is the report order. `all` is not a
+/// keyword: older reports key the full walk as `all`, so it stays a report value
+/// only, never a live selector.
 fn parse_modes(value: &str) -> Result<Vec<Mode>, String> {
-    match value {
-        "gaps" => Ok(vec![Mode::Gaps]),
-        "all" => Ok(vec![Mode::All]),
-        "both" => Ok(vec![Mode::All, Mode::Gaps]),
-        "incremental" => Ok(vec![Mode::Incremental]),
-        other => Err(format!(
-            "--mode: {other:?} must be gaps, all, both, or incremental"
-        )),
+    let mut modes = Vec::new();
+    for part in value.split(',') {
+        let expanded = match part.trim() {
+            "gaps" => vec![Mode::Gaps],
+            "full" => vec![Mode::Full],
+            "incremental" => vec![Mode::Incremental],
+            "every" => vec![Mode::Full, Mode::Gaps, Mode::Incremental],
+            other => {
+                return Err(format!(
+                    "--mode: {other:?} must be full, gaps, incremental, or every"
+                ));
+            }
+        };
+        for mode in expanded {
+            if !modes.contains(&mode) {
+                modes.push(mode);
+            }
+        }
     }
+    if modes.is_empty() {
+        return Err("--mode: at least one mode is required".to_string());
+    }
+    Ok(modes)
 }
 
 /// Parse `--iterations`; at least one measured run is required.
@@ -151,8 +168,8 @@ fn parse_concurrency(value: &str) -> Result<Vec<usize>, String> {
     Ok(levels)
 }
 
-/// A parsed command line. Defaults: five iterations, both walks, warm-only (no
-/// cache drop), save the report.
+/// A parsed command line. Defaults: five iterations, all three walks, warm-only
+/// (no cache drop), save the report.
 #[derive(Debug, PartialEq)]
 struct Args {
     config: Option<PathBuf>,
@@ -184,7 +201,7 @@ fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
     let mut config = None;
     let mut roots = Vec::new();
     let mut iterations = 5usize;
-    let mut modes = vec![Mode::All, Mode::Gaps];
+    let mut modes = vec![Mode::Full, Mode::Gaps, Mode::Incremental];
     let mut drop_caches = false;
     let mut label = None;
     let mut out = None;
@@ -279,8 +296,9 @@ struct WalkCounts {
 }
 
 /// The report schema version, bumped when the JSON shape changes so a directory of
-/// mixed-vintage reports stays parseable.
-const SCHEMA_VERSION: u32 = 2;
+/// mixed-vintage reports stays parseable. Schema 3 adds the `incremental` mode: a
+/// single-level entry carrying `dirs_reused`, absent on the `full` and `gaps` modes.
+const SCHEMA_VERSION: u32 = 3;
 
 /// The whole run: environment context plus one entry per root.
 #[derive(Debug, Serialize)]
@@ -298,7 +316,7 @@ struct Report {
 }
 
 /// One library root: where it is, what filesystem it sits on, and its per-mode
-/// timings keyed by mode label (`all`, `gaps`) for a stable order.
+/// timings keyed by mode label (`full`, `gaps`, `incremental`) for a stable order.
 #[derive(Debug, Serialize)]
 struct RootReport {
     path: String,
@@ -315,7 +333,9 @@ struct ModeReport {
 }
 
 /// One concurrency level's counts and timings for a mode. `cold` is `None` when
-/// `--drop-caches` was off.
+/// `--drop-caches` was off. `dirs_reused` is `Some` only for the incremental mode,
+/// where it counts the directories served from the index without a listing. The
+/// `full` and `gaps` walks always list, so they omit it.
 #[derive(Debug, Serialize)]
 struct LevelReport {
     concurrency: usize,
@@ -323,6 +343,8 @@ struct LevelReport {
     entries_seen: usize,
     gaps: usize,
     audio_files: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dirs_reused: Option<usize>,
     cold: Option<PhaseReport>,
     warm: PhaseReport,
 }
@@ -392,7 +414,7 @@ fn drop_caches() -> Result<(), String> {
 }
 
 const USAGE: &str = "usage: cargo run --release --example scan_bench -- \
-[--config PATH] [--root PATH]... [--iterations N] [--mode gaps|all|both|incremental] \
+[--config PATH] [--root PATH]... [--iterations N] [--mode LIST] \
 [--concurrency LIST] [--drop-caches] [--label NAME] [--out PATH] [--no-save]";
 
 /// The usage line plus the flag reference and the read-only and strace notes.
@@ -407,7 +429,8 @@ flags:
   --config PATH     load the real config.toml (extensions, exclusions, roots)
   --root PATH       benchmark this exact path; repeatable; replaces config roots
   --iterations N    measured runs per phase (default 5)
-  --mode MODE       gaps, all, both, or incremental (default both)
+  --mode LIST       comma-separated: full, gaps, incremental, or every (default every);
+                    every runs all modes, so a bare run saves a comprehensive report
   --concurrency LIST   thread counts to sweep, comma-separated, e.g. 1,4,8,16 (default 16)
   --drop-caches     Linux: sudo-flush the page cache before each cold run
   --label NAME      tag stdout and the report (e.g. local, smb)
@@ -421,70 +444,106 @@ time only. For a syscall-level cross-check, run once under
     )
 }
 
-/// Measure incremental reuse: build the index with one full listing walk
-/// (discarded), then time reuse walks against it. `--drop-caches` adds a cold phase
-/// that drops the client cache before each walk, so every directory stat is a real
-/// round trip, the honest figure over a network mount; the warm phase shows the
-/// cache-hot case. Prints the reused-vs-listed split and the per-phase timings,
-/// outside the JSON sweep, so record the numbers by hand.
+/// Measure incremental reuse and fold it into the JSON report as a single-level
+/// `incremental` mode. Build the index with one full listing walk (discarded), then
+/// time reuse walks against it. `--drop-caches` adds a cold phase that drops the
+/// client cache before each walk, so every directory stat is a real round trip, the
+/// honest figure over a network mount. The warm phase shows the cache-hot case.
+/// Concurrency is inert over SMB for the reuse walk, so this runs at one `threads`
+/// rather than sweeping it, recording that as the level's concurrency. The reused-vs-
+/// listed split and the per-phase timings also print live as the run proceeds.
 fn run_incremental(
     root: &Path,
     settings: &ScanSettings,
     iterations: usize,
+    threads: usize,
     drop_caches_enabled: bool,
-) -> Result<(), String> {
+) -> Result<ModeReport, String> {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .map_err(|e| format!("could not build a {threads}-thread pool: {e}"))?;
+
     let mut index = scanner::DirIndex::new();
-    // Build the index: this first walk lists everything.
-    let (_ms, mut last) = time_reuse_walk(root, settings, &mut index);
+    // Build the index: this first walk lists everything, so its timing is discarded.
+    let (_ms, mut last) = pool.install(|| time_reuse_walk(root, settings, &mut index));
 
     let cold = if drop_caches_enabled {
         let mut samples = Vec::with_capacity(iterations);
         for _ in 0..iterations {
             drop_caches()?;
-            let (ms, stats) = time_reuse_walk(root, settings, &mut index);
+            let (ms, counts) = pool.install(|| time_reuse_walk(root, settings, &mut index));
             samples.push(ms);
-            last = stats;
+            last = counts;
         }
-        Some(phase_report(&samples, last.dirs_visited))
+        Some(phase_report(&samples, last.stats.dirs_visited))
     } else {
         None
     };
 
     // Warm phase: one discarded warmup, then measured reuse walks with no drop.
-    let _ = time_reuse_walk(root, settings, &mut index);
+    let _ = pool.install(|| time_reuse_walk(root, settings, &mut index));
     let mut samples = Vec::with_capacity(iterations);
     for _ in 0..iterations {
-        let (ms, stats) = time_reuse_walk(root, settings, &mut index);
+        let (ms, counts) = pool.install(|| time_reuse_walk(root, settings, &mut index));
         samples.push(ms);
-        last = stats;
+        last = counts;
     }
-    let warm = phase_report(&samples, last.dirs_visited);
+    let warm = phase_report(&samples, last.stats.dirs_visited);
 
     println!(
-        "  mode=incremental  dirs_visited={}  dirs_reused={}  entries_seen={}  (index {} dirs)",
-        last.dirs_visited,
-        last.dirs_reused,
-        last.entries_seen,
+        "  mode=incremental  concurrency={threads}  dirs_visited={}  dirs_reused={}  \
+         entries_seen={}  (index {} dirs)",
+        last.stats.dirs_visited,
+        last.stats.dirs_reused,
+        last.stats.entries_seen,
         index.len()
     );
     if let Some(cold) = &cold {
         println!("{}", fmt_phase("cold", cold));
     }
     println!("{}", fmt_phase("warm", &warm));
-    Ok(())
+
+    Ok(ModeReport {
+        levels: vec![LevelReport {
+            concurrency: threads,
+            dirs_visited: last.stats.dirs_visited,
+            entries_seen: last.stats.entries_seen,
+            gaps: last.gaps,
+            audio_files: last.audio_files,
+            dirs_reused: Some(last.stats.dirs_reused),
+            cold,
+            warm,
+        }],
+    })
 }
 
 /// Time one reuse walk against the prebuilt `index`, returning its wall-clock in
-/// milliseconds and the walk's stats. On an unchanged tree every directory is
-/// reused and no entry is listed.
+/// milliseconds and the walk's counts. The gap and audio tallies are derived after
+/// the clock stops, like `time_walk`, so the in-memory reduce never inflates the
+/// measured wall-clock. On an unchanged tree every directory is reused and no entry
+/// is listed.
 fn time_reuse_walk(
     root: &Path,
     settings: &ScanSettings,
     index: &mut scanner::DirIndex,
-) -> (f64, WalkStats) {
+) -> (f64, WalkCounts) {
     let start = Instant::now();
-    let (_folders, stats) = scanner::scan_all_incremental_with_stats(root, settings, index);
-    (round3(start.elapsed().as_secs_f64() * 1000.0), stats)
+    let (folders, stats) = scanner::scan_all_incremental_with_stats(root, settings, index);
+    let ms = round3(start.elapsed().as_secs_f64() * 1000.0);
+    let gaps = folders
+        .iter()
+        .filter(|f| f.directly_holds_audio && f.missing_ebook)
+        .count();
+    let audio_files = folders.iter().map(|f| f.audio_files.len()).sum();
+    (
+        ms,
+        WalkCounts {
+            stats,
+            gaps,
+            audio_files,
+        },
+    )
 }
 
 /// Time one read-only walk and tally what it found. Only the walk sits inside the
@@ -492,7 +551,7 @@ fn time_reuse_walk(
 /// stops, so the in-memory tally never inflates the measured wall-clock.
 fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCounts) {
     match mode {
-        Mode::All => {
+        Mode::Full => {
             let start = Instant::now();
             let (folders, stats) = scanner::scan_all_with_stats(root, settings);
             let ms = round3(start.elapsed().as_secs_f64() * 1000.0);
@@ -681,13 +740,25 @@ fn main() -> ExitCode {
 
         let mut modes = BTreeMap::new();
         for &mode in &args.modes {
-            // Incremental is a focused reuse measurement, outside the concurrency sweep.
+            // Incremental is a focused reuse measurement, outside the concurrency
+            // sweep: it runs once at the top swept thread count (16 by default),
+            // since concurrency is inert over SMB for the reuse walk.
             if mode == Mode::Incremental {
-                if let Err(message) =
-                    run_incremental(&canonical, &settings, args.iterations, args.drop_caches)
-                {
-                    eprintln!("error during incremental run: {message}");
-                    return ExitCode::FAILURE;
+                let threads = args.concurrency.iter().copied().max().unwrap_or(16);
+                match run_incremental(
+                    &canonical,
+                    &settings,
+                    args.iterations,
+                    threads,
+                    args.drop_caches,
+                ) {
+                    Ok(report) => {
+                        modes.insert(mode.label().to_string(), report);
+                    }
+                    Err(message) => {
+                        eprintln!("error during incremental run: {message}");
+                        return ExitCode::FAILURE;
+                    }
                 }
                 continue;
             }
@@ -737,6 +808,7 @@ fn main() -> ExitCode {
                     entries_seen: counts.stats.entries_seen,
                     gaps: counts.gaps,
                     audio_files: counts.audio_files,
+                    dirs_reused: None,
                     cold,
                     warm,
                 });
@@ -835,9 +907,33 @@ mod tests {
     #[test]
     fn parse_modes_maps_each_keyword() {
         assert_eq!(parse_modes("gaps"), Ok(vec![Mode::Gaps]));
-        assert_eq!(parse_modes("all"), Ok(vec![Mode::All]));
-        assert_eq!(parse_modes("both"), Ok(vec![Mode::All, Mode::Gaps]));
+        assert_eq!(parse_modes("full"), Ok(vec![Mode::Full]));
+        assert_eq!(parse_modes("incremental"), Ok(vec![Mode::Incremental]));
+        // `every` expands to all modes, in report order.
+        assert_eq!(
+            parse_modes("every"),
+            Ok(vec![Mode::Full, Mode::Gaps, Mode::Incremental])
+        );
         assert!(parse_modes("nope").is_err());
+        // `both` was dropped when a third mode arrived; the comma list replaces it.
+        assert!(parse_modes("both").is_err());
+        // `all` is retired as a selector; it survives only as an old report's key.
+        assert!(parse_modes("all").is_err());
+    }
+
+    #[test]
+    fn parse_modes_reads_a_comma_list_in_order_without_duplicates() {
+        assert_eq!(
+            parse_modes("full,incremental"),
+            Ok(vec![Mode::Full, Mode::Incremental])
+        );
+        // Whitespace is trimmed, and `full` overlapping `every`'s expansion collapses.
+        assert_eq!(
+            parse_modes("full, every "),
+            Ok(vec![Mode::Full, Mode::Gaps, Mode::Incremental])
+        );
+        // One bad token in the list fails the whole parse.
+        assert!(parse_modes("full,nope").is_err());
     }
 
     #[test]
@@ -867,7 +963,7 @@ mod tests {
                 config: None,
                 roots: vec![],
                 iterations: 5,
-                modes: vec![Mode::All, Mode::Gaps],
+                modes: vec![Mode::Full, Mode::Gaps, Mode::Incremental],
                 drop_caches: false,
                 label: None,
                 out: None,
@@ -889,7 +985,7 @@ mod tests {
             "--iterations",
             "3",
             "--mode",
-            "all",
+            "full",
             "--drop-caches",
             "--label",
             "smb",
@@ -910,7 +1006,7 @@ mod tests {
             ]
         );
         assert_eq!(parsed.iterations, 3);
-        assert_eq!(parsed.modes, vec![Mode::All]);
+        assert_eq!(parsed.modes, vec![Mode::Full]);
         assert!(parsed.drop_caches);
         assert_eq!(parsed.label.as_deref(), Some("smb"));
         assert_eq!(parsed.out, Some(std::path::PathBuf::from("out.json")));
@@ -1014,14 +1110,14 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
     }
 
     #[test]
-    fn time_walk_all_counts_dirs_entries_gaps_and_audio() {
+    fn time_walk_full_counts_dirs_entries_gaps_and_audio() {
         let dir = tempfile::tempdir().unwrap();
         // A gap (audio, no cover) and a covered audiobook (audio + epub).
         touch(&dir.path().join("Gap/01.mp3"));
         touch(&dir.path().join("Gap/02.mp3"));
         touch(&dir.path().join("Covered/01.mp3"));
         touch(&dir.path().join("Covered/Book.epub"));
-        let (_ms, counts) = time_walk(Mode::All, dir.path(), &bench_settings());
+        let (_ms, counts) = time_walk(Mode::Full, dir.path(), &bench_settings());
         assert_eq!(counts.stats.dirs_visited, 3); // root, Gap, Covered
         assert_eq!(counts.stats.entries_seen, 6); // 2 subdirs + 2 + 2 files
         assert_eq!(counts.gaps, 1);
@@ -1052,27 +1148,52 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         let mut index = scanner::DirIndex::new();
         // The first walk lists everything and fills the index; nothing reused yet.
         let (_ms, build) = time_reuse_walk(dir.path(), &settings, &mut index);
-        assert_eq!(build.dirs_reused, 0);
+        assert_eq!(build.stats.dirs_reused, 0);
         // The second walk on the unchanged tree reuses every directory, lists none.
         let (_ms, reuse) = time_reuse_walk(dir.path(), &settings, &mut index);
-        assert_eq!(reuse.dirs_visited, 3); // root, Gap, Covered
-        assert_eq!(reuse.dirs_reused, 3);
-        assert_eq!(reuse.entries_seen, 0);
+        assert_eq!(reuse.stats.dirs_visited, 3); // root, Gap, Covered
+        assert_eq!(reuse.stats.dirs_reused, 3);
+        assert_eq!(reuse.stats.entries_seen, 0);
+        // One gap (Gap/), and both folders' audio is tallied from the cached facts.
+        assert_eq!(reuse.gaps, 1);
+        assert_eq!(reuse.audio_files, 2);
     }
 
     #[test]
     fn report_serializes_expected_keys() {
-        let levels = vec![LevelReport {
+        let full_levels = vec![LevelReport {
             concurrency: 16,
             dirs_visited: 3,
             entries_seen: 9,
             gaps: 1,
             audio_files: 3,
+            dirs_reused: None,
             cold: None,
             warm: phase_report(&[10.0, 20.0], 3),
         }];
+        let incremental_levels = vec![LevelReport {
+            concurrency: 16,
+            dirs_visited: 3,
+            entries_seen: 0,
+            gaps: 1,
+            audio_files: 3,
+            dirs_reused: Some(3),
+            cold: None,
+            warm: phase_report(&[1.0, 2.0], 3),
+        }];
         let mut modes = std::collections::BTreeMap::new();
-        modes.insert("all".to_string(), ModeReport { levels });
+        modes.insert(
+            "full".to_string(),
+            ModeReport {
+                levels: full_levels,
+            },
+        );
+        modes.insert(
+            "incremental".to_string(),
+            ModeReport {
+                levels: incremental_levels,
+            },
+        );
         let report = Report {
             schema_version: SCHEMA_VERSION,
             tool: "scan_bench",
@@ -1091,13 +1212,17 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             }],
         };
         let json = serde_json::to_string(&report).unwrap();
-        assert!(json.contains("\"schema_version\":2"));
+        assert!(json.contains("\"schema_version\":3"));
         assert!(json.contains("\"tool\":\"scan_bench\""));
         assert!(json.contains("\"levels\""));
         assert!(json.contains("\"concurrency\":16"));
         assert!(json.contains("\"dirs_visited\":3"));
         assert!(json.contains("\"ms_per_dir\":5.0"));
         assert!(json.contains("\"cold\":null"));
+        // The incremental level carries dirs_reused. The full and gaps modes omit it.
+        assert!(json.contains("\"dirs_reused\":3"));
+        let full_block = json.split("\"incremental\"").next().unwrap();
+        assert!(!full_block.contains("dirs_reused"));
     }
 
     #[test]

@@ -12,8 +12,10 @@
 | `scan-bench-smb-jane-2-1781329970.json` | jane-2 | cifs | 2 | concurrency sweep 1,4,8,16,32 |
 | `scan-bench-smb_single_channel-jane-2-1781418650.json` | jane-2 | cifs | 2 | caching on, single channel, sweep 1,4,8,16,32 |
 | `scan-bench-smb_multi_channel-jane-2-1781419177.json` | jane-2 | cifs | 2 | caching on, multichannel, sweep 1,4,8,16,32 |
+| `scan-bench-local-jane-core-1781548391.json` | jane-core | fuse.mergerfs | 2 | control re-run, all + gaps, sweep 1,4,8,16,32 |
+| `scan-bench-smb-jane-2-1781548745.json` | jane-2 | cifs | 2 | control re-run, all + gaps, sweep 1,4,8,16,32 |
 
-Schema 2 adds the per-concurrency `levels` array; schema 1 reports a single concurrency inline. The trailing number is the unix time, so the files sort by run.
+Schema 1 reports a single concurrency inline; schema 2 adds the per-concurrency `levels` array; schema 3 adds the `incremental` mode, a single-level entry carrying a `dirs_reused` count that the `full` and `gaps` modes omit. Schema 3 also renames the full-listing walk's mode key from `all` to `full`, so the schema-1 and schema-2 reports above key it as `all`. The trailing number is the unix time, so the files sort by run.
 
 ## What they show
 
@@ -23,7 +25,7 @@ The reports also time both walk modes, and on this library the gaps-only walk is
 
 ## Regenerating
 
-Build with `--release` so the timings reflect the shipped binary. `--drop-caches` flushes the page cache before each cold run; the harness escalates that one step with its own `sudo`, so cache your credentials with `sudo -v` first and run cargo as the normal user. Point it at the real mounts with `--root PATH` (repeatable), `--config config.toml`, or `MISSING_EBOOKS_LIBRARY_ROOTS`.
+Build with `--release` so the timings reflect the shipped binary. `--drop-caches` flushes the page cache before each cold run; the harness escalates that one step with its own `sudo`, so cache your credentials with `sudo -v` first and run cargo as the normal user. Point it at the real mounts with `--root PATH` (repeatable), `--config config.toml`, or `MISSING_EBOOKS_LIBRARY_ROOTS`. The default `--mode every` times the full, gaps, and incremental walks in one run; pass a subset like `--mode full` to narrow it.
 
 On the host that holds the library:
 
@@ -79,10 +81,12 @@ A check on the in-memory mtime index behind the `incremental_scan` flag (default
 
 ```shell
 sudo -v
-cargo run --release --example scan_bench -- --root /mnt/jane-nas/Entertainment/Audiobooks --mode incremental --iterations 5 --drop-caches --no-save
+cargo run --release --example scan_bench -- --root /mnt/jane-nas/Entertainment/Audiobooks --iterations 5 --drop-caches --label smb
 ```
 
-Confirmed if every walk reports `dirs_reused` equal to `dirs_visited` and `entries_seen=0`, and the cold median sits well below the ~1.8 s full listing walk, matching the projected drop from about six or seven SMB2 ops per directory to about two or three. The warm median is the cache-hot best case, not the figure to judge against. Then confirm directory mtime actually moves over the mount: add an ebook into one folder on the server, re-run, and check that exactly that folder re-lists (`dirs_reused` falls by one and `entries_seen` rises). If the cold reuse walk is not meaningfully cheaper, or mtime does not move on an add, shelve the feature the way multichannel was shelved and leave `incremental_scan` documented but unrecommended.
+A bare run uses the default `every` mode, which times the full-listing walk, the gaps walk, and the reuse walk in one pass and saves them to a single JSON report, so the go/no-go ratio is computable from one file with no hand-transcription. The `incremental` mode is a single-level entry: it runs once at the top concurrency rather than sweeping, since concurrency is inert over SMB for the reuse walk.
+
+Confirmed if the incremental level reports `dirs_reused` equal to `dirs_visited` and `entries_seen=0`, and its cold median sits well below the `full` mode's cold median (the ~1.8 s full listing walk in the same file), matching the projected drop from about six or seven SMB2 ops per directory to about two or three. The warm median is the cache-hot best case, not the figure to judge against. Then confirm directory mtime actually moves over the mount: add an ebook into one folder on the server, re-run, and check that exactly that folder re-lists (`dirs_reused` falls by one and `entries_seen` rises); diffing the two saved reports shows it. If the cold reuse walk is not meaningfully cheaper, or mtime does not move on an add, shelve the feature the way multichannel was shelved and leave `incremental_scan` documented but unrecommended.
 
 Record the result here and, if it pays off, add a note to the README "Network shares" section.
 
