@@ -5,8 +5,7 @@
 //! insensitive natural sort, so `Book 2` precedes `Book 10`. The empty relative
 //! path is the library root itself (loose root audio, see ADR-0005): it becomes
 //! one flagged node named after the root with relative path `.`, pinned ahead of
-//! the forest. The types derive `Serialize` so a future JSON API can return them
-//! unchanged.
+//! the forest. The types derive `Serialize` for a future JSON API.
 
 use std::path::Component;
 
@@ -31,7 +30,7 @@ pub struct Node {
     /// Child nodes, natural-sorted and case-insensitive.
     pub children: Vec<Node>,
     /// Ebook and marker filenames that physically sit in this folder. Mirrors
-    /// `scanner::ScannedFolder::cover_files`; empty in gaps-only.
+    /// `scanner::ScannedFolder::cover_files`. Empty in gaps-only.
     pub cover_files: Vec<String>,
     /// Audio filenames that physically sit in this folder, natural-sorted. Non-empty
     /// only where the folder directly holds audio; the file display reads it.
@@ -86,7 +85,7 @@ pub fn build(root_name: &str, flagged: &[crate::scanner::FlaggedFolder]) -> Vec<
     sort_forest(&mut roots);
     if root_flagged {
         // Pin the flagged root ahead of its natural-sorted children. Relative
-        // path "." is the root itself; rendering substitutes the root label.
+        // path "." is the root itself. Rendering substitutes the root label.
         roots.insert(
             0,
             Node {
@@ -406,7 +405,7 @@ mod tests {
     #[test]
     fn loose_audio_in_the_root_becomes_a_flagged_root_node() {
         // The scanner reports the root itself as the empty relative path
-        // (see ADR-0005); it must surface as a flagged node pinned first.
+        // (see ADR-0005). It must surface as a flagged node pinned first.
         let owned = vec![ff("", &[]), ff("Andy Weir/Artemis", &[])];
         let roots = build("Audiobooks", &owned);
         assert_eq!(names(&roots), vec!["Audiobooks", "Andy Weir"]);
