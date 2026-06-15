@@ -1,7 +1,7 @@
 //! axum router, request handlers, and Maud markup. Handlers are thin: call a
 //! `service` operation and render. They return `Html<String>` so Maud stays
 //! decoupled from the axum version. Marker writes use htmx to swap only the
-//! affected root's section.
+//! affected root's section. htmx is vendored and served from `/static`.
 
 use std::sync::Arc;
 use std::time::Instant;
