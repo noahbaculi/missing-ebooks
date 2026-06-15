@@ -226,21 +226,27 @@ pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<FlaggedFolder> {
     scan_with_stats(root, settings).0
 }
 
-/// Like `scan`, but also returns the walk's counts. Runs the one full walk and
-/// reduces it to flagged folders, so the gaps view and the full view read the same
-/// directories.
+/// Reduce a full walk's folders to the flagged gaps: those that directly hold
+/// audio and lack coverage.
 #[must_use]
-pub fn scan_with_stats(root: &Path, settings: &ScanSettings) -> (Vec<FlaggedFolder>, WalkStats) {
-    let (folders, stats) = scan_all_with_stats(root, settings);
-    let flagged = folders
+pub fn reduce_to_flagged(folders: Vec<ScannedFolder>) -> Vec<FlaggedFolder> {
+    folders
         .into_iter()
         .filter(|f| f.directly_holds_audio && f.missing_ebook)
         .map(|f| FlaggedFolder {
             rel_path: f.rel_path,
             audio_files: f.audio_files,
         })
-        .collect();
-    (flagged, stats)
+        .collect()
+}
+
+/// Like `scan`, but also returns the walk's counts. Runs the one full walk and
+/// reduces it to flagged folders, so the gaps view and the full view read the same
+/// directories.
+#[must_use]
+pub fn scan_with_stats(root: &Path, settings: &ScanSettings) -> (Vec<FlaggedFolder>, WalkStats) {
+    let (folders, stats) = scan_all_with_stats(root, settings);
+    (reduce_to_flagged(folders), stats)
 }
 
 /// One folder from a full walk, tagged with both facts. `scan_all` produces a
@@ -303,15 +309,7 @@ pub fn scan_incremental_with_stats(
     index: &mut DirIndex,
 ) -> (Vec<FlaggedFolder>, WalkStats) {
     let (folders, stats) = scan_all_incremental_with_stats(root, settings, index);
-    let flagged = folders
-        .into_iter()
-        .filter(|f| f.directly_holds_audio && f.missing_ebook)
-        .map(|f| FlaggedFolder {
-            rel_path: f.rel_path,
-            audio_files: f.audio_files,
-        })
-        .collect();
-    (flagged, stats)
+    (reduce_to_flagged(folders), stats)
 }
 
 /// The level-synchronous breadth-first walk shared by the incremental and

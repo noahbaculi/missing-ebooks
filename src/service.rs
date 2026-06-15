@@ -499,14 +499,7 @@ fn scan_root(
 
     let state = match mode {
         ViewMode::GapsOnly => {
-            let flagged: Vec<scanner::FlaggedFolder> = folders
-                .into_iter()
-                .filter(|f| f.directly_holds_audio && f.missing_ebook)
-                .map(|f| scanner::FlaggedFolder {
-                    rel_path: f.rel_path,
-                    audio_files: f.audio_files,
-                })
-                .collect();
+            let flagged = scanner::reduce_to_flagged(folders);
             let forest = tree::build(root_name, &flagged);
             if forest.is_empty() {
                 RootState::Clean
