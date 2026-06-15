@@ -2,8 +2,8 @@
 //! roots, local disk versus an SMB (CIFS) mount.
 //!
 //! `cargo run --release --example scan_bench -- --config config.toml --label smb --drop-caches`
-//! loads the real `Config`, compiles `ScanSettings`, and times `scanner::scan`
-//! (gaps-only) and `scanner::scan_all` (full walk) per root, in cold and warm
+//! loads the real `Config`, compiles `ScanSettings`, and times `scanner::scan_with_stats`
+//! (gaps-only) and `scanner::scan_all_with_stats` (full walk) per root, in cold and warm
 //! cache conditions, then saves a JSON report. The walks only read directory
 //! entries and names; nothing here writes to the library. The single privileged
 //! action is the optional `--drop-caches` page-cache flush on Linux.
