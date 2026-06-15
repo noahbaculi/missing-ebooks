@@ -39,6 +39,10 @@ pub struct Config {
     /// pool serves the whole process, so concurrent scans share it rather than
     /// each getting this many readers.
     pub scan_concurrency: usize,
+    /// Reuse unchanged directories across rescans via an in-memory mtime index.
+    /// On by default; set false to force a full listing walk on filesystems whose
+    /// directory mtime cannot be trusted.
+    pub incremental_scan: bool,
     /// Audio extensions counted as audio, compared case-insensitively.
     pub audio_exts: Vec<String>,
     /// Ebook extensions counted as coverage, compared case-insensitively.
@@ -61,6 +65,7 @@ impl Default for Config {
             port: 13379,
             ttl_seconds: 60,
             scan_concurrency: 16,
+            incremental_scan: true,
             // Audiobookshelf's full supported sets; see ADR-0006.
             audio_exts: strings(&[
                 ".m4b", ".mp3", ".m4a", ".flac", ".opus", ".ogg", ".oga", ".mp4", ".aac", ".wma",
@@ -173,6 +178,9 @@ fn apply_env_overrides(cfg: &mut Config, getenv: &dyn Fn(&str) -> Option<String>
     if let Some(n) = getenv("MISSING_EBOOKS_SCAN_CONCURRENCY").and_then(|v| v.parse().ok()) {
         cfg.scan_concurrency = n;
     }
+    if let Some(v) = getenv("MISSING_EBOOKS_INCREMENTAL_SCAN").and_then(|v| v.parse().ok()) {
+        cfg.incremental_scan = v;
+    }
 }
 
 /// Return the commented `config.toml` template that `--print-config` emits.
@@ -215,6 +223,13 @@ ttl_seconds = 60
 # serves the whole process, so concurrent scans share it. 1 disables the
 # parallelism. Also settable as MISSING_EBOOKS_SCAN_CONCURRENCY.
 scan_concurrency = 16
+
+# Reuse unchanged directories across rescans by checking each directory's mtime
+# and re-listing only the ones that changed, an in-memory index rebuilt on
+# restart. On by default. Set to false to force a full listing walk on a mount
+# whose directory mtime is unreliable. Also settable as
+# MISSING_EBOOKS_INCREMENTAL_SCAN.
+incremental_scan = true
 
 # File extensions, compared case-insensitively. Leading dot required. The
 # defaults mirror Audiobookshelf's full supported sets (see ADR-0006).
@@ -337,6 +352,19 @@ mod tests {
         let env = fake_env(&[("MISSING_EBOOKS_SCAN_CONCURRENCY", "32")]);
         apply_env_overrides(&mut cfg, &|k| env.get(k).cloned());
         assert_eq!(cfg.scan_concurrency, 32);
+    }
+
+    #[test]
+    fn incremental_scan_defaults_on() {
+        assert!(Config::default().incremental_scan);
+    }
+
+    #[test]
+    fn env_overrides_incremental_scan() {
+        let mut cfg = Config::default();
+        let env = fake_env(&[("MISSING_EBOOKS_INCREMENTAL_SCAN", "false")]);
+        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned());
+        assert!(!cfg.incremental_scan);
     }
 
     #[test]
