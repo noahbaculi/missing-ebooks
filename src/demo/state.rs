@@ -51,7 +51,7 @@ impl DemoState {
         self.base_gaps.len()
     }
 
-    /// Drop every session idle past the configured window as of `now`; returns the
+    /// Drop every session idle past the configured window as of `now`. Returns the
     /// number reaped. Called on a timer by the binary's reaper task.
     pub fn reap_idle(&self, now: Instant) -> usize {
         self.sessions
