@@ -173,7 +173,8 @@ pub struct CachedDir {
 
 /// A per-directory cache shared across walks and across both view modes, keyed by
 /// the directory's path. A rescan reuses an entry whose mtime still matches and
-/// re-lists the rest. In-memory only: it is rebuilt on restart by the startup warm.
+/// re-lists the rest. In-memory only: rebuilt on restart by the startup warm, which
+/// is also what reclaims entries for vanished folders, since none are pruned (ADR-0020).
 #[derive(Debug, Default)]
 pub struct DirIndex {
     entries: std::collections::HashMap<PathBuf, CachedDir>,
