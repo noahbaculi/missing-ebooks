@@ -26,7 +26,7 @@ use missing_ebooks::config::Config;
 use missing_ebooks::scanner::{self, ScanSettings, WalkStats};
 use serde::Serialize;
 
-/// Round to three decimals so the report and stdout stay readable; sub-millisecond
+/// Round to three decimals so the report and stdout stay readable. Sub-millisecond
 /// warm scans still keep enough precision to compare.
 fn round3(x: f64) -> f64 {
     (x * 1000.0).round() / 1000.0
@@ -57,8 +57,8 @@ fn max_of(samples: &[f64]) -> f64 {
     samples.iter().copied().reduce(f64::max).unwrap_or(0.0)
 }
 
-/// Per-directory latency from the median, defined only when at least one directory
-/// was walked. Returns `None` for an empty or unreadable root.
+/// Per-directory latency from the median, or `None` when no directory was walked
+/// (an empty or unreadable root).
 fn per_dir_ms(median_ms: f64, dirs: usize) -> Option<f64> {
     (dirs > 0).then(|| round3(median_ms / dirs as f64))
 }
@@ -71,7 +71,7 @@ struct PhaseReport {
     median_ms: f64,
     min_ms: f64,
     max_ms: f64,
-    /// Median divided by directories visited; `None` only when no directory was walked.
+    /// Median divided by directories visited. `None` only when no directory was walked.
     ms_per_dir: Option<f64>,
 }
 
@@ -194,9 +194,9 @@ fn next_value<'a>(
 }
 
 /// Parse the argument vector (already stripped of the program name). `Ok(None)`
-/// means help was requested; `Ok(Some(args))` is a run request; `Err(message)` is
-/// a usage error the caller prints beside the help text. Hand-rolled to match
-/// `explore.rs`; no clap.
+/// is a help request, `Ok(Some(args))` a run request, `Err(message)` a usage error
+/// the caller prints beside the help text. Hand-rolled to match `explore.rs`, not
+/// clap.
 fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
     let mut config = None;
     let mut roots = Vec::new();
@@ -262,11 +262,11 @@ fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
     }))
 }
 
-/// Given the text of `/proc/self/mounts` and an absolute path, return the
-/// `(fstype, options)` of the mount whose mount point is the longest prefix of
-/// the path. Columns are device, mount point, fstype, options; anything shorter
-/// is skipped. Good enough for naming the filesystem under a root; it does not
-/// decode the octal escapes `/proc` uses for spaces in mount points.
+/// Return the `(fstype, options)` of the mount whose mount point is the longest
+/// prefix of `path`, given the text of `/proc/self/mounts`. Columns are device,
+/// mount point, fstype, options; a shorter line is skipped. Names the filesystem
+/// under a root well enough, but does not decode the octal escapes `/proc` uses for
+/// spaces in mount points.
 fn mount_for_path(mounts: &str, path: &Path) -> Option<(String, String)> {
     let mut best: Option<(usize, String, String)> = None;
     for line in mounts.lines() {
@@ -287,7 +287,7 @@ fn mount_for_path(mounts: &str, path: &Path) -> Option<(String, String)> {
 }
 
 /// What one walk found: the counts the report records. `stats` holds the directory
-/// and entry totals from the walk itself; `gaps` and `audio_files` are derived from
+/// and entry totals from the walk itself. `gaps` and `audio_files` are derived from
 /// the result after the clock stops.
 struct WalkCounts {
     stats: WalkStats,
@@ -363,8 +363,8 @@ fn write_report(report: &Report, path: &Path) -> Result<(), String> {
 }
 
 /// Read a small text file and trim it, or `None` if it is unreadable. Used for
-/// the single-line `/proc` values below; the harness degrades to a placeholder
-/// rather than failing when `/proc` is absent.
+/// the single-line `/proc` values below, where the harness degrades to a
+/// placeholder rather than failing when `/proc` is absent.
 fn read_trimmed(path: &Path) -> Option<String> {
     std::fs::read_to_string(path)
         .ok()
@@ -397,10 +397,10 @@ fn unix_time() -> u64 {
 }
 
 /// Flush the Linux page cache, dentries, and inodes so the next walk is cold.
-/// Only this step escalates; build and run as the normal user and enter the sudo
-/// password once (or pre-run `sudo -v`). The CIFS client cache lives in these
-/// caches, so this gives a genuine client-side cold walk. The SMB server may
-/// still hold the tree in its own RAM, so the cold number is the client's view.
+/// Only this step escalates: build and run as the normal user and enter the sudo
+/// password once (or pre-run `sudo -v`). The CIFS client cache lives here, so this
+/// is a genuine client-side cold walk. The SMB server may still hold the tree in
+/// its own RAM, so the cold number is the client's view.
 fn drop_caches() -> Result<(), String> {
     let status = std::process::Command::new("sudo")
         .args(["sh", "-c", "sync && echo 3 > /proc/sys/vm/drop_caches"])
@@ -547,8 +547,8 @@ fn time_reuse_walk(
 }
 
 /// Time one read-only walk and tally what it found. Only the walk sits inside the
-/// `Instant`; the gap and audio counts are derived from the result after the clock
-/// stops, so the in-memory tally never inflates the measured wall-clock.
+/// `Instant`. The gap and audio counts are derived after the clock stops, so the
+/// tally never inflates the measured wall-clock.
 fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCounts) {
     match mode {
         Mode::Full => {
@@ -1076,7 +1076,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
 
     #[test]
     fn mount_lookup_prefers_the_deeper_of_two_nested_mounts() {
-        // Both /mnt/nas and /mnt/nas/Audiobooks prefix the path; the deeper (longer)
+        // Both /mnt/nas and /mnt/nas/Audiobooks prefix the path, so the deeper (longer)
         // mount must win. The differing options expose a shorter-prefix regression.
         let got = mount_for_path(
             NESTED_MOUNTS,
@@ -1131,7 +1131,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         touch(&dir.path().join("Covered/01.mp3"));
         touch(&dir.path().join("Covered/Book.epub"));
         let (_ms, counts) = time_walk(Mode::Gaps, dir.path(), &bench_settings());
-        // The gaps walk reads root, Gap, and Covered; Covered's own directory is read
+        // The gaps walk reads root, Gap, and Covered. Covered's directory is read
         // before the cover is found.
         assert_eq!(counts.stats.dirs_visited, 3);
         assert_eq!(counts.gaps, 1);
@@ -1146,7 +1146,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         touch(&dir.path().join("Covered/Book.epub"));
         let settings = bench_settings();
         let mut index = scanner::DirIndex::new();
-        // The first walk lists everything and fills the index; nothing reused yet.
+        // The first walk lists everything and fills the index. Nothing reused yet.
         let (_ms, build) = time_reuse_walk(dir.path(), &settings, &mut index);
         assert_eq!(build.stats.dirs_reused, 0);
         // The second walk on the unchanged tree reuses every directory, lists none.
