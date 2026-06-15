@@ -69,8 +69,10 @@ pub async fn build_state(
     demo_config: DemoConfig,
 ) -> DemoState {
     let settings = Arc::new(settings);
-    let base_gaps = Arc::new(build_view(&config, &settings, ViewMode::GapsOnly).await);
-    let base_all = Arc::new(build_view(&config, &settings, ViewMode::All).await);
+    // The demo scans the seeded library once into static base views and never
+    // rescans, so it carries no index: pass None for a plain listing walk.
+    let base_gaps = Arc::new(build_view(&config, &settings, ViewMode::GapsOnly, None).await);
+    let base_all = Arc::new(build_view(&config, &settings, ViewMode::All, None).await);
     DemoState {
         base_gaps,
         base_all,

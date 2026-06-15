@@ -4,13 +4,13 @@
 //! stored view in place rather than rewalking (see docs/adr/0002-v1-runtime-write-model.md).
 
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
 
 use crate::config::Config;
-use crate::scanner::ScanSettings;
+use crate::scanner::{DirIndex, ScanSettings};
 use crate::service::{FlaggedView, RootSection, ViewMode};
 
 /// Everything a request handler needs: the immutable config and settings, and
@@ -18,6 +18,9 @@ use crate::service::{FlaggedView, RootSection, ViewMode};
 pub struct AppState {
     pub(crate) config: Arc<Config>,
     pub(crate) settings: Arc<ScanSettings>,
+    /// The shared per-directory index, present only when `incremental_scan` is on.
+    /// A blocking scan locks it to reuse unchanged directories (see scanner).
+    pub(crate) dir_index: Option<Arc<StdMutex<DirIndex>>>,
     pub(crate) cache: Cache,
 }
 
@@ -198,9 +201,13 @@ impl AppState {
         } else {
             Some(Duration::from_secs(config.ttl_seconds))
         };
+        let dir_index = config
+            .incremental_scan
+            .then(|| Arc::new(StdMutex::new(DirIndex::new())));
         AppState {
             config: Arc::new(config),
             settings: Arc::new(settings),
+            dir_index,
             cache: Cache {
                 entries: Mutex::new(ModeSlots {
                     gaps_only: None,
