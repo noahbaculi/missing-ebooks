@@ -273,28 +273,81 @@ pub fn scan_all(root: &Path, settings: &ScanSettings) -> Vec<ScannedFolder> {
     scan_all_with_stats(root, settings).0
 }
 
-/// Like `scan_all`, but also returns the walk's directory and entry counts.
+/// Like `scan_all`, but also returns the walk's counts. Non-incremental: every
+/// directory is listed (the escape-hatch and the bench baseline use this).
 #[must_use]
 pub fn scan_all_with_stats(
     root: &Path,
     settings: &ScanSettings,
 ) -> (Vec<ScannedFolder>, WalkStats) {
+    walk_all(root, settings, None)
+}
+
+/// The incremental full walk: stat each directory and reuse the index entry when
+/// the mtime is unchanged, listing and re-indexing the rest. The same `index`
+/// passed across calls makes each rescan cheaper than the last cold walk.
+#[must_use]
+pub fn scan_all_incremental_with_stats(
+    root: &Path,
+    settings: &ScanSettings,
+    index: &mut DirIndex,
+) -> (Vec<ScannedFolder>, WalkStats) {
+    walk_all(root, settings, Some(index))
+}
+
+/// The incremental gaps walk: the full incremental walk reduced to flagged folders.
+#[must_use]
+pub fn scan_incremental_with_stats(
+    root: &Path,
+    settings: &ScanSettings,
+    index: &mut DirIndex,
+) -> (Vec<FlaggedFolder>, WalkStats) {
+    let (folders, stats) = scan_all_incremental_with_stats(root, settings, index);
+    let flagged = folders
+        .into_iter()
+        .filter(|f| f.directly_holds_audio && f.missing_ebook)
+        .map(|f| FlaggedFolder {
+            rel_path: f.rel_path,
+            audio_files: f.audio_files,
+        })
+        .collect();
+    (flagged, stats)
+}
+
+/// The level-synchronous breadth-first walk shared by the incremental and
+/// non-incremental full scans. Each level is read in parallel with the index
+/// borrowed shared; the index is then updated sequentially before descending, so
+/// no concurrent mutation is needed (see ADR-0019 for the walk shape).
+fn walk_all(
+    root: &Path,
+    settings: &ScanSettings,
+    mut index: Option<&mut DirIndex>,
+) -> (Vec<ScannedFolder>, WalkStats) {
     let mut out = Vec::new();
     let mut stats = WalkStats::default();
-    // Same level-synchronous walk as the gaps scan, but coverage does not prune:
-    // a covered container is still descended, its children tagged covered through
-    // the inherited flag. The frontier carries each directory's covered-from-above
-    // bit alongside its path.
     let mut frontier: Vec<(PathBuf, bool)> = vec![(root.to_path_buf(), false)];
     while !frontier.is_empty() {
-        let level: Vec<AllDir> = frontier
-            .par_iter()
-            .map(|(dir, covered_from_above)| read_dir_all(root, dir, *covered_from_above, settings))
-            .collect();
+        // Read this level in parallel. The index is borrowed shared only for the
+        // duration of this block, so the mutable update below does not overlap it.
+        let level: Vec<AllDir> = {
+            let index_read = index.as_deref();
+            frontier
+                .par_iter()
+                .map(|(dir, covered_from_above)| {
+                    read_dir_all(root, dir, *covered_from_above, settings, index_read)
+                })
+                .collect()
+        };
         let mut next = Vec::new();
         for mut dir in level {
             stats.dirs_visited += dir.stats.dirs_visited;
             stats.entries_seen += dir.stats.entries_seen;
+            stats.dirs_reused += dir.stats.dirs_reused;
+            if let Some(index) = index.as_deref_mut()
+                && let Some(cached) = dir.cache_update.take()
+            {
+                index.insert(dir.path.clone(), cached);
+            }
             if let Some(folder) = dir.folder.take() {
                 out.push(folder);
             }
@@ -309,21 +362,80 @@ pub fn scan_all_with_stats(
 
 /// One directory's contribution to the full walk: its tagged folder, the
 /// non-excluded children to descend into, the coverage flag those children
-/// inherit, and the walk counts. Unlike the gaps walk, coverage does not prune,
-/// so children are returned even when this directory is covered.
+/// inherit, the walk counts, and (when listed under an index) the entry to cache.
 struct AllDir {
     folder: Option<ScannedFolder>,
     children: Vec<PathBuf>,
     child_covered: bool,
     stats: WalkStats,
+    /// The path this `AllDir` describes, so the driver can key the index.
+    path: PathBuf,
+    /// Set when this directory was listed under an index: the driver stores it.
+    /// `None` when reused, when no index is in use, or when the listing failed.
+    cache_update: Option<CachedDir>,
 }
 
-/// Read and classify one directory for the full walk. Read-only.
+/// Read and classify one directory for the full walk. With an index, stat the
+/// directory first and reuse the cached entry when its mtime is unchanged,
+/// listing only on a miss or a changed mtime. Without an index, always list, as
+/// before (the escape-hatch path pays no stat). Read-only on the filesystem.
 fn read_dir_all(
     root: &Path,
     dir: &Path,
     covered_from_above: bool,
     settings: &ScanSettings,
+    index: Option<&DirIndex>,
+) -> AllDir {
+    if let Some(index) = index {
+        if let Ok(mtime) = std::fs::metadata(dir).and_then(|m| m.modified()) {
+            if let Some(cached) = index.get(dir)
+                && cached.mtime == mtime
+            {
+                return reuse_dir_all(root, dir, covered_from_above, cached);
+            }
+            return list_dir_all(root, dir, covered_from_above, settings, Some(mtime));
+        }
+        // The stat failed (likely unreadable): fall through to a listing, which
+        // logs and skips it, and cache nothing.
+        return list_dir_all(root, dir, covered_from_above, settings, None);
+    }
+    list_dir_all(root, dir, covered_from_above, settings, None)
+}
+
+/// Build an `AllDir` from a cached entry without touching the directory's contents.
+/// Produces the same `ScannedFolder` a fresh listing would, with one stat (the
+/// caller already paid it) counted as a reuse.
+fn reuse_dir_all(root: &Path, dir: &Path, covered_from_above: bool, cached: &CachedDir) -> AllDir {
+    let covered = covered_from_above || !cached.cover_files.is_empty();
+    let folder = dir.strip_prefix(root).ok().map(|rel| ScannedFolder {
+        rel_path: rel.to_path_buf(),
+        directly_holds_audio: !cached.audio_files.is_empty(),
+        missing_ebook: !covered,
+        cover_files: cached.cover_files.clone(),
+        audio_files: cached.audio_files.clone(),
+    });
+    AllDir {
+        folder,
+        children: cached.subdirs.clone(),
+        child_covered: covered,
+        stats: WalkStats {
+            dirs_visited: 1,
+            entries_seen: 0,
+            dirs_reused: 1,
+        },
+        path: dir.to_path_buf(),
+        cache_update: None,
+    }
+}
+
+/// List one directory and classify it, the original full-walk body. When
+/// `store_mtime` is `Some`, also produce a `CachedDir` for the driver to index.
+fn list_dir_all(
+    root: &Path,
+    dir: &Path,
+    covered_from_above: bool,
+    settings: &ScanSettings,
+    store_mtime: Option<std::time::SystemTime>,
 ) -> AllDir {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
@@ -334,6 +446,8 @@ fn read_dir_all(
                 children: Vec::new(),
                 child_covered: covered_from_above,
                 stats: WalkStats::default(),
+                path: dir.to_path_buf(),
+                cache_update: None,
             };
         }
     };
@@ -398,23 +512,33 @@ fn read_dir_all(
 
     audio_files.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
 
+    let children: Vec<PathBuf> = subdirs
+        .into_iter()
+        .filter(|sub| !is_excluded(root, sub, settings))
+        .collect();
+
     let folder = dir.strip_prefix(root).ok().map(|rel| ScannedFolder {
         rel_path: rel.to_path_buf(),
         directly_holds_audio: !audio_files.is_empty(),
         missing_ebook: !covered,
-        cover_files,
-        audio_files,
+        cover_files: cover_files.clone(),
+        audio_files: audio_files.clone(),
     });
-    // Coverage does not stop the descent here; only exclusion does.
-    let children = subdirs
-        .into_iter()
-        .filter(|sub| !is_excluded(root, sub, settings))
-        .collect();
+
+    let cache_update = store_mtime.map(|mtime| CachedDir {
+        mtime,
+        subdirs: children.clone(),
+        audio_files,
+        cover_files,
+    });
+
     AllDir {
         folder,
         children,
         child_covered: covered,
         stats,
+        path: dir.to_path_buf(),
+        cache_update,
     }
 }
 
@@ -941,6 +1065,77 @@ mod tests {
     fn walk_stats_default_has_no_reused_dirs() {
         let stats = WalkStats::default();
         assert_eq!(stats.dirs_reused, 0);
+    }
+
+    /// Run the full walk twice against one index. The first call lists everything
+    /// and fills the index; the second reuses it with no filesystem change.
+    #[test]
+    fn incremental_rescan_reuses_unchanged_dirs_and_matches_the_full_walk() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("AuthorA/Book1/01.mp3"));
+        touch(&dir.path().join("AuthorB/Covered/01.mp3"));
+        touch(&dir.path().join("AuthorB/Covered/Book.epub"));
+        let settings = default_settings(&[]);
+
+        let baseline = scan_all(dir.path(), &settings);
+
+        let mut index = DirIndex::new();
+        let (first, first_stats) =
+            scan_all_incremental_with_stats(dir.path(), &settings, &mut index);
+        assert_eq!(
+            first, baseline,
+            "the first incremental walk equals the full walk"
+        );
+        assert_eq!(
+            first_stats.dirs_reused, 0,
+            "nothing to reuse on the first walk"
+        );
+
+        let (second, second_stats) =
+            scan_all_incremental_with_stats(dir.path(), &settings, &mut index);
+        assert_eq!(
+            second, baseline,
+            "an unchanged rescan still equals the full walk"
+        );
+        assert_eq!(
+            second_stats.dirs_reused, second_stats.dirs_visited,
+            "every directory is served from the index"
+        );
+        assert_eq!(second_stats.entries_seen, 0, "no directory was listed");
+    }
+
+    /// A directory whose mtime moved is re-listed and its new contents take effect.
+    #[test]
+    fn incremental_rescan_relists_a_changed_dir_and_flips_the_gap() {
+        use filetime::{FileTime, set_file_mtime};
+        let dir = tempfile::tempdir().unwrap();
+        let book = dir.path().join("Author/Book");
+        touch(&book.join("01.mp3"));
+        let settings = default_settings(&[]);
+
+        let mut index = DirIndex::new();
+        let (first, _) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        assert!(
+            first.iter().any(|f| f.rel_path == Path::new("Author/Book")),
+            "Author/Book starts as a gap"
+        );
+
+        // Cover the gap, then push the folder mtime forward so the change is seen
+        // regardless of the filesystem's mtime resolution.
+        touch(&book.join("Book.epub"));
+        set_file_mtime(&book, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
+
+        let (second, stats) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        assert!(
+            !second
+                .iter()
+                .any(|f| f.rel_path == Path::new("Author/Book")),
+            "the gap is gone after the ebook lands"
+        );
+        assert!(
+            stats.dirs_reused < stats.dirs_visited,
+            "at least one dir was re-listed"
+        );
     }
 
     #[test]
