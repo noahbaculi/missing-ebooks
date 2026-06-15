@@ -427,6 +427,15 @@ async fn build_section(
     section
 }
 
+/// Lock the shared index, recovering the guard when a previous walk panicked while
+/// holding it. A poisoned `DirIndex` is not corrupt: a stale entry is re-listed on
+/// its next mtime check, so recovery beats wedging every later scan on a restart.
+fn lock_index(
+    index: &std::sync::Mutex<scanner::DirIndex>,
+) -> std::sync::MutexGuard<'_, scanner::DirIndex> {
+    index.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Drop the index entry for `rel` under `root` so the next walk re-lists it. Used
 /// after this process writes or deletes a marker, so the change is picked up even
 /// if the directory mtime resolution would have hidden the same-tick write. A
@@ -443,10 +452,7 @@ fn invalidate_index(state: &AppState, root: &Path, rel: &str) {
     } else {
         canonical_root.join(rel)
     };
-    index
-        .lock()
-        .expect("dir index mutex poisoned")
-        .invalidate(&target);
+    lock_index(index).invalidate(&target);
 }
 
 /// The synchronous per-root work: canonicalize, scan, build the forest. Runs on a
@@ -484,7 +490,7 @@ fn scan_root(
     // it per mode.
     let (folders, stats) = match index {
         Some(index) => {
-            let mut guard = index.lock().expect("dir index mutex poisoned");
+            let mut guard = lock_index(index);
             scanner::scan_all_incremental_with_stats(&canonical, settings, &mut guard)
         }
         None => scanner::scan_all_with_stats(&canonical, settings),
