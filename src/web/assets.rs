@@ -19,9 +19,9 @@ struct Asset {
 }
 
 impl Asset {
-    /// Serve the asset with revalidation: a matching `If-None-Match` gets a `304`
-    /// carrying `ETag` and `Cache-Control` and no body; every other request gets a
-    /// `200` with the body and all three headers. The ETag is computed once.
+    /// Serve the asset with revalidation. A matching `If-None-Match` gets a `304`
+    /// with `ETag` and `Cache-Control` and no body; any other request gets a `200`
+    /// with the body and all three headers. The ETag is computed once.
     fn respond(&'static self, headers: &HeaderMap) -> Response {
         let etag = self.etag.get_or_init(|| asset_etag(self.body));
         let requested = headers
@@ -49,10 +49,10 @@ impl Asset {
     }
 }
 
-/// htmx is vendored and changes only on a deliberate version bump, so it gets a
-/// week; the stylesheet and the client script change often, so they get an hour.
-/// None carry `immutable`: the URLs are not fingerprinted, so the ETag must stay
-/// free to revalidate a changed asset once the window passes.
+/// Cache lifetimes. htmx is vendored and changes only on a version bump, so a
+/// week; the stylesheet and script change often, so an hour. None carry
+/// `immutable`: the URLs are not fingerprinted, so the ETag must stay free to
+/// revalidate once the window passes.
 static HTMX: Asset = Asset {
     body: include_str!("../../assets/htmx.min.js"),
     content_type: "text/javascript;charset=utf-8",
@@ -84,10 +84,9 @@ pub(crate) async fn app_js(headers: HeaderMap) -> Response {
     SCRIPT.respond(&headers)
 }
 
-/// A strong ETag for an asset: a quoted hash of its bytes. It depends only on the
-/// content, so it is fixed for the life of the process and identical across
-/// restarts built from the same bytes; a client's cached validator then survives
-/// any redeploy that left the asset unchanged.
+/// A strong ETag for an asset: a quoted hash of its bytes. It depends only on
+/// content, so it is identical across restarts built from the same bytes, and a
+/// cached validator survives any redeploy that left the asset unchanged.
 fn asset_etag(body: &str) -> String {
     let mut hasher = DefaultHasher::new();
     body.hash(&mut hasher);
@@ -95,11 +94,11 @@ fn asset_etag(body: &str) -> String {
 }
 
 /// Whether an `If-None-Match` value revalidates against `etag`. A bare `*` matches
-/// any current representation (RFC 9110 §13.1.2), and the asset always exists, so
-/// it always revalidates. Otherwise the value is a comma list whose candidates may
-/// carry the `W/` weak prefix an edge added; `If-None-Match` uses the weak
-/// comparison, which treats `W/"x"` and `"x"` as equal, so each candidate is
-/// trimmed and unwrapped before the compare.
+/// any representation (RFC 9110 §13.1.2) and the asset always exists, so it
+/// revalidates. Otherwise the value is a comma list whose candidates may carry the
+/// `W/` weak prefix an edge added. `If-None-Match` uses weak comparison, treating
+/// `W/"x"` and `"x"` as equal, so each candidate is trimmed and unwrapped before
+/// the compare.
 fn if_none_match_hit(value: Option<&str>, etag: &str) -> bool {
     let Some(value) = value else { return false };
     value.split(',').any(|candidate| {
