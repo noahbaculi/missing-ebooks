@@ -153,11 +153,17 @@ pub async fn mark(
         .ok_or(DomainError::RootIndex)?
         .clone();
     let rel_owned = rel.to_string();
-    let created = tokio::task::spawn_blocking(move || write_marker(&root_path, &rel_owned, marker))
-        .await
-        .map_err(|_| {
-            DomainError::WriteFailed(std::io::Error::other("marker write task failed"))
-        })??;
+    let write_path = root_path.clone();
+    let created =
+        tokio::task::spawn_blocking(move || write_marker(&write_path, &rel_owned, marker))
+            .await
+            .map_err(|_| {
+                DomainError::WriteFailed(std::io::Error::other("marker write task failed"))
+            })??;
+
+    // The marker write changed the folder; drop its index entry so the next rescan
+    // re-lists it rather than trusting a pre-write mtime (see scanner::DirIndex).
+    invalidate_index(state, &root_path, rel);
 
     let view = state
         .cache
@@ -203,6 +209,10 @@ pub async fn unmark(
                 DomainError::WriteFailed(std::io::Error::other("marker delete task failed"))
             })??;
     }
+
+    // The marker delete changed the folder; drop its index entry so the per-root
+    // rebuild below re-lists it rather than trusting a pre-delete mtime.
+    invalidate_index(state, &root_path, rel);
 
     let section_root = root_path.clone();
     let section_settings = Arc::clone(&state.settings);
@@ -419,6 +429,28 @@ async fn build_section(
     section
 }
 
+/// Drop the index entry for `rel` under `root` so the next walk re-lists it. Used
+/// after this process writes or deletes a marker, so the change is picked up even
+/// if the directory mtime resolution would have hidden the same-tick write. A
+/// no-op when incremental scanning is off or the path was never indexed.
+fn invalidate_index(state: &AppState, root: &Path, rel: &str) {
+    let Some(index) = state.dir_index.as_ref() else {
+        return;
+    };
+    let Ok(canonical_root) = std::fs::canonicalize(root) else {
+        return;
+    };
+    let target = if rel == "." {
+        canonical_root
+    } else {
+        canonical_root.join(rel)
+    };
+    index
+        .lock()
+        .expect("dir index mutex poisoned")
+        .invalidate(&target);
+}
+
 /// The synchronous per-root work: canonicalize, scan, build the forest. Runs on a
 /// blocking thread. A canonicalize failure or a non-directory becomes an `Error`
 /// section so one bad root never sinks the page.
@@ -629,6 +661,46 @@ mod tests {
 
         let reused = state.dir_index.as_ref().unwrap().lock().unwrap().len();
         assert!(reused > 0, "the index retained the walked directories");
+    }
+
+    #[tokio::test]
+    async fn mark_invalidates_the_marked_dir_in_the_index() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = state_for(dir.path(), 600);
+
+        // Warm the index by scanning once.
+        current_view(&state, ViewMode::GapsOnly).await;
+        let canonical = std::fs::canonicalize(dir.path()).unwrap();
+        let book = canonical.join("Book");
+        assert!(
+            state
+                .dir_index
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .get(&book)
+                .is_some(),
+            "Book is indexed after the scan"
+        );
+
+        // Marking Book writes .no_ebook into it; its index entry must be dropped so
+        // the next walk re-lists it rather than trusting a pre-write mtime.
+        mark(&state, 0, "Book", Marker::NoEbook, ViewMode::GapsOnly)
+            .await
+            .unwrap();
+        assert!(
+            state
+                .dir_index
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .get(&book)
+                .is_none(),
+            "Book's index entry is invalidated by the marker write"
+        );
     }
 
     #[test]
