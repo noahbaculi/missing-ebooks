@@ -75,13 +75,14 @@ Result (2026-06-14, jane-2): confirmed round-trip-minimal, no scanner change war
 
 ### 4. Incremental rescan (stat vs list)
 
-A check on the in-memory mtime index behind the `incremental_scan` flag (default on, see the README config table). On jane-2, against the SMB mount, run the incremental bench mode after the unchanged-tree assumption holds (no writes to the share between the two walks):
+A check on the in-memory mtime index behind the `incremental_scan` flag (default on, see the README config table). On jane-2, against the SMB mount, run the incremental bench mode after the unchanged-tree assumption holds (no writes to the share between the walks). `--drop-caches` is what makes this honest over SMB: a reuse walk stats every directory in well under a second, shorter than the attribute cache window (actimeo=1 on this mount), so back-to-back warm walks hit the cached attrs and the warm median understates the real per-directory round trip. The cold phase drops the client cache before each walk, so every stat is a real round trip, the way a rescan minutes after the last one will be.
 
 ```shell
-cargo run --release --example scan_bench -- --root /mnt/jane-nas/Entertainment/Audiobooks --mode incremental --iterations 5 --no-save
+sudo -v
+cargo run --release --example scan_bench -- --root /mnt/jane-nas/Entertainment/Audiobooks --mode incremental --iterations 5 --drop-caches --no-save
 ```
 
-Confirmed if the warm incremental rescan reports `dirs_reused` equal to `dirs_visited`, `entries_seen=0`, and a median time well below the ~1.8 s full listing walk, matching the projected drop from about six or seven SMB2 ops per directory to about two or three. Then confirm directory mtime actually moves over the mount: add an ebook into one folder on the server, re-run, and check that exactly that folder re-lists (`dirs_reused` falls by one and `entries_seen` rises). If the reuse walk is not meaningfully cheaper, or mtime does not move on an add, shelve the feature the way multichannel was shelved and leave `incremental_scan` documented but unrecommended.
+Confirmed if every walk reports `dirs_reused` equal to `dirs_visited` and `entries_seen=0`, and the cold median sits well below the ~1.8 s full listing walk, matching the projected drop from about six or seven SMB2 ops per directory to about two or three. The warm median is the cache-hot best case, not the figure to judge against. Then confirm directory mtime actually moves over the mount: add an ebook into one folder on the server, re-run, and check that exactly that folder re-lists (`dirs_reused` falls by one and `entries_seen` rises). If the cold reuse walk is not meaningfully cheaper, or mtime does not move on an add, shelve the feature the way multichannel was shelved and leave `incremental_scan` documented but unrecommended.
 
 Record the result here and, if it pays off, add a note to the README "Network shares" section.
 
