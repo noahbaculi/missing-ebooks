@@ -13,8 +13,7 @@
 #[must_use]
 pub fn clean_query(name: &str) -> String {
     // 1. Drop (...), [...], and {...} segments. One depth counter spans all three
-    //    bracket kinds, so nested segments fall out together; mismatched kinds are
-    //    handled leniently, which is fine for folder names. No regex crate needed.
+    //    bracket kinds, so nested segments fall out together. No regex crate needed.
     let mut depth: usize = 0;
     let mut without_brackets = String::with_capacity(name.len());
     for ch in name.chars() {
@@ -26,7 +25,7 @@ pub fn clean_query(name: &str) -> String {
         }
     }
 
-    // 2. Normalize `_` and `.` to spaces; folder names are usually space-separated
+    // 2. Normalize `_` and `.` to spaces. Folder names are usually space-separated
     //    but not always. The swap is byte-length-preserving, so the input length
     //    pre-sizes the output exactly.
     let mut spaced = String::with_capacity(without_brackets.len());
