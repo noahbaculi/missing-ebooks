@@ -421,34 +421,70 @@ time only. For a syscall-level cross-check, run once under
     )
 }
 
-/// Measure a warm incremental rescan: build the index once (discarded), then time
-/// `iterations` reuse walks against it. Prints the median reuse time and the
-/// reused-vs-listed split so a network run can confirm the projected drop. This
-/// bypasses the cold/warm JSON machinery; record the printed numbers by hand.
-fn run_incremental(root: &Path, settings: &ScanSettings, iterations: usize) {
+/// Measure incremental reuse: build the index with one full listing walk
+/// (discarded), then time reuse walks against it. `--drop-caches` adds a cold phase
+/// that drops the client cache before each walk, so every directory stat is a real
+/// round trip, the honest figure over a network mount; the warm phase shows the
+/// cache-hot case. Prints the reused-vs-listed split and the per-phase timings,
+/// outside the JSON sweep, so record the numbers by hand.
+fn run_incremental(
+    root: &Path,
+    settings: &ScanSettings,
+    iterations: usize,
+    drop_caches_enabled: bool,
+) -> Result<(), String> {
     let mut index = scanner::DirIndex::new();
-    // Populate the index (this first walk lists everything).
-    let (_folders, build_stats) =
-        scanner::scan_all_incremental_with_stats(root, settings, &mut index);
+    // Build the index: this first walk lists everything.
+    let (_ms, mut last) = time_reuse_walk(root, settings, &mut index);
+
+    let cold = if drop_caches_enabled {
+        let mut samples = Vec::with_capacity(iterations);
+        for _ in 0..iterations {
+            drop_caches()?;
+            let (ms, stats) = time_reuse_walk(root, settings, &mut index);
+            samples.push(ms);
+            last = stats;
+        }
+        Some(phase_report(&samples, last.dirs_visited))
+    } else {
+        None
+    };
+
+    // Warm phase: one discarded warmup, then measured reuse walks with no drop.
+    let _ = time_reuse_walk(root, settings, &mut index);
     let mut samples = Vec::with_capacity(iterations);
-    let mut last = build_stats;
     for _ in 0..iterations {
-        let start = Instant::now();
-        let (_folders, stats) =
-            scanner::scan_all_incremental_with_stats(root, settings, &mut index);
-        samples.push(round3(start.elapsed().as_secs_f64() * 1000.0));
+        let (ms, stats) = time_reuse_walk(root, settings, &mut index);
+        samples.push(ms);
         last = stats;
     }
-    samples.sort_by(f64::total_cmp);
-    let median = samples[samples.len() / 2];
+    let warm = phase_report(&samples, last.dirs_visited);
+
     println!(
-        "incremental warm rescan: median {median} ms over {iterations} runs; \
-         dirs_visited={} dirs_reused={} entries_seen={} (index {} dirs)",
+        "  mode=incremental  dirs_visited={}  dirs_reused={}  entries_seen={}  (index {} dirs)",
         last.dirs_visited,
         last.dirs_reused,
         last.entries_seen,
         index.len()
     );
+    if let Some(cold) = &cold {
+        println!("{}", fmt_phase("cold", cold));
+    }
+    println!("{}", fmt_phase("warm", &warm));
+    Ok(())
+}
+
+/// Time one reuse walk against the prebuilt `index`, returning its wall-clock in
+/// milliseconds and the walk's stats. On an unchanged tree every directory is
+/// reused and no entry is listed.
+fn time_reuse_walk(
+    root: &Path,
+    settings: &ScanSettings,
+    index: &mut scanner::DirIndex,
+) -> (f64, WalkStats) {
+    let start = Instant::now();
+    let (_folders, stats) = scanner::scan_all_incremental_with_stats(root, settings, index);
+    (round3(start.elapsed().as_secs_f64() * 1000.0), stats)
 }
 
 /// Time one read-only walk and tally what it found. Only the walk sits inside the
@@ -645,9 +681,14 @@ fn main() -> ExitCode {
 
         let mut modes = BTreeMap::new();
         for &mode in &args.modes {
-            // Incremental is a focused reuse measurement, outside the cold/warm sweep.
+            // Incremental is a focused reuse measurement, outside the concurrency sweep.
             if mode == Mode::Incremental {
-                run_incremental(&canonical, &settings, args.iterations);
+                if let Err(message) =
+                    run_incremental(&canonical, &settings, args.iterations, args.drop_caches)
+                {
+                    eprintln!("error during incremental run: {message}");
+                    return ExitCode::FAILURE;
+                }
                 continue;
             }
             let mut levels = Vec::new();
@@ -999,6 +1040,24 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         assert_eq!(counts.stats.dirs_visited, 3);
         assert_eq!(counts.gaps, 1);
         assert_eq!(counts.audio_files, 1);
+    }
+
+    #[test]
+    fn time_reuse_walk_reuses_an_unchanged_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Gap/01.mp3"));
+        touch(&dir.path().join("Covered/01.mp3"));
+        touch(&dir.path().join("Covered/Book.epub"));
+        let settings = bench_settings();
+        let mut index = scanner::DirIndex::new();
+        // The first walk lists everything and fills the index; nothing reused yet.
+        let (_ms, build) = time_reuse_walk(dir.path(), &settings, &mut index);
+        assert_eq!(build.dirs_reused, 0);
+        // The second walk on the unchanged tree reuses every directory, lists none.
+        let (_ms, reuse) = time_reuse_walk(dir.path(), &settings, &mut index);
+        assert_eq!(reuse.dirs_visited, 3); // root, Gap, Covered
+        assert_eq!(reuse.dirs_reused, 3);
+        assert_eq!(reuse.entries_seen, 0);
     }
 
     #[test]
