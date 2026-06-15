@@ -10,14 +10,12 @@ use crate::service::{FlaggedView, RootSection, RootState, ViewMode};
 use crate::tree::Node;
 
 /// Pre-paint bootstrap: resolves the saved theme (or the OS preference for
-/// "system" / an unset value) and sets `data-theme` on <html> before first
-/// paint so there is no flash, applies the two depth-typography opt-outs the
-/// same way, and applies a saved custom accent by setting `--color-warning` and
-/// the per-theme-derived `--color-warning-text` inline on <html>. The default
-/// accent writes no override, so the stylesheet's tuned tokens apply. The
-/// `deriveWarningInk` helper here mirrors the one in `app.js`; the `ACCENT-DERIVE`
-/// markers fence the shared block, and `tests/accent/derive.test.mjs` checks the
-/// two copies agree and that the ink clears AA. The interactive controls live in
+/// "system" or an unset value), sets `data-theme` on <html> before first paint so
+/// there is no flash, applies the two depth-typography opt-outs, and applies a
+/// saved custom accent inline. The default accent writes no override, so the
+/// stylesheet's tuned tokens apply. `deriveWarningInk` mirrors the copy in
+/// `app.js`, fenced by the `ACCENT-DERIVE` markers; `tests/accent/derive.test.mjs`
+/// checks the two agree and that the ink clears AA. Interactive controls live in
 /// `app.js`.
 const PREPAINT_JS: &str = r#"(function () {
   var saved = localStorage.getItem('theme');
@@ -146,21 +144,20 @@ const ERROR_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="fals
 const CLEAR_SVG: &str = r##"<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>"##;
 
 /// The favicon as an inline SVG data URI, so the tab gets an identity and the
-/// browser stops requesting `/favicon.ico`. The "book wearing headphones" glyph
-/// on its own, no backdrop. It draws in `currentColor`, and an embedded `<style>`
-/// binds that to indigo `%23605dff` on light tab strips and a lighter indigo
-/// `%23c7c5ff` on dark ones via `prefers-color-scheme`, so the mark keeps its
-/// contrast either way. (Chrome, Firefox, and Edge honor the media query inside a
-/// favicon; Safari ignores it and shows the light-mode indigo throughout.) The
-/// source art lives at `assets/brand/favicon.svg`; keep it, `BRAND_SVG`, and the
-/// source art in sync if the mark changes.
+/// browser stops requesting `/favicon.ico`. The "book wearing headphones" glyph,
+/// no backdrop. It draws in `currentColor`; an embedded `<style>` binds that to
+/// indigo `%23605dff` on light tab strips and a lighter `%23c7c5ff` on dark ones
+/// via `prefers-color-scheme`. WARN: Chrome, Firefox, and Edge honor the media
+/// query inside a favicon, Safari ignores it and shows the light-mode indigo
+/// throughout. Source art lives at `assets/brand/favicon.svg`; keep it and
+/// `BRAND_SVG` in sync if the mark changes.
 const FAVICON_HREF: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round'%3E%3Cstyle%3Esvg{color:%23605dff}@media(prefers-color-scheme:dark){svg{color:%23c7c5ff}}%3C/style%3E%3Cpath d='M4.5 14v-2a7.5 7.5 0 0 1 15 0v2' stroke-width='2'/%3E%3Crect x='3' y='13' width='3.2' height='6' rx='1.6' fill='currentColor' stroke='none'/%3E%3Crect x='17.8' y='13' width='3.2' height='6' rx='1.6' fill='currentColor' stroke='none'/%3E%3Cpath d='M12 11.8c-1.2-.85-3-.85-4.2 0v4.8c1.2-.85 3-.85 4.2 0c1.2-.85 3-.85 4.2 0v-4.8c-1.2-.85-3-.85-4.2 0z' stroke-width='1.4'/%3E%3Cpath d='M12 11.8v4.8' stroke-width='1.2'/%3E%3C/svg%3E";
 
 /// The brand mark drawn inline at the head of the navbar, the same "book wearing
 /// headphones" glyph as the favicon. It draws in `currentColor`, which the navbar
 /// binds to the primary indigo so the mark follows the theme, and is `aria-hidden`
 /// since the `<h1>` already names the app. Same art as `FAVICON_HREF` and
-/// `assets/brand/favicon.svg`; keep the three in sync if the mark changes.
+/// `assets/brand/favicon.svg`. Keep the three in sync if the mark changes.
 const BRAND_SVG: &str = r##"<svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2" stroke-width="2"/><rect x="3" y="13" width="3.2" height="6" rx="1.6" fill="currentColor" stroke="none"/><rect x="17.8" y="13" width="3.2" height="6" rx="1.6" fill="currentColor" stroke="none"/><path d="M12 11.8c-1.2-.85-3-.85-4.2 0v4.8c1.2-.85 3-.85 4.2 0c1.2-.85 3-.85 4.2 0v-4.8c-1.2-.85-3-.85-4.2 0z" stroke-width="1.4"/><path d="M12 11.8v4.8" stroke-width="1.2"/></svg>"##;
 
 /// Vertical three-dot "more actions" glyph for the mobile per-row menu trigger.
@@ -176,10 +173,10 @@ const NO_ENTRY_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="f
 /// elsewhere" button. Inherits `currentColor`.
 const EBOOK_ELSEWHERE_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg>"##;
 
-/// The gaps-only / show-all view control for the navbar: a two-segment control.
-/// The segment for the current view is inert and marked `aria-current`; the other
-/// is a GET link that navigates to its view. Switching reshapes every root, so it
-/// is a full-page navigation, and the choice is not persisted.
+/// The gaps-only / show-all view control for the navbar. The segment for the
+/// current view is inert and marked `aria-current`, the other is a GET link to its
+/// view. Switching reshapes every root, so it is a full-page navigation, and the
+/// choice is not persisted.
 fn view_toggle(mode: ViewMode) -> Markup {
     html! {
         div.segmented role="group" aria-label="View" {
@@ -197,14 +194,13 @@ fn view_toggle(mode: ViewMode) -> Markup {
     }
 }
 
-/// The navbar settings control: a cog that opens a popover holding the theme
-/// choice, the confirm-before-marking toggle, the folder-depth styling switches,
-/// and a read-only keyboard shortcuts reference. The native popover API
-/// drives open/close; the controls' behavior lives in `app.js`, which also opens
-/// this panel on the `?` key. The theme segments and the switches render in their
-/// default state (System, all switches on); `app.js` reconciles them against
-/// localStorage once it runs. The shortcuts section hides on mobile, where there
-/// is no keyboard.
+/// The navbar settings control: a cog opening a popover with the theme choice, the
+/// confirm-before-marking toggle, the folder-depth switches, and a read-only
+/// keyboard shortcuts reference. The native popover API drives open/close; behavior
+/// lives in `app.js`, which also opens the panel on `?`. Segments and switches
+/// render in their default state (System, all on), reconciled against localStorage
+/// once `app.js` runs. The shortcuts section hides on mobile, where there is no
+/// keyboard.
 fn settings_menu() -> Markup {
     html! {
         button.btn.btn-ghost.btn-square.settings-cog type="button"
@@ -281,13 +277,12 @@ fn settings_menu() -> Markup {
     }
 }
 
-/// The navbar filter input. The box renders visible from first paint so it holds its
-/// slot in the navbar and never reflows in; the input renders `disabled`, and
-/// `app.js` clears that on `DOMContentLoaded` once the tree and handler are wired.
-/// During that load window the box reads as greyed-but-present, not a dead box the
-/// user can type into before the filter works. The `/` key focuses it and Escape
-/// clears it; both live in `app.js`. A themed clear button sits after the input,
-/// hidden until the box holds text.
+/// The navbar filter input. The box renders visible from first paint so it holds
+/// its navbar slot and never reflows in. The input renders `disabled`; `app.js`
+/// clears that on `DOMContentLoaded` once the tree and handler are wired, so during
+/// load the box reads greyed-but-present, not a dead box accepting input before the
+/// filter works. The `/` key focuses it and Escape clears it, both in `app.js`. A
+/// themed clear button sits after the input, hidden until the box holds text.
 fn search_box() -> Markup {
     html! {
         div.search id="search" {
@@ -316,8 +311,8 @@ fn search_empty() -> Markup {
 
 /// The marker-write confirmation, rendered once at the page level so it survives
 /// the htmx section swaps. `app.js` fills the title, folder, file chip, confirm
-/// label, and the matching marker glyph from the button that fired, then opens
-/// it. The dialog is opened by `app.js`, and a marker write fires only through it.
+/// label, and matching glyph from the firing button, then opens it; a marker write
+/// fires only through it.
 fn confirm_dialog() -> Markup {
     html! {
         dialog.confirm-dialog id="confirm-mark" aria-labelledby="confirm-title" {
@@ -357,9 +352,9 @@ fn scan_bar() -> Markup {
 }
 
 /// The connection-status banner: a polite live region pinned to the top of the
-/// page, hidden until app.js reveals it and sets a state class. The state copy is
-/// carried as data attributes so it is defined (and tested) here in one place; the
-/// client only chooses which message to show.
+/// page, hidden until `app.js` reveals it and sets a state class. State copy lives
+/// in data attributes so it is defined and tested here in one place; the client
+/// only chooses which message to show.
 fn conn_banner() -> Markup {
     html! {
         div.conn-banner id="conn-banner" role="status" aria-live="polite" hidden
@@ -448,10 +443,10 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                         hx-disabled-elt="#rescan-btn" {
                         input type="hidden" name="view" value=(mode.as_query());
                         // The button posts via htmx (like the marker buttons) and sits in
-                        // the nav, outside the swapped #roots, so htmx keeps it across the
-                        // request: hx-disabled-elt locks it so a second click cannot
-                        // double-scan, and the disabled state dims it (app.css). The label
-                        // stays put; both clear once the swap settles.
+                        // the nav, outside the swapped `#roots`, so htmx keeps it across
+                        // the request. `hx-disabled-elt` locks it so a second click cannot
+                        // double-scan, and the disabled state dims it (`app.css`). The
+                        // label stays put, and both clear once the swap settles.
                         button.btn.btn-primary id="rescan-btn" type="button"
                             hx-post="/rescan" hx-include="closest form" { "Rescan" }
                     }
@@ -506,12 +501,12 @@ fn gap_word(n: usize) -> &'static str {
     if n == 1 { "gap" } else { "gaps" }
 }
 
-/// The gap summary strip, rendered between the navbar and the roots and computed
-/// from the `FlaggedView` already on hand, so it needs no scanner change. The hero
-/// gap total, a session coverage readout with its progress bar, and optional
-/// per-root chips for a multi-root setup. `app.js` keeps the hero and readout
-/// current from the DOM as marks land; this render is the first paint.
-/// `data-gaps-at-load` seeds the session bar's baseline.
+/// The gap summary strip between the navbar and the roots, computed from the
+/// `FlaggedView` already on hand so it needs no scanner change. Holds the hero gap
+/// total, a session coverage readout with its bar, and optional per-root chips for
+/// a multi-root setup. `app.js` keeps the hero and readout current as marks land;
+/// this render is the first paint. `data-gaps-at-load` seeds the session bar's
+/// baseline.
 fn gap_summary(view: &FlaggedView) -> Markup {
     let total = total_gaps(view);
     html! {
@@ -542,7 +537,7 @@ fn gap_summary(view: &FlaggedView) -> Markup {
 }
 
 /// One per-root chip: the root's short label and its own gap count, shown only in
-/// a multi-root setup. A covered root reads zero; an error root reads "scan error".
+/// a multi-root setup. A covered root reads zero, an error root reads "scan error".
 /// The `data-root` hook lets the client update each chip independently.
 fn root_chip(root: usize, section: &RootSection) -> Markup {
     html! {
@@ -570,16 +565,12 @@ fn root_chip(root: usize, section: &RootSection) -> Markup {
     }
 }
 
-/// The session coverage block beside the hero: a readout of gaps resolved this sitting
-/// over the count at load (`{resolved} of {baseline} audiobooks · {pct}%`), and the
-/// progress bar. Renders at zero (`0 of {total}`, empty bar); `app.js` rewrites the
-/// readout and fills the bar as marks land, and resets the baseline on a rescan. The
-/// numbers aggregate every root. A `progressbar` so the value is announced; the fill
-/// transition is dropped under reduced motion in CSS.
-///
-/// The block always renders, even at a clean load where its head is hidden, because
-/// a rescan re-renders only `#roots` and never this strip; `app.js` reaches in to
-/// fill the bar and rewrite the readout when a rescan turns up new gaps.
+/// The session coverage block beside the hero: a readout of gaps resolved this
+/// sitting over the count at load, with a `progressbar` so the value is announced.
+/// The fill transition is dropped under reduced motion in CSS. The block always
+/// renders, even at a clean load where its head is hidden, because a rescan
+/// re-renders only `#roots` and never this strip, so `app.js` reaches in to fill
+/// the bar and rewrite the readout when a rescan turns up new gaps.
 fn session_bar(total: usize) -> Markup {
     html! {
         div.gap-session {
@@ -605,7 +596,8 @@ fn session_bar(total: usize) -> Markup {
 }
 
 /// The badge shown on a root's summary: the gap count, a clean check, or a scan
-/// error. In show-all the forest also holds covered nodes; only gaps are counted.
+/// error. In show-all the forest also holds covered nodes, but only gaps are
+/// counted.
 fn root_badge(state: &RootState) -> Markup {
     html! {
         @match state {
@@ -698,7 +690,7 @@ fn status_icon(node: &Node) -> Markup {
 }
 
 /// The covering ebook and marker filenames for a covered row, in muted text just
-/// after the status check. Show-all only; empty for gaps and for folders covered
+/// after the status check. Show-all only, and empty for gaps and folders covered
 /// from above, so nothing renders there.
 fn cover_files_span(node: &Node, mode: ViewMode) -> Markup {
     html! {
@@ -709,7 +701,7 @@ fn cover_files_span(node: &Node, mode: ViewMode) -> Markup {
 }
 
 /// The structural-smell microlabel for a flagged row. A folder that directly holds
-/// audio and also has gap subfolders reads as mixed (a book and a shelf at once); a
+/// audio and also has gap subfolders reads as mixed (a book and a shelf at once). A
 /// flagged leaf with no container around it (depth 0, including the root-itself gap)
 /// reads as loose. A gap filed under a container at depth 1 or deeper gets nothing.
 /// Non-flagged nodes never reach a true branch.
@@ -762,7 +754,7 @@ fn render_node(
     counter: &std::cell::Cell<usize>,
     depth: usize,
 ) -> Markup {
-    // A covered row dims only in show-all; gaps-only never holds covered nodes.
+    // A covered row dims only in show-all. Gaps-only never holds covered nodes.
     let covered = mode == ViewMode::All && !node.missing_ebook;
     // Buttons and links appear only where there is a gap to act on.
     let act = node.has_gap_within();
@@ -770,8 +762,8 @@ fn render_node(
         @if node.children.is_empty() {
             @if node.needs_ebook() {
                 // A flagged leaf: an expandable row whose audio files sit hidden under
-                // it until opened. It renders as a <summary> like a flagged container,
-                // a shape app.js already handles (see rowOf in app.js).
+                // it until opened. It renders as a `<summary>` like a flagged
+                // container, a shape `app.js` already handles (see `rowOf`).
                 li {
                     details.node-files {
                         summary.row.flagged {
@@ -793,7 +785,7 @@ fn render_node(
                 }
             } @else {
                 // A non-flagged leaf (a covered or plain folder in show-all) stays a
-                // static row, exactly as before.
+                // static row.
                 li {
                     div.row.covered[covered] {
                         span.leaf-pad {}
@@ -836,12 +828,12 @@ fn render_node(
     }
 }
 
-/// The per-row action cluster: a kebab trigger plus the marker buttons and the
-/// search links, wrapped in a group that doubles as a native popover. On desktop
-/// the trigger is hidden and the group is `display: contents`, so its children
-/// flow inline in the row as before; on mobile the kebab opens the group as a
-/// bottom action sheet over a dimmed backdrop. The browser provides the toggle,
-/// one-open-at-a-time, light-dismiss, and Esc.
+/// The per-row action cluster: a kebab trigger plus the marker buttons and search
+/// links, wrapped in a group that doubles as a native popover. On desktop the
+/// trigger is hidden and the group is `display: contents`, so its children flow
+/// inline in the row. On mobile the kebab opens the group as a bottom action sheet
+/// over a dimmed backdrop. The browser provides the toggle, one-open-at-a-time,
+/// light-dismiss, and Esc.
 fn row_actions(
     root: usize,
     rel: &str,
@@ -869,10 +861,10 @@ fn row_actions(
 }
 
 fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup {
-    // In gaps-only the marked folder leaves the list, so app.js collapses its row and
-    // the section swap waits for that to play. In show-all the row stays and flips to
-    // covered in place, so the swap is immediate; the row's reserved min-height keeps
-    // the flip from shifting the rows below.
+    // In gaps-only the marked folder leaves the list, so `app.js` collapses its row
+    // and the section swap waits for that to play. In show-all the row stays and
+    // flips to covered in place, so the swap is immediate, and the row's reserved
+    // min-height keeps the flip from shifting the rows below.
     let swap = match mode {
         ViewMode::GapsOnly => "outerHTML swap:250ms",
         ViewMode::All => "outerHTML",
