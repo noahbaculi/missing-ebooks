@@ -1135,6 +1135,78 @@ mod tests {
         );
     }
 
+    /// A subdir added under a parent is picked up on rescan once the parent's mtime
+    /// moves: it re-lists, its cached subdirs gains the child, and the new folder is
+    /// walked and flagged.
+    #[test]
+    fn incremental_rescan_picks_up_a_new_subdir() {
+        use filetime::{FileTime, set_file_mtime};
+        let dir = tempfile::tempdir().unwrap();
+        let author = dir.path().join("Author");
+        touch(&author.join("Book 1/01.mp3"));
+        let settings = default_settings(&[]);
+
+        let mut index = DirIndex::new();
+        let (first, _) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        assert!(
+            first.iter().any(|f| f.rel_path == Path::new("Author/Book 1")),
+            "Book 1 is the only gap on the first walk"
+        );
+        assert!(
+            !first.iter().any(|f| f.rel_path == Path::new("Author/Book 2")),
+            "Book 2 does not exist yet"
+        );
+
+        // Add a sibling, then push the parent mtime forward so the change is seen
+        // regardless of the filesystem's mtime resolution.
+        touch(&author.join("Book 2/01.mp3"));
+        set_file_mtime(&author, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
+
+        let (second, stats) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        assert!(
+            second.iter().any(|f| f.rel_path == Path::new("Author/Book 2")),
+            "the new sibling is walked and flagged after the parent re-lists"
+        );
+        assert!(
+            stats.dirs_reused < stats.dirs_visited,
+            "the parent was re-listed, not reused from the stale subdirs"
+        );
+    }
+
+    /// A subdir removed under a parent drops out on rescan once the parent's mtime
+    /// moves: it re-lists, its cached subdirs loses the child, and the gone folder is
+    /// no longer reported even though its stale index entry lingers.
+    #[test]
+    fn incremental_rescan_drops_a_removed_subdir() {
+        use filetime::{FileTime, set_file_mtime};
+        let dir = tempfile::tempdir().unwrap();
+        let author = dir.path().join("Author");
+        touch(&author.join("Book 1/01.mp3"));
+        touch(&author.join("Book 2/01.mp3"));
+        let settings = default_settings(&[]);
+
+        let mut index = DirIndex::new();
+        let (first, _) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        assert!(
+            first.iter().any(|f| f.rel_path == Path::new("Author/Book 2")),
+            "Book 2 starts as a gap"
+        );
+
+        // Remove the sibling, then push the parent mtime forward.
+        std::fs::remove_dir_all(author.join("Book 2")).unwrap();
+        set_file_mtime(&author, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
+
+        let (second, _) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        assert!(
+            !second.iter().any(|f| f.rel_path == Path::new("Author/Book 2")),
+            "the removed folder is gone after the parent re-lists"
+        );
+        assert!(
+            second.iter().any(|f| f.rel_path == Path::new("Author/Book 1")),
+            "the surviving sibling is still flagged"
+        );
+    }
+
     #[test]
     fn scan_with_stats_now_walks_the_full_tree_like_scan_all() {
         let dir = tempfile::tempdir().unwrap();
