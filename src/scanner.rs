@@ -1150,11 +1150,15 @@ mod tests {
         let mut index = DirIndex::new();
         let (first, _) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
         assert!(
-            first.iter().any(|f| f.rel_path == Path::new("Author/Book 1")),
+            first
+                .iter()
+                .any(|f| f.rel_path == Path::new("Author/Book 1")),
             "Book 1 is the only gap on the first walk"
         );
         assert!(
-            !first.iter().any(|f| f.rel_path == Path::new("Author/Book 2")),
+            !first
+                .iter()
+                .any(|f| f.rel_path == Path::new("Author/Book 2")),
             "Book 2 does not exist yet"
         );
 
@@ -1165,7 +1169,9 @@ mod tests {
 
         let (second, stats) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
         assert!(
-            second.iter().any(|f| f.rel_path == Path::new("Author/Book 2")),
+            second
+                .iter()
+                .any(|f| f.rel_path == Path::new("Author/Book 2")),
             "the new sibling is walked and flagged after the parent re-lists"
         );
         assert!(
@@ -1189,7 +1195,9 @@ mod tests {
         let mut index = DirIndex::new();
         let (first, _) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
         assert!(
-            first.iter().any(|f| f.rel_path == Path::new("Author/Book 2")),
+            first
+                .iter()
+                .any(|f| f.rel_path == Path::new("Author/Book 2")),
             "Book 2 starts as a gap"
         );
 
@@ -1199,11 +1207,15 @@ mod tests {
 
         let (second, _) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
         assert!(
-            !second.iter().any(|f| f.rel_path == Path::new("Author/Book 2")),
+            !second
+                .iter()
+                .any(|f| f.rel_path == Path::new("Author/Book 2")),
             "the removed folder is gone after the parent re-lists"
         );
         assert!(
-            second.iter().any(|f| f.rel_path == Path::new("Author/Book 1")),
+            second
+                .iter()
+                .any(|f| f.rel_path == Path::new("Author/Book 1")),
             "the surviving sibling is still flagged"
         );
     }

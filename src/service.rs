@@ -433,7 +433,9 @@ async fn build_section(
 fn lock_index(
     index: &std::sync::Mutex<scanner::DirIndex>,
 ) -> std::sync::MutexGuard<'_, scanner::DirIndex> {
-    index.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    index
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Drop the index entry for `rel` under `root` so the next walk re-lists it. Used
