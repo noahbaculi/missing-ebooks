@@ -1,0 +1,396 @@
+{
+  "schema_version": 3,
+  "tool": "scan_bench",
+  "label": "smb",
+  "host": "jane-2",
+  "kernel": "6.12.86+deb13-amd64",
+  "unix_time": 1781552965,
+  "build_profile": "release",
+  "iterations": 5,
+  "drop_caches": true,
+  "roots": [
+    {
+      "path": "/mnt/jane-nas/Entertainment/Audiobooks",
+      "fstype": "cifs",
+      "mount_options": "rw,relatime,vers=3.1.1,cache=strict,upcall_target=app,username=noah,uid=1000,noforceuid,gid=1000,noforcegid,addr=192.168.0.210,file_mode=0775,dir_mode=0775,soft,nounix,serverino,mapposix,nobrl,reparse=nfs,rsize=4194304,wsize=4194304,bsize=1048576,echo_interval=60,actimeo=1,closetimeo=1",
+      "modes": {
+        "full": {
+          "levels": [
+            {
+              "concurrency": 1,
+              "dirs_visited": 901,
+              "entries_seen": 8802,
+              "gaps": 258,
+              "audio_files": 5556,
+              "cold": {
+                "iterations_ms": [
+                  3287.708,
+                  3772.246,
+                  3778.683,
+                  3260.17,
+                  4076.78
+                ],
+                "median_ms": 3772.246,
+                "min_ms": 3260.17,
+                "max_ms": 4076.78,
+                "ms_per_dir": 4.187
+              },
+              "warm": {
+                "iterations_ms": [
+                  3051.558,
+                  2746.099,
+                  2369.723,
+                  3680.103,
+                  4245.917
+                ],
+                "median_ms": 3051.558,
+                "min_ms": 2369.723,
+                "max_ms": 4245.917,
+                "ms_per_dir": 3.387
+              }
+            },
+            {
+              "concurrency": 4,
+              "dirs_visited": 901,
+              "entries_seen": 8802,
+              "gaps": 258,
+              "audio_files": 5556,
+              "cold": {
+                "iterations_ms": [
+                  2751.703,
+                  2330.746,
+                  2187.668,
+                  2141.693,
+                  2182.301
+                ],
+                "median_ms": 2187.668,
+                "min_ms": 2141.693,
+                "max_ms": 2751.703,
+                "ms_per_dir": 2.428
+              },
+              "warm": {
+                "iterations_ms": [
+                  2126.185,
+                  2177.08,
+                  2092.244,
+                  2124.948,
+                  2431.546
+                ],
+                "median_ms": 2126.185,
+                "min_ms": 2092.244,
+                "max_ms": 2431.546,
+                "ms_per_dir": 2.36
+              }
+            },
+            {
+              "concurrency": 8,
+              "dirs_visited": 901,
+              "entries_seen": 8802,
+              "gaps": 258,
+              "audio_files": 5556,
+              "cold": {
+                "iterations_ms": [
+                  2252.989,
+                  2031.967,
+                  2369.773,
+                  2047.013,
+                  2000.766
+                ],
+                "median_ms": 2047.013,
+                "min_ms": 2000.766,
+                "max_ms": 2369.773,
+                "ms_per_dir": 2.272
+              },
+              "warm": {
+                "iterations_ms": [
+                  2044.35,
+                  2020.947,
+                  1994.489,
+                  1960.798,
+                  1920.974
+                ],
+                "median_ms": 1994.489,
+                "min_ms": 1920.974,
+                "max_ms": 2044.35,
+                "ms_per_dir": 2.214
+              }
+            },
+            {
+              "concurrency": 16,
+              "dirs_visited": 901,
+              "entries_seen": 8802,
+              "gaps": 258,
+              "audio_files": 5556,
+              "cold": {
+                "iterations_ms": [
+                  1898.599,
+                  1856.837,
+                  2030.027,
+                  1934.669,
+                  2010.949
+                ],
+                "median_ms": 1934.669,
+                "min_ms": 1856.837,
+                "max_ms": 2030.027,
+                "ms_per_dir": 2.147
+              },
+              "warm": {
+                "iterations_ms": [
+                  1954.11,
+                  1947.908,
+                  1977.789,
+                  1904.353,
+                  1943.211
+                ],
+                "median_ms": 1947.908,
+                "min_ms": 1904.353,
+                "max_ms": 1977.789,
+                "ms_per_dir": 2.162
+              }
+            },
+            {
+              "concurrency": 32,
+              "dirs_visited": 901,
+              "entries_seen": 8802,
+              "gaps": 258,
+              "audio_files": 5556,
+              "cold": {
+                "iterations_ms": [
+                  1977.452,
+                  1969.279,
+                  1947.99,
+                  1971.946,
+                  1965.501
+                ],
+                "median_ms": 1969.279,
+                "min_ms": 1947.99,
+                "max_ms": 1977.452,
+                "ms_per_dir": 2.186
+              },
+              "warm": {
+                "iterations_ms": [
+                  1981.474,
+                  1954.882,
+                  1983.859,
+                  2089.479,
+                  2127.101
+                ],
+                "median_ms": 1983.859,
+                "min_ms": 1954.882,
+                "max_ms": 2127.101,
+                "ms_per_dir": 2.202
+              }
+            }
+          ]
+        },
+        "gaps": {
+          "levels": [
+            {
+              "concurrency": 1,
+              "dirs_visited": 901,
+              "entries_seen": 8802,
+              "gaps": 258,
+              "audio_files": 1479,
+              "cold": {
+                "iterations_ms": [
+                  2726.467,
+                  2400.959,
+                  2367.659,
+                  2372.79,
+                  2352.474
+                ],
+                "median_ms": 2372.79,
+                "min_ms": 2352.474,
+                "max_ms": 2726.467,
+                "ms_per_dir": 2.634
+              },
+              "warm": {
+                "iterations_ms": [
+                  2699.603,
+                  2467.081,
+                  2350.911,
+                  2418.339,
+                  2354.443
+                ],
+                "median_ms": 2418.339,
+                "min_ms": 2350.911,
+                "max_ms": 2699.603,
+                "ms_per_dir": 2.684
+              }
+            },
+            {
+              "concurrency": 4,
+              "dirs_visited": 901,
+              "entries_seen": 8802,
+              "gaps": 258,
+              "audio_files": 1479,
+              "cold": {
+                "iterations_ms": [
+                  1941.898,
+                  2011.656,
+                  1949.136,
+                  2095.033,
+                  2059.621
+                ],
+                "median_ms": 2011.656,
+                "min_ms": 1941.898,
+                "max_ms": 2095.033,
+                "ms_per_dir": 2.233
+              },
+              "warm": {
+                "iterations_ms": [
+                  1998.907,
+                  2175.017,
+                  1989.811,
+                  1974.612,
+                  1889.598
+                ],
+                "median_ms": 1989.811,
+                "min_ms": 1889.598,
+                "max_ms": 2175.017,
+                "ms_per_dir": 2.208
+              }
+            },
+            {
+              "concurrency": 8,
+              "dirs_visited": 901,
+              "entries_seen": 8802,
+              "gaps": 258,
+              "audio_files": 1479,
+              "cold": {
+                "iterations_ms": [
+                  1918.847,
+                  1945.313,
+                  1829.774,
+                  2008.144,
+                  2038.563
+                ],
+                "median_ms": 1945.313,
+                "min_ms": 1829.774,
+                "max_ms": 2038.563,
+                "ms_per_dir": 2.159
+              },
+              "warm": {
+                "iterations_ms": [
+                  1813.822,
+                  1890.088,
+                  2000.323,
+                  1939.863,
+                  1964.293
+                ],
+                "median_ms": 1939.863,
+                "min_ms": 1813.822,
+                "max_ms": 2000.323,
+                "ms_per_dir": 2.153
+              }
+            },
+            {
+              "concurrency": 16,
+              "dirs_visited": 901,
+              "entries_seen": 8802,
+              "gaps": 258,
+              "audio_files": 1479,
+              "cold": {
+                "iterations_ms": [
+                  1909.747,
+                  1853.953,
+                  1885.215,
+                  1881.057,
+                  1872.701
+                ],
+                "median_ms": 1881.057,
+                "min_ms": 1853.953,
+                "max_ms": 1909.747,
+                "ms_per_dir": 2.088
+              },
+              "warm": {
+                "iterations_ms": [
+                  1845.493,
+                  1866.347,
+                  1883.267,
+                  1837.248,
+                  1942.998
+                ],
+                "median_ms": 1866.347,
+                "min_ms": 1837.248,
+                "max_ms": 1942.998,
+                "ms_per_dir": 2.071
+              }
+            },
+            {
+              "concurrency": 32,
+              "dirs_visited": 901,
+              "entries_seen": 8802,
+              "gaps": 258,
+              "audio_files": 1479,
+              "cold": {
+                "iterations_ms": [
+                  1887.882,
+                  1829.406,
+                  1831.613,
+                  1859.003,
+                  1873.205
+                ],
+                "median_ms": 1859.003,
+                "min_ms": 1829.406,
+                "max_ms": 1887.882,
+                "ms_per_dir": 2.063
+              },
+              "warm": {
+                "iterations_ms": [
+                  1698.667,
+                  1635.484,
+                  1686.705,
+                  1639.443,
+                  1765.483
+                ],
+                "median_ms": 1686.705,
+                "min_ms": 1635.484,
+                "max_ms": 1765.483,
+                "ms_per_dir": 1.872
+              }
+            }
+          ]
+        },
+        "incremental": {
+          "levels": [
+            {
+              "concurrency": 32,
+              "dirs_visited": 901,
+              "entries_seen": 0,
+              "gaps": 258,
+              "audio_files": 5556,
+              "dirs_reused": 901,
+              "cold": {
+                "iterations_ms": [
+                  288.437,
+                  258.324,
+                  281.852,
+                  299.595,
+                  269.1
+                ],
+                "median_ms": 281.852,
+                "min_ms": 258.324,
+                "max_ms": 299.595,
+                "ms_per_dir": 0.313
+              },
+              "warm": {
+                "iterations_ms": [
+                  1.789,
+                  1.737,
+                  1.672,
+                  1.929,
+                  3.814
+                ],
+                "median_ms": 1.789,
+                "min_ms": 1.672,
+                "max_ms": 3.814,
+                "ms_per_dir": 0.002
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
