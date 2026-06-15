@@ -7,8 +7,7 @@
 use std::path::{Path, PathBuf};
 
 /// One catalog entry: a name, a one-line description, and the builder that seeds
-/// it. The builder creates the library tree or trees under the given base
-/// directory and returns the library roots to configure, in render order.
+/// it.
 #[derive(Clone, Copy)]
 pub struct Scenario {
     /// The name used to select this scenario on the command line or in config.
@@ -74,14 +73,11 @@ fn touch(path: &Path) {
     std::fs::write(path, b"").expect("write scenario file");
 }
 
-// --- Scenario builders. Each one seeds a synthetic library and returns its
-// roots. ---
+// Scenario builders. Each one seeds a synthetic library and returns its roots.
 
-/// Flagship nested tree across three roots: the showcase `Library` exercising
-/// containers, flagged leaves, query cleaning, and ancestor coverage; a smaller
-/// `External Library` forest whose duplicated authors carry cross-root
-/// `.ebook_elsewhere` markers; and a fully covered `Complete Library` that
-/// renders Clean.
+/// Flagship nested tree across three roots: the showcase `Library`, a smaller
+/// `External Library` whose duplicated authors carry cross-root `.ebook_elsewhere`
+/// markers, and a fully covered `Complete Library` that renders Clean.
 fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     let root = base.join("Library");
     // Andy Weir: a flagged leaf whose "(Unabridged)" suffix is stripped from the
@@ -98,7 +94,7 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     touch(&root.join(
         "Cixin Liu/Remembrance of Earth's Past/2 - The Dark Forest/01 - The Dark Forest.mp3",
     ));
-    // Brandon Sanderson: two flagged leaves under a nested series container; the
+    // Brandon Sanderson: two flagged leaves under a nested series container. The
     // "[2007]" segment is stripped from the second one's search query.
     touch(&root.join(
         "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire/01 - The Final Empire.m4b",
@@ -111,19 +107,19 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     touch(&root.join(
         "Robin Hobb/Farseer Trilogy/1 - Assassin\u{2019}s Apprentice/01 - Assassin\u{2019}s Apprentice.m4b",
     ));
-    // Frank Herbert: a "Dune Chronicles" series container with a mix of states.
-    // "Dune" stays flagged (and exercises the .flac extension); "Dune Messiah"
-    // is hidden by an .ebook_elsewhere marker and "Children of Dune" by its own
-    // .pdf, so the container surfaces showing only its one remaining gap.
+    // Frank Herbert: a "Dune Chronicles" container with a mix of states. "Dune"
+    // stays flagged (and exercises .flac), "Dune Messiah" is hidden by an
+    // .ebook_elsewhere marker, and "Children of Dune" by its own .pdf, so the
+    // container surfaces only its one remaining gap.
     touch(&root.join("Frank Herbert/Dune Chronicles/Dune/01 - Dune.flac"));
     touch(&root.join("Frank Herbert/Dune Chronicles/Dune Messiah/01 - Dune Messiah.mp3"));
     touch(&root.join("Frank Herbert/Dune Chronicles/Dune Messiah/.ebook_elsewhere"));
     touch(&root.join("Frank Herbert/Dune Chronicles/Children of Dune/01 - Children of Dune.mp3"));
     touch(&root.join("Frank Herbert/Dune Chronicles/Children of Dune/Children of Dune.pdf"));
-    // Terry Pratchett: a "Discworld" series container. "Terry Pratchett - Mort"
-    // keeps its internal " - " hyphen verbatim in the cleaned query (an author
-    // prefix is not a dangling separator). "Guards! Guards!" is covered by its
-    // own .mobi, demonstrating a non-epub ebook format counts as coverage.
+    // Terry Pratchett: a "Discworld" container. "Terry Pratchett - Mort" keeps its
+    // internal " - " verbatim in the cleaned query (an author prefix is not a
+    // dangling separator). "Guards! Guards!" is covered by its own .mobi, so a
+    // non-epub format counts as coverage.
     touch(&root.join("Terry Pratchett/Discworld/Terry Pratchett - Mort/01 - Mort.mp3"));
     touch(&root.join("Terry Pratchett/Discworld/Guards! Guards!/01 - Guards! Guards!.m4b"));
     touch(&root.join("Terry Pratchett/Discworld/Guards! Guards!/Guards! Guards!.mobi"));
@@ -162,13 +158,12 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     // Octavia E. Butler: a plain flagged book (audio, no ebook) for lifelike
     // volume, with no special cleaning or coverage case.
     touch(&root.join("Octavia E. Butler/Kindred/01 - Kindred.mp3"));
-    // Arthur C. Clarke: the one author that mixes two series containers with
-    // loose standalone books, so its node aggregates gaps from three groupings
-    // at once. Each grouping pairs a flagged book with a covered sibling: in
-    // "Space Odyssey", "2001 A Space Odyssey" stays flagged while "2010 Odyssey
-    // Two" is covered by its .epub; in "Rama", "Rendezvous with Rama" stays
-    // flagged while "Rama II" is covered; among the standalones, "The Fountains
-    // of Paradise" stays flagged while "The City and the Stars" is covered.
+    // Arthur C. Clarke: the one author mixing two series containers with loose
+    // standalone books, so its node aggregates gaps from three groupings. Each
+    // pairs a flagged book with a covered sibling: "2001 A Space Odyssey" flagged,
+    // "2010 Odyssey Two" covered by .epub in "Space Odyssey"; "Rendezvous with
+    // Rama" flagged, "Rama II" covered in "Rama"; "The Fountains of Paradise"
+    // flagged, "The City and the Stars" covered among the standalones.
     touch(
         &root.join(
             "Arthur C. Clarke/Space Odyssey/2001 A Space Odyssey/01 - 2001 A Space Odyssey.mp3",
@@ -192,9 +187,9 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
     // root 1, and Octavia Butler's Kindred has no marker, so the same gap surfaces
     // in both roots.
     let external = base.join("External Library");
-    // Becky Chambers: a "Wayfarers" series container. "The Long Way to a Small,
-    // Angry Planet" stays flagged; "A Closed and Common Orbit" is covered by its
-    // own epub, so the container surfaces showing its one remaining gap.
+    // Becky Chambers: a "Wayfarers" container. "The Long Way to a Small, Angry
+    // Planet" stays flagged. "A Closed and Common Orbit" is covered by its own
+    // epub, so the container surfaces only its one remaining gap.
     touch(&external.join(
         "Becky Chambers/Wayfarers/The Long Way to a Small, Angry Planet/01 - The Long Way to a Small, Angry Planet.mp3",
     ));
@@ -206,7 +201,7 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
             "Becky Chambers/Wayfarers/A Closed and Common Orbit/A Closed and Common Orbit.epub",
         ),
     );
-    // N.K. Jemisin: "The Fifth Season" stays flagged; "The Obelisk Gate" is
+    // N.K. Jemisin: "The Fifth Season" stays flagged. "The Obelisk Gate" is
     // covered by its own epub, so the author surfaces with one gap.
     touch(&external.join("N.K. Jemisin/The Fifth Season/01 - The Fifth Season.m4b"));
     touch(&external.join("N.K. Jemisin/The Obelisk Gate/01 - The Obelisk Gate.mp3"));
@@ -223,7 +218,7 @@ fn build_mixed_forest(base: &Path) -> Vec<PathBuf> {
         "Martha Wells/The Murderbot Diaries/Artificial Condition/01 - Artificial Condition.m4b",
     ));
     // Four duplicates of root 1 authors. Three carry .ebook_elsewhere, so they
-    // resolve here while their root 1 copies stay flagged; Kindred has no marker,
+    // resolve here while their root 1 copies stay flagged. Kindred has no marker,
     // so it stays flagged in both roots.
     touch(&external.join("Andy Weir/Artemis/01 - Artemis.mp3"));
     touch(&external.join("Andy Weir/Artemis/.ebook_elsewhere"));
@@ -262,8 +257,7 @@ fn build_messy_shelf(base: &Path) -> Vec<PathBuf> {
     touch(&root.join("The Hobbit/01 - The Hobbit.mp3"));
     touch(&root.join("Neuromancer/01 - Neuromancer.m4b"));
     // Project Hail Mary is an Andy Weir book left loose at the top instead of
-    // under the "Andy Weir" folder below. The same author filed two ways is the
-    // messy-owner detail.
+    // under the "Andy Weir" folder below: the same author filed two ways.
     touch(&root.join("Project Hail Mary/01 - Project Hail Mary.mp3"));
     // Dune carries its own epub, so it is covered and drops out of the tree.
     touch(&root.join("Dune/01 - Dune.mp3"));
@@ -288,7 +282,7 @@ fn build_messy_shelf(base: &Path) -> Vec<PathBuf> {
     touch(&root.join("To Sort/Box Set/Disc 1/Title Sequence 01.mp3"));
     touch(&root.join("Downloads/Unknown Audiobook/Ursula K. Le Guin - The Tombs of Atuan.mp3"));
 
-    // A normal author > book pair. Artemis stays flagged; The Martian carries a
+    // A normal author > book pair. Artemis stays flagged. The Martian carries a
     // .no_ebook marker, so it drops out while its sibling stays.
     touch(&root.join("Andy Weir/Artemis/01 - Artemis.mp3"));
     touch(&root.join("Andy Weir/The Martian/01 - The Martian.m4b"));
@@ -339,8 +333,8 @@ fn build_clean_error(base: &Path) -> Vec<PathBuf> {
 
 /// Loose audio directly in the root, so the root itself is the gap (ADR-0005).
 fn build_root_flagged(base: &Path) -> Vec<PathBuf> {
-    // Audio loose in the root with no author/book folder: the root itself is the
-    // gap, surfaced as a single flagged node with rel_path "." (see ADR-0005).
+    // Audio loose in the root: the root itself is the gap, a single flagged node
+    // with rel_path "." (see ADR-0005).
     let root = base.join("Loose Audio");
     touch(&root.join("01 - Some Lecture.mp3"));
     touch(&root.join("02 - Some Lecture.mp3"));
@@ -350,8 +344,8 @@ fn build_root_flagged(base: &Path) -> Vec<PathBuf> {
 /// Pre-existing markers hide covered folders while sibling gaps stay actionable.
 fn build_pre_marked(base: &Path) -> Vec<PathBuf> {
     let root = base.join("Marked Library");
-    // Covered Book carries its own .no_ebook, so it is absent; Uncovered Book has
-    // no marker and stays as a click target.
+    // Covered Book carries its own .no_ebook, so it is absent. Uncovered Book has
+    // no marker and stays a click target.
     touch(&root.join("Marked Author/Covered Book/01 - Covered Book.m4b"));
     touch(&root.join("Marked Author/Covered Book/.no_ebook"));
     touch(&root.join("Marked Author/Uncovered Book/01 - Uncovered Book.m4b"));
@@ -368,10 +362,10 @@ fn build_pre_marked(base: &Path) -> Vec<PathBuf> {
 fn build_big_library(base: &Path) -> Vec<PathBuf> {
     let root = base.join("Audiobooks");
 
-    // Name pools. Ten first names by seven last names give 70 unique
-    // combinations; the loop uses the first 50 by index, so every author name is
-    // distinct. The two title pools have periods 8 and 9, both larger than the
-    // biggest author's 12 books, so titles never collide within one author.
+    // Name pools. Ten first names by seven last names give 70 unique combinations,
+    // and the loop uses the first 50 by index, so every author name is distinct.
+    // The two title pools have periods 8 and 9, both larger than the biggest
+    // author's 12 books, so titles never collide within one author.
     const FIRST_NAMES: [&str; 10] = [
         "Ava", "Noah", "Mara", "Idris", "Lena", "Cole", "Priya", "Sten", "Yuki", "Rosa",
     ];
@@ -504,7 +498,7 @@ mod tests {
         let roots = build_mixed_forest(dir.path());
         assert_eq!(roots.len(), 3);
 
-        // Root 0: the original showcase forest, unchanged.
+        // Root 0: the showcase forest.
         let want_library: BTreeSet<String> = [
             "Andy Weir/Artemis (Unabridged)",
             "Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire",
@@ -529,7 +523,7 @@ mod tests {
         assert_eq!(flagged(&roots[0]), want_library);
 
         // Root 1: External Library, a smaller forest. The three .ebook_elsewhere
-        // duplicates resolve here; Octavia Butler's Kindred has no marker, so the
+        // duplicates resolve here. Octavia Butler's Kindred has no marker, so the
         // same gap surfaces in both roots.
         let want_external: BTreeSet<String> = [
             "Ann Leckie/Ancillary Justice",
@@ -591,8 +585,8 @@ mod tests {
         // Root 1 exists and is fully covered, so the scanner reports no gaps.
         assert!(flagged(&roots[0]).is_empty());
         assert!(roots[0].is_dir());
-        // Root 2 is intentionally never created: it cannot canonicalize, which is
-        // what drives the Error state in the UI.
+        // Root 2 is never created: it cannot canonicalize, which drives the Error
+        // state in the UI.
         assert!(!roots[1].exists());
     }
 
@@ -626,8 +620,8 @@ mod tests {
 
         let flagged = flagged(&roots[0]);
 
-        // The 216 flagged books from the bulk loop plus the three flagged
-        // anchors. See the plan/builder for the coverage cadence behind this.
+        // The 216 flagged books from the bulk loop plus the three flagged anchors.
+        // See the builder for the coverage cadence.
         assert_eq!(flagged.len(), 219);
 
         // Fixed-name anchors pin specific coverage states.
