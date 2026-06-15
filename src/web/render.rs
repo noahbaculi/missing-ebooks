@@ -566,11 +566,13 @@ fn root_chip(root: usize, section: &RootSection) -> Markup {
 }
 
 /// The session coverage block beside the hero: a readout of gaps resolved this
-/// sitting over the count at load, with a `progressbar` so the value is announced.
-/// The fill transition is dropped under reduced motion in CSS. The block always
-/// renders, even at a clean load where its head is hidden, because a rescan
-/// re-renders only `#roots` and never this strip, so `app.js` reaches in to fill
-/// the bar and rewrite the readout when a rescan turns up new gaps.
+/// sitting over the count at load (`{resolved} of {baseline} audiobooks · {pct}%`),
+/// with a `progressbar` so the value is announced. The numbers aggregate every
+/// root, and `app.js` resets the baseline on a rescan. The fill transition is
+/// dropped under reduced motion in CSS. The block always renders, even at a clean
+/// load where its head is hidden, because a rescan re-renders only `#roots` and
+/// never this strip, so `app.js` reaches in to fill the bar and rewrite the readout
+/// when a rescan turns up new gaps.
 fn session_bar(total: usize) -> Markup {
     html! {
         div.gap-session {
