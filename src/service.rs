@@ -161,8 +161,7 @@ pub async fn mark(
                 DomainError::WriteFailed(std::io::Error::other("marker write task failed"))
             })??;
 
-    // The marker write changed the folder; drop its index entry so the next rescan
-    // re-lists it rather than trusting a pre-write mtime (see scanner::DirIndex).
+    // A self-write may not bump the folder mtime, so force a re-list on rescan.
     invalidate_index(state, &root_path, rel);
 
     let view = state
@@ -210,8 +209,7 @@ pub async fn unmark(
             })??;
     }
 
-    // The marker delete changed the folder; drop its index entry so the per-root
-    // rebuild below re-lists it rather than trusting a pre-delete mtime.
+    // A self-delete may not bump the folder mtime, so force a re-list on rebuild.
     invalidate_index(state, &root_path, rel);
 
     let section_root = root_path.clone();
@@ -482,8 +480,8 @@ fn scan_root(
         .and_then(|n| n.to_str())
         .unwrap_or(".");
 
-    // Run the full walk once (incremental when an index is configured) and reduce
-    // it per mode. The reused-vs-listed split is logged for the debug timing tier.
+    // Run the full walk once (incremental when an index is configured), then reduce
+    // it per mode.
     let (folders, stats) = match index {
         Some(index) => {
             let mut guard = index.lock().expect("dir index mutex poisoned");

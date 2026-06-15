@@ -217,10 +217,10 @@ impl DirIndex {
 }
 
 /// Walk `root` and return flagged folders, each with the audio filenames it holds,
-/// as paths relative to `root`. A flagged folder is one that directly holds audio
-/// and is not covered, derived by filtering the full walk; the dedicated gaps walk
-/// was removed once benchmarks showed coverage pruning saves nothing on a flat
-/// library (see benchmarks/README.md). Order is unspecified; the tree builder sorts.
+/// as paths relative to `root`. A flagged folder directly holds audio and is not
+/// covered; this filters the full walk, since coverage pruning saves nothing on a
+/// flat, wide library (see benchmarks/README.md). Order is unspecified; the tree
+/// builder sorts.
 #[must_use]
 pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<FlaggedFolder> {
     scan_with_stats(root, settings).0
@@ -327,8 +327,8 @@ fn walk_all(
     let mut stats = WalkStats::default();
     let mut frontier: Vec<(PathBuf, bool)> = vec![(root.to_path_buf(), false)];
     while !frontier.is_empty() {
-        // Read this level in parallel. The index is borrowed shared only for the
-        // duration of this block, so the mutable update below does not overlap it.
+        // Borrow the index shared only for this block, so the mutable update below
+        // does not overlap the parallel read.
         let level: Vec<AllDir> = {
             let index_read = index.as_deref();
             frontier
@@ -377,8 +377,8 @@ struct AllDir {
 
 /// Read and classify one directory for the full walk. With an index, stat the
 /// directory first and reuse the cached entry when its mtime is unchanged,
-/// listing only on a miss or a changed mtime. Without an index, always list, as
-/// before (the escape-hatch path pays no stat). Read-only on the filesystem.
+/// listing only on a miss or a changed mtime. Without an index, always list (the
+/// escape-hatch path pays no stat). Read-only on the filesystem.
 fn read_dir_all(
     root: &Path,
     dir: &Path,
@@ -395,8 +395,7 @@ fn read_dir_all(
             }
             return list_dir_all(root, dir, covered_from_above, settings, Some(mtime));
         }
-        // The stat failed (likely unreadable): fall through to a listing, which
-        // logs and skips it, and cache nothing.
+        // Stat failed (likely unreadable): fall through to a listing, cache nothing.
         return list_dir_all(root, dir, covered_from_above, settings, None);
     }
     list_dir_all(root, dir, covered_from_above, settings, None)
@@ -428,8 +427,8 @@ fn reuse_dir_all(root: &Path, dir: &Path, covered_from_above: bool, cached: &Cac
     }
 }
 
-/// List one directory and classify it, the original full-walk body. When
-/// `store_mtime` is `Some`, also produce a `CachedDir` for the driver to index.
+/// List one directory and classify it for the full walk. When `store_mtime` is
+/// `Some`, also produce a `CachedDir` for the driver to index.
 fn list_dir_all(
     root: &Path,
     dir: &Path,

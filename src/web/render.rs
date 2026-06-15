@@ -543,7 +543,7 @@ fn gap_summary(view: &FlaggedView) -> Markup {
 
 /// One per-root chip: the root's short label and its own gap count, shown only in
 /// a multi-root setup. A covered root reads zero; an error root reads "scan error".
-/// The `data-root` hook lets the client recompute update each chip independently.
+/// The `data-root` hook lets the client update each chip independently.
 fn root_chip(root: usize, section: &RootSection) -> Markup {
     html! {
         @match &section.state {

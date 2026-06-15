@@ -88,8 +88,9 @@ fn phase_report(samples: &[f64], dirs: usize) -> PhaseReport {
     }
 }
 
-/// Which walk to time. `scan` (gaps-only) prunes the descent on coverage; `scan_all`
-/// (full) visits and records every directory.
+/// Which walk to time. `Gaps` reduces the full walk to flagged folders; `All`
+/// records every directory; `Incremental` reuses unchanged directories via the
+/// mtime index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Gaps,
@@ -423,8 +424,7 @@ time only. For a syscall-level cross-check, run once under
 /// Measure a warm incremental rescan: build the index once (discarded), then time
 /// `iterations` reuse walks against it. Prints the median reuse time and the
 /// reused-vs-listed split so a network run can confirm the projected drop. This
-/// bypasses the cold/warm JSON machinery; record the printed numbers by hand, the
-/// way the other SMB experiments are recorded.
+/// bypasses the cold/warm JSON machinery; record the printed numbers by hand.
 fn run_incremental(root: &Path, settings: &ScanSettings, iterations: usize) {
     let mut index = scanner::DirIndex::new();
     // Populate the index (this first walk lists everything).
@@ -645,8 +645,7 @@ fn main() -> ExitCode {
 
         let mut modes = BTreeMap::new();
         for &mode in &args.modes {
-            // Incremental is a focused reuse measurement, not part of the
-            // cold/warm/concurrency JSON sweep: run it and move on.
+            // Incremental is a focused reuse measurement, outside the cold/warm sweep.
             if mode == Mode::Incremental {
                 run_incremental(&canonical, &settings, args.iterations);
                 continue;

@@ -54,8 +54,7 @@ fn read_cookie(headers: &HeaderMap, cookie_name: &str) -> Option<SessionId> {
     for pair in raw.split(';') {
         let pair = pair.trim();
         // Strip the name then the `=` separately, so a name that only shares a
-        // prefix (for example `me_demo_sidX=`) still fails to match, exactly as the
-        // old single `format!("{cookie_name}=")` strip did.
+        // prefix (for example `me_demo_sidX=`) still fails to match.
         if let Some(rest) = pair.strip_prefix(cookie_name)
             && let Some(value) = rest.strip_prefix('=')
             && !value.is_empty()

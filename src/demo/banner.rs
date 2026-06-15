@@ -20,7 +20,7 @@ const BANNER_STYLE: &str = r#"<style>.me-demo-sheen{position:absolute;top:0;bott
 /// is full-bleed: negative margins cancel the body's 1.5rem padding so it sits
 /// flush to the top and both edges, with a 1rem gap below before the navbar. A
 /// tonal-blue gradient, a soft shadow, and the one-time sheen from [`BANNER_STYLE`]
-/// give it presence without leaning on app.css. The reset form carries the
+/// style it without leaning on app.css. The reset form carries the
 /// current view so the redirect after a reset lands the visitor where they were.
 fn banner_html(mode: ViewMode) -> String {
     format!(
