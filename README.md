@@ -106,6 +106,7 @@ These environment variables override the file when set:
 | `MISSING_EBOOKS_PORT`             | `port`                                   |
 | `MISSING_EBOOKS_TTL_SECONDS`      | `ttl_seconds`                            |
 | `MISSING_EBOOKS_SCAN_CONCURRENCY` | `scan_concurrency`                       |
+| `MISSING_EBOOKS_INCREMENTAL_SCAN` | `incremental_scan`                       |
 | `PUID`                            | Container run-as user ID (Docker only)   |
 | `PGID`                            | Container run-as group ID (Docker only)  |
 
@@ -154,14 +155,14 @@ cargo run --example explore
 
 Scenarios:
 
-| Scenario       | Shows                                                                      |
-| -------------- | -------------------------------------------------------------------------- |
-| `mixed-forest` | Three roots: a nested showcase forest, a smaller forest with cross-root `.ebook_elsewhere` markers, and a fully covered Clean root |
+| Scenario       | Shows                                                                                                                                                           |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mixed-forest` | Three roots: a nested showcase forest, a smaller forest with cross-root `.ebook_elsewhere` markers, and a fully covered Clean root                              |
 | `messy-shelf`  | Inconsistent organization: standalone books, author-only/series-only folders, a half-sorted author, a dumping folder, beside one tidy author>series>book pocket |
-| `clean-error`  | Two roots side by side: one fully covered (Clean), one uncreated (Error)   |
-| `root-flagged` | Loose audio in the root, so the root itself is flagged                     |
-| `pre-marked`   | Pre-existing markers hide covered folders; siblings stay click targets     |
-| `big-library`  | ~50 authors with mixed coverage and nesting, for testing scroll and layout at volume |
+| `clean-error`  | Two roots side by side: one fully covered (Clean), one uncreated (Error)                                                                                        |
+| `root-flagged` | Loose audio in the root, so the root itself is flagged                                                                                                          |
+| `pre-marked`   | Pre-existing markers hide covered folders; siblings stay click targets                                                                                          |
+| `big-library`  | ~50 authors with mixed coverage and nesting, for testing scroll and layout at volume                                                                            |
 
 Flags:
 

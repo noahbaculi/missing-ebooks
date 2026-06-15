@@ -73,6 +73,18 @@ Not a deployment lever but a check on our own code, run on the CIFS client. The 
 
 Result (2026-06-14, jane-2): confirmed round-trip-minimal, no scanner change warranted. The stat family was three `statx` calls total against 17,604 entry-visits, so `file_type()` is served from `d_type` with no syscall, and `newfstatat` and `lstat` never fired. On the wire `QueryInfos` tracked directories rather than entries (0.06 per entry), while `QueryDirectories`, `Creates`, and `Closes` all tracked directory count. The floor is about seven SMB2 ops per directory (open, two `QUERY_DIRECTORY`, close, plus a little metadata), served in order by one `smbd`, the protocol handshake the kernel CIFS client issues rather than anything the scanner adds. Reports: `cifs-roundtrip-strace-jane-2-1781471709.txt` (Method A, syscalls) against `cifs-roundtrip-stats-jane-2-1781471709.txt` (Method B, wire).
 
+### 4. Incremental rescan (stat vs list)
+
+A check on the in-memory mtime index behind the `incremental_scan` flag (default on, see the README config table). On jane-2, against the SMB mount, run the incremental bench mode after the unchanged-tree assumption holds (no writes to the share between the two walks):
+
+```shell
+cargo run --release --example scan_bench -- --root /mnt/jane-nas/Entertainment/Audiobooks --mode incremental --iterations 5 --no-save
+```
+
+Confirmed if the warm incremental rescan reports `dirs_reused` equal to `dirs_visited`, `entries_seen=0`, and a median time well below the ~1.8 s full listing walk, matching the projected drop from about six or seven SMB2 ops per directory to about two or three. Then confirm directory mtime actually moves over the mount: add an ebook into one folder on the server, re-run, and check that exactly that folder re-lists (`dirs_reused` falls by one and `entries_seen` rises). If the reuse walk is not meaningfully cheaper, or mtime does not move on an add, shelve the feature the way multichannel was shelved and leave `incremental_scan` documented but unrecommended.
+
+Record the result here and, if it pays off, add a note to the README "Network shares" section.
+
 ### Recording results
 
 For a lever that pays off, add a note to the README "Network shares" section and commit the matching server-configs change. Record a lever that does not move the numbers here as tested and rejected, so it is not retried.
