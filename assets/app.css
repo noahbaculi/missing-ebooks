@@ -13,11 +13,11 @@
   --color-muted: #6b7480;
   --color-primary: #605dff;
   --color-primary-content: #ffffff;
-  /* "warning" is the gap / needs-attention role, amber. The saturated base tints
-     the soft pills, and by choice it is also the ink: the default keeps the amber
-     look over contrast, so --color-warning-text equals the base and reads below AA
-     on the pale pill. The accent picker still derives a readable per-theme ink for
-     a custom base. See docs/adr/0017. */
+  /* The gap / needs-attention role, amber. The base tints the soft pills and is
+     also the ink: by choice the default keeps the amber look over contrast, so
+     --color-warning-text equals the base and reads below AA on the pale pill. The
+     accent picker derives a readable per-theme ink for a custom base. See
+     docs/adr/0017. */
   --color-warning: #f5a524;
   --color-success: #00b074;
   --color-error: #ef4565;
@@ -96,9 +96,8 @@ details > summary::-webkit-details-marker {
   font-weight: 700;
   letter-spacing: -0.01em;
 }
-/* the title is a home link: it inherits the wordmark's color and weight so it
-   looks unchanged, underlines on hover, and shows a focus ring for keyboard users.
-   the flex that spaces the brand mark from the text lives here now. */
+/* the title is a home link: inherits the wordmark's color and weight so it looks
+   unchanged. the flex spacing the brand mark from the text lives here. */
 .navbar h1 a {
   display: inline-flex;
   align-items: center;
@@ -114,7 +113,7 @@ details > summary::-webkit-details-marker {
   outline-offset: 2px;
   border-radius: var(--radius-field);
 }
-/* the inline brand mark leading the title; indigo via the theme's primary */
+/* the inline brand mark leading the title, indigo via the theme's primary */
 .brand-mark {
   flex: none;
   width: 1.6rem;
@@ -194,9 +193,9 @@ details > summary::-webkit-details-marker {
   white-space: nowrap;
   cursor: pointer;
   /* the theme control uses <button> segments, the view toggle <span>/<a>. drop
-     the native control chrome so a button renders flat like the others; the
-     active fill still comes from .segment-active below. inert for <span>/<a>,
-     which already have no background or border. */
+     the native control chrome so a button renders flat like the others. the
+     active fill comes from .segment-active below. inert for <span>/<a>, which
+     already have no background or border. */
   appearance: none;
   -webkit-appearance: none;
   background: transparent;
@@ -289,10 +288,9 @@ details > summary::-webkit-details-marker {
 .row:hover {
   background: var(--color-base-200);
 }
-/* Folder rows render as a <summary> and toggle their <details> on click, so they
-   get a pointer like the root header does. Leaf rows are a plain <div> and do
-   nothing on click, so they keep the default cursor; the buttons inside any row
-   carry their own pointer. */
+/* Folder rows render as <summary> and toggle <details> on click, so they get a
+   pointer. Leaf rows are a plain <div> and keep the default cursor. The buttons
+   inside any row carry their own pointer. */
 details > summary.row {
   cursor: pointer;
 }
@@ -361,10 +359,9 @@ details[open] > summary .chev {
 .actions-group {
   display: contents;
 }
-/* sheet-only chrome: the grab handle, the title, the per-row icons, the verbose
-   marker labels, and the "Search" divider. hidden by default so the inline
-   desktop cluster shows only the compact pills and the bare search links; the
-   mobile sheet reveals each of these. */
+/* sheet-only chrome: grab handle, title, per-row icons, verbose marker labels,
+   the "Search" divider. hidden by default so the desktop cluster stays compact.
+   the mobile sheet reveals each. */
 .sheet-header,
 .sheet-grip,
 .sheet-title,
@@ -448,7 +445,7 @@ details[open] > summary .chev {
   color: var(--color-warning-text);
 }
 
-/* flagged folders: amber icon + bolder name; the badge carries the label.
+/* flagged folders: amber icon and bolder name, the badge carries the label.
    The icon is foreground, so it takes the -text variant: the saturated base
    fails contrast as a glyph on a light surface. Matches .gap-hero-num. */
 .flagged .icon {
@@ -520,12 +517,11 @@ details[open] > summary .chev {
 
 /* depth typography: bold the top container of each tree, italicize the
    containers nested below it. Flagged and leaf rows never get these classes,
-   so their weight is left alone. These sit after the covered rules above so
-   the top weight wins over the covered weight on a covered top container
-   (equal specificity, so source order decides); the italic never conflicts.
-   Each rule carries its own html:not([data-…="off"]) guard so the two settings
-   switches toggle them independently; an absent attribute (the default and the
-   no-JS path) matches. */
+   so their weight is left alone. These sit after the covered rules so the top
+   weight wins on a covered top container (equal specificity, source order
+   decides). Each rule carries its own html:not([data-…="off"]) guard so the
+   two settings switches toggle independently; an absent attribute matches the
+   default and no-JS path. */
 html:not([data-bold-top="off"]) .container-top .name {
   font-weight: 700;
 }
@@ -587,8 +583,8 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   min-width: 15rem;
   padding: 0.4rem;
   background: var(--color-base-100);
-  /* a popover's UA color is CanvasText (black), not the inherited theme color;
-     restore it so panel text reads in dark, as .confirm-dialog already does. */
+  /* a popover's UA color is CanvasText (black), not the inherited theme color.
+     restore it so panel text reads in dark, as .confirm-dialog does. */
   color: var(--color-base-content);
   border: var(--border) solid var(--color-border);
   border-radius: var(--radius-field);
@@ -835,8 +831,8 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   display: inline-flex;
 }
 /* the inline-flex above outranks the user-agent `[hidden] { display: none }`, so
-   the non-matching marker glyph would otherwise still show; re-hide it explicitly
-   so only the glyph for the fired button's marker renders. */
+   the non-matching marker glyph would otherwise show. re-hide it explicitly so
+   only the fired button's marker renders. */
 .confirm-icon[hidden] {
   display: none;
 }
@@ -907,10 +903,10 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   .name {
     min-width: 0;
   }
-  /* the "needs ebook" pill collapses to an amber dot. text-indent + overflow hide
-     the label visually while keeping it in the DOM and the accessibility tree, so
-     screen readers still announce it and the HTML tests still match. .badge already
-     carries flex: none; the solid dot fill is reasserted just below. */
+  /* the "needs ebook" pill collapses to an amber dot. text-indent and overflow
+     hide the label visually while keeping it in the DOM and a11y tree, so screen
+     readers still announce it and the HTML tests still match. the solid dot fill
+     is reasserted just below. */
   .badge {
     width: 0.5rem;
     height: 0.5rem;
@@ -1159,11 +1155,11 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 }
 
 /* ---- mark: collapse the leaving row ---- */
-/* A folder marked in gaps-only leaves the list. app.js pins the row's height and
-   then drops it to zero on the next frame; this rule transitions that collapse and
-   the fade, and the rows below glide up through normal reflow. The marker form
-   delays its section swap (hx-swap "swap:") so this finishes before the fresh
-   section lands. Motion-sensitive users get the instant removal, no slide. */
+/* A folder marked in gaps-only leaves the list. app.js pins the row's height then
+   drops it to zero next frame, and this rule transitions the collapse and fade.
+   The marker form delays its section swap (hx-swap "swap:") so this finishes
+   before the fresh section lands. Motion-sensitive users get instant removal, no
+   slide. */
 li.leaving {
   overflow: hidden;
   opacity: 0;
@@ -1177,11 +1173,10 @@ li.leaving {
 }
 
 /* ---- rescan button ---- */
-/* The button keeps its "Rescan" label the whole time. It is in the hx-indicator set
-   and hx-disabled-elt disables it for the request, so a second click cannot
-   double-scan; the disabled state dims it and shows a locked cursor, both clearing
-   when the swap settles. The JS retry hold keeps it disabled across backoff gaps, so
-   :disabled is the single hook for the busy look. */
+/* The button keeps its "Rescan" label throughout. hx-disabled-elt disables it for
+   the request so a second click cannot double-scan. The JS retry hold keeps it
+   disabled across backoff gaps, so :disabled is the single hook for the busy
+   look. */
 #rescan-btn {
   /* trimmer than the default button padding so the navbar wordmark has room. */
   padding-inline: 0.6rem;
@@ -1220,7 +1215,7 @@ li.leaving {
   transition: opacity 0.15s ease;
   pointer-events: none;
 }
-/* The sliding segment; the track stays put while this loops across it. */
+/* The sliding segment. The track stays put while this loops across it. */
 .scan-bar::before {
   content: "";
   position: absolute;
@@ -1330,7 +1325,7 @@ li.leaving {
 }
 
 /* ---- no-JS notice ---- */
-/* The UI needs JavaScript; <noscript> renders this strip only when scripting is
+/* The UI needs JavaScript. <noscript> renders this strip only when scripting is
    off, so it never shows on a normal visit. Edge-to-edge like the connection
    banner, in the warning palette. */
 .noscript-notice {
@@ -1407,8 +1402,8 @@ li.leaving {
 
 /* ---- saving: a gaps-only row waits in place until the write is confirmed ---- */
 /* The row stays visible while its mark is in flight, so a folder never looks handled
-   before the write lands. It dims, hides its actions, and shows a spinner; it
-   collapses (li.leaving) only on a confirmed save, when the section swap reconciles. */
+   before the write lands. It collapses (li.leaving) only on a confirmed save, when
+   the section swap reconciles. */
 .row.is-saving > :not(.row-saving) {
   opacity: 0.5;
 }
@@ -1452,8 +1447,8 @@ li.leaving {
   flex-direction: column;
   align-items: center;
   gap: 0.6rem;
-  /* the container spans only its widest toast; let clicks fall through the gaps
-     to the page, and re-enable pointer events on the toasts themselves */
+  /* the container spans only its widest toast, so let clicks fall through the gaps
+     to the page. pointer events are re-enabled on the toasts themselves. */
   pointer-events: none;
 }
 .toast {
@@ -1461,8 +1456,8 @@ li.leaving {
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  /* a fixed width so every toast is the same size; a short message keeps the
-     full box rather than shrinking to a narrower one and looking magnified */
+  /* a fixed width so every toast is the same size. a short message keeps the
+     full box rather than shrinking and looking magnified. */
   width: min(92vw, 26rem);
   padding: 0.7rem 0.8rem;
   background: var(--color-base-100);
@@ -1487,7 +1482,7 @@ li.leaving {
   justify-content: center;
   border-radius: 999px;
 }
-/* the global `.icon` rule paints the svg muted; reset it so the glyph takes the
+/* the global `.icon` rule paints the svg muted, so reset it so the glyph takes the
    badge's variant color (the confirm dialog resets the same way) */
 .toast .toast-icon .icon {
   width: 1rem;
@@ -1564,7 +1559,7 @@ li.leaving {
 .toast .toast-close:hover {
   color: var(--color-base-content);
 }
-/* slide-up and fade on arrival; reverse on the way out (the leaving class is set
+/* slide-up and fade on arrival, reverse on the way out (the leaving class is set
    by app.js just before it removes the node) */
 @keyframes toast-in {
   from {
@@ -1649,12 +1644,11 @@ li.leaving {
   flex: 1 1 16rem;
   min-width: 0;
 }
-/* On mobile .gap-summary-head turns flex-direction: column, so the 16rem above is no
-   longer a width basis but a height floor, stretching the ~40px session block to 256px
-   and opening an empty band above the per-root chips. Reset it to its natural height.
-   This sits after the base rule, not in the main mobile @media block: the gap-summary
-   section is defined past that block, so a same-specificity override there loses the
-   cascade. */
+/* On mobile .gap-summary-head turns flex-direction: column, so the 16rem above
+   becomes a height floor, stretching the ~40px session block to 256px and opening
+   an empty band above the chips. Reset it to its natural height. Placed after the
+   base rule, not in the main mobile @media block: the section is defined past that
+   block, so a same-specificity override there loses the cascade. */
 @media (max-width: 600px) {
   .gap-session {
     flex: 0 1 auto;
@@ -1752,9 +1746,10 @@ li.leaving {
 
 /* ---- navbar filter ---- */
 /* The box renders visible from first paint so it holds its navbar slot and never
-   reflows in. app.js renders the input disabled and clears that on DOMContentLoaded;
-   until then the whole control dims so it reads as greyed-but-present, not a dead box
-   to type into. It snaps to live on enable, no transition. */
+   reflows in. app.js renders the input disabled and clears that on
+   DOMContentLoaded. until then the whole control dims so it reads as
+   greyed-but-present, not a dead box to type into. It snaps to live on enable, no
+   transition. */
 .search:has(.search-input:disabled) {
   opacity: 0.55;
 }
@@ -1784,7 +1779,7 @@ li.leaving {
 }
 .search-input {
   /* an explicit width, since a search input's intrinsic size (~20 chars) is wider
-     than the navbar wants; min-width 0 lets it give way on a cramped row. */
+     than the navbar wants. min-width 0 lets it give way on a cramped row. */
   width: 8rem;
   min-width: 0;
   font: inherit;
@@ -1795,7 +1790,7 @@ li.leaving {
   outline: none;
 }
 
-/* hide the browser's native search clear control; we draw our own themed × so it
+/* hide the browser's native search clear control, we draw our own themed × so it
    is consistent across browsers (Firefox renders none at all). */
 .search-input::-webkit-search-cancel-button {
   -webkit-appearance: none;
@@ -1830,7 +1825,7 @@ li.leaving {
   visibility: hidden;
 }
 
-/* a branch hidden by the filter collapses; ancestors of a match stay shown */
+/* a branch hidden by the filter collapses, ancestors of a match stay shown */
 .filter-hidden {
   display: none;
 }
