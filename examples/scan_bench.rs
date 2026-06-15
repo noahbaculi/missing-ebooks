@@ -94,6 +94,7 @@ fn phase_report(samples: &[f64], dirs: usize) -> PhaseReport {
 enum Mode {
     Gaps,
     All,
+    Incremental,
 }
 
 impl Mode {
@@ -102,6 +103,7 @@ impl Mode {
         match self {
             Mode::Gaps => "gaps",
             Mode::All => "all",
+            Mode::Incremental => "incremental",
         }
     }
 }
@@ -113,7 +115,10 @@ fn parse_modes(value: &str) -> Result<Vec<Mode>, String> {
         "gaps" => Ok(vec![Mode::Gaps]),
         "all" => Ok(vec![Mode::All]),
         "both" => Ok(vec![Mode::All, Mode::Gaps]),
-        other => Err(format!("--mode: {other:?} must be gaps, all, or both")),
+        "incremental" => Ok(vec![Mode::Incremental]),
+        other => Err(format!(
+            "--mode: {other:?} must be gaps, all, both, or incremental"
+        )),
     }
 }
 
@@ -386,7 +391,7 @@ fn drop_caches() -> Result<(), String> {
 }
 
 const USAGE: &str = "usage: cargo run --release --example scan_bench -- \
-[--config PATH] [--root PATH]... [--iterations N] [--mode gaps|all|both] \
+[--config PATH] [--root PATH]... [--iterations N] [--mode gaps|all|both|incremental] \
 [--concurrency LIST] [--drop-caches] [--label NAME] [--out PATH] [--no-save]";
 
 /// The usage line plus the flag reference and the read-only and strace notes.
@@ -401,7 +406,7 @@ flags:
   --config PATH     load the real config.toml (extensions, exclusions, roots)
   --root PATH       benchmark this exact path; repeatable; replaces config roots
   --iterations N    measured runs per phase (default 5)
-  --mode MODE       gaps, all, or both (default both)
+  --mode MODE       gaps, all, both, or incremental (default both)
   --concurrency LIST   thread counts to sweep, comma-separated, e.g. 1,4,8,16 (default 16)
   --drop-caches     Linux: sudo-flush the page cache before each cold run
   --label NAME      tag stdout and the report (e.g. local, smb)
@@ -413,6 +418,37 @@ The full walk reports ms/dir, the headline figure; the gaps walk reports total
 time only. For a syscall-level cross-check, run once under
 `strace -f -e trace=getdents64,newfstatat -c`."
     )
+}
+
+/// Measure a warm incremental rescan: build the index once (discarded), then time
+/// `iterations` reuse walks against it. Prints the median reuse time and the
+/// reused-vs-listed split so a network run can confirm the projected drop. This
+/// bypasses the cold/warm JSON machinery; record the printed numbers by hand, the
+/// way the other SMB experiments are recorded.
+fn run_incremental(root: &Path, settings: &ScanSettings, iterations: usize) {
+    let mut index = scanner::DirIndex::new();
+    // Populate the index (this first walk lists everything).
+    let (_folders, build_stats) =
+        scanner::scan_all_incremental_with_stats(root, settings, &mut index);
+    let mut samples = Vec::with_capacity(iterations);
+    let mut last = build_stats;
+    for _ in 0..iterations {
+        let start = Instant::now();
+        let (_folders, stats) =
+            scanner::scan_all_incremental_with_stats(root, settings, &mut index);
+        samples.push(round3(start.elapsed().as_secs_f64() * 1000.0));
+        last = stats;
+    }
+    samples.sort_by(f64::total_cmp);
+    let median = samples[samples.len() / 2];
+    println!(
+        "incremental warm rescan: median {median} ms over {iterations} runs; \
+         dirs_visited={} dirs_reused={} entries_seen={} (index {} dirs)",
+        last.dirs_visited,
+        last.dirs_reused,
+        last.entries_seen,
+        index.len()
+    );
 }
 
 /// Time one read-only walk and tally what it found. Only the walk sits inside the
@@ -452,6 +488,8 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
                 },
             )
         }
+        // Incremental is routed to run_incremental before any phase calls this.
+        Mode::Incremental => unreachable!("incremental mode does not use time_walk"),
     }
 }
 
@@ -607,6 +645,12 @@ fn main() -> ExitCode {
 
         let mut modes = BTreeMap::new();
         for &mode in &args.modes {
+            // Incremental is a focused reuse measurement, not part of the
+            // cold/warm/concurrency JSON sweep: run it and move on.
+            if mode == Mode::Incremental {
+                run_incremental(&canonical, &settings, args.iterations);
+                continue;
+            }
             let mut levels = Vec::new();
             for &threads in &args.concurrency {
                 let pool = match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
