@@ -1,7 +1,7 @@
-//! axum router, request handlers, and Maud markup. Handlers are thin: they call a
-//! `service` operation and render. Handlers return `Html<String>` so Maud stays
-//! decoupled from the axum version. Marker writes use htmx to swap just the
-//! affected root's section; the script is vendored and served from `/static`.
+//! axum router, request handlers, and Maud markup. Handlers are thin: call a
+//! `service` operation and render. They return `Html<String>` so Maud stays
+//! decoupled from the axum version. Marker writes use htmx to swap only the
+//! affected root's section.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -22,12 +22,10 @@ use crate::state::AppState;
 mod assets;
 mod render;
 
-// The demo router reuses these two handlers; re-export so its `use crate::web::…`
-// import path stays put.
+// Re-exported so the demo router's `use crate::web::…` path stays put.
 pub(crate) use assets::{app_css, htmx_script};
 
-// The demo router reuses the page and section renderers; re-export so its
-// `use crate::web::…` import path stays put.
+// Re-exported for the demo router's `use crate::web::…` path, same as above.
 pub(crate) use render::{page, render_section};
 
 /// The `view` parameter shared by the index query string and the rescan form. A
@@ -150,11 +148,10 @@ async fn unmark(
     resp
 }
 
-/// A server-side write failed: re-render the affected root's section with an
-/// inline alert that names the folder, so the error stays on the page by the row
-/// rather than in a toast. The tree is left intact and the row keeps its buttons.
-/// The current view is re-fetched (a cache hit) since the failed call returned no
-/// view; an out-of-range root falls back to a standalone error card.
+/// Re-render the affected root's section with an inline alert naming the folder,
+/// so a failed write stays by the row rather than in a toast. The view is
+/// re-fetched (a cache hit) since the failed call returned no view; an out-of-range
+/// root falls back to a standalone error card.
 async fn failed_write_response(
     state: &AppState,
     root: usize,
@@ -199,10 +196,10 @@ fn mode_path(mode: ViewMode) -> &'static str {
     }
 }
 
-/// JSON-escape any non-ASCII char to `\uXXXX`, so an `HX-Trigger` header value is
-/// pure ASCII and survives any browser header decoding. The input is valid JSON;
-/// replacing a raw char with its escape keeps it valid JSON. Folder names are
-/// often non-ASCII, so this is the common path, not an edge case.
+/// JSON-escape any non-ASCII char to `\uXXXX` so an `HX-Trigger` value stays pure
+/// ASCII and survives browser header decoding. Replacing a char with its escape
+/// keeps valid JSON valid. Folder names are often non-ASCII, so this is the common
+/// path, not an edge case.
 fn ascii_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut buf = [0u16; 2];
@@ -646,11 +643,11 @@ mod tests {
         // the request so a second click cannot fire a second scan.
         assert!(body.contains(r##"hx-indicator="#scan-bar, #rescan-btn""##));
         assert!(body.contains(r##"hx-disabled-elt="#rescan-btn""##));
-        // The bar is present and wired as the indicator; the old skeleton id is gone.
+        // The bar is wired as the indicator. The old skeleton id is gone.
         assert!(body.contains(r#"id="scan-bar""#));
         assert!(!body.contains(r#"id="scan-skeleton""#));
-        // The button keeps its constant "Rescan" label and locks via hx-disabled-elt
-        // (asserted above); it no longer relabels while the scan runs.
+        // The button keeps its constant "Rescan" label and locks via hx-disabled-elt.
+        // It no longer relabels while the scan runs.
         assert!(body.contains(r#"id="rescan-btn""#));
         assert!(body.contains("Rescan"));
         assert!(!body.contains("Rescanning"));
@@ -731,10 +728,9 @@ mod tests {
         assert!(body.contains(r#"rel="icon""#));
         assert!(body.contains("data:image/svg+xml,"));
         // A backdrop-less audiobook glyph that recolors with the OS theme: indigo
-        // on light tab strips, a lighter indigo on dark ones. Pin the indigo and
-        // the prefers-color-scheme rule so a revert to the old book glyph or to a
-        // single static color is caught, and assert the rounded tile is gone (its
-        // rect was 22x22).
+        // on light tab strips, lighter on dark. Pin the indigo and the
+        // prefers-color-scheme rule so a revert to the old glyph or a single static
+        // color is caught. The 22x22 rect was the dropped rounded tile.
         assert!(body.contains("%23605dff"));
         assert!(body.contains("prefers-color-scheme:dark"));
         assert!(!body.contains("width='22'"));
@@ -1482,11 +1478,10 @@ mod tests {
             .await
             .unwrap();
         let body = body_string(response).await;
-        // The theme control renders its segments as <button>, the view toggle as
-        // <span>/<a>. Without an appearance reset the buttons inherit the user
-        // agent's native control chrome (grey fills, beveled borders) while the
-        // view toggle stays flat, so the two diverge. The .segment rule must drop
-        // that chrome so both render identically.
+        // The theme segments render as <button>, the view toggle as <span>/<a>.
+        // Without an appearance reset the buttons inherit native control chrome
+        // (grey fills, beveled borders) and diverge from the flat toggle, so
+        // .segment drops it.
         assert!(body.contains(".segment"));
         assert!(body.contains("appearance: none"));
     }
@@ -2556,8 +2551,8 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // Our themed clear button replaces the browser's native, un-themed cancel
-        // control, which we hide.
+        // A themed clear button replaces the browser's native cancel control,
+        // hidden here.
         assert!(body.contains("::-webkit-search-cancel-button"));
         assert!(body.contains(".search-clear"));
         // It darkens on hover and, while the box is empty, stays in the layout but
