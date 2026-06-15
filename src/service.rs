@@ -14,10 +14,10 @@ use crate::scanner::{self, ScanSettings};
 use crate::state::AppState;
 use crate::tree::{self, Node};
 
-/// Which view a read or write targets: today's gaps-only forest, or the full
-/// show-all tree. Selects the scan pipeline, the cache slot, and the rendering.
-/// Deserializes from the `view` form field; `from_query` is the lenient path for
-/// the URL query, where an absent or unknown value falls back to gaps-only.
+/// Which view a read or write targets: gaps-only forest or full show-all tree.
+/// Selects the scan pipeline, cache slot, and rendering. Deserializes from the
+/// `view` form field; `from_query` is the lenient URL-query path that falls back
+/// to gaps-only.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 pub enum ViewMode {
     /// Today's view: only gaps and the containers above them.
@@ -73,8 +73,8 @@ pub enum RootState {
     Error(String),
 }
 
-/// A failure performing a write action. The HTML surface renders it as an inline
-/// error; a future JSON API would render it as an error body (see the spec).
+/// A failure performing a write action. The HTML surface renders it inline. A
+/// future JSON API would render it as an error body.
 #[derive(Debug, Error)]
 pub enum DomainError {
     /// The submitted root index does not name a configured root.
@@ -137,8 +137,8 @@ pub struct MarkOutcome {
 }
 
 /// Write a marker into a folder and update the cached view in place, without a
-/// rescan (see docs/adr/0002-v1-runtime-write-model.md). The guard and the write
-/// run off the cache lock; the lock is held only for the in-memory mutation.
+/// rescan (see docs/adr/0002-v1-runtime-write-model.md). The guard and write run
+/// off the cache lock, which is held only for the in-memory mutation.
 pub async fn mark(
     state: &AppState,
     root: usize,
@@ -184,8 +184,8 @@ pub async fn mark(
 }
 
 /// Delete a marker file and refresh the cached view by rescanning the one
-/// affected root (see docs/adr/0002-v1-runtime-write-model.md). The guard and the
-/// delete run off the cache lock; the lock is held only for the per-root rebuild.
+/// affected root (see docs/adr/0002-v1-runtime-write-model.md). The guard and
+/// delete run off the cache lock, which is held only for the per-root rebuild.
 pub async fn unmark(
     state: &AppState,
     root: usize,
@@ -239,13 +239,12 @@ pub async fn unmark(
         .await)
 }
 
-/// Guard the target and create the marker file. Runs on a blocking task: the
-/// canonicalize calls and the open touch the filesystem. The root base comes
-/// from config, so only `rel` is request-controlled, and it is re-validated by
+/// Guard the target and create the marker file, on a blocking task. The root base
+/// comes from config, so only `rel` is request-controlled; it is re-validated by
 /// canonicalizing the join and confirming it stays inside the root. The open is
-/// create-only: returns `Ok(true)` when this call made the file, `Ok(false)`
-/// when it was already there. Create-only keeps a re-mark a no-op and lets undo
-/// delete only files its own action created.
+/// create-only: `Ok(true)` when this call made the file, `Ok(false)` when it was
+/// already there, which keeps a re-mark a no-op and lets undo delete only files it
+/// created.
 fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<bool, DomainError> {
     let started = Instant::now();
     let canonical_root = std::fs::canonicalize(root).map_err(|_| DomainError::TargetMissing)?;
@@ -353,9 +352,9 @@ pub(crate) fn apply_mark_all(section: &mut RootSection, rel: &str, marker: Marke
     }
 }
 
-/// Count gap folders (`Node::needs_ebook`) anywhere in a node slice. A small
-/// mirror of the renderer's counter; the service layer stays web-agnostic, so it
-/// does not reach into `web::render`.
+/// Count gap folders (`Node::needs_ebook`) anywhere in a node slice. Mirrors the
+/// renderer's counter because the service layer stays web-agnostic and does not
+/// reach into `web::render`.
 fn count_gaps(nodes: &[Node]) -> usize {
     nodes
         .iter()
@@ -488,8 +487,7 @@ fn scan_root(
         .and_then(|n| n.to_str())
         .unwrap_or(".");
 
-    // Run the full walk once (incremental when an index is configured), then reduce
-    // it per mode.
+    // Walk once (incremental when an index is configured), then reduce per mode.
     let (folders, stats) = match index {
         Some(index) => {
             let mut guard = lock_index(index);
@@ -516,8 +514,8 @@ fn scan_root(
             }
         }
         // Show-all always yields a Forest, even an empty one. "Clean" is a
-        // gaps-only idea; an all-mode root shows its full structure or, with no
-        // folders at all, an empty forest the renderer labels "nothing here".
+        // gaps-only idea, so an all-mode root shows its full structure or an empty
+        // forest the renderer labels "nothing here".
         ViewMode::All => RootState::Forest(tree::build_all(root_name, &folders)),
     };
     RootSection {
@@ -652,7 +650,7 @@ mod tests {
         let state = state_for(dir.path(), 0); // ttl 0 so every call rescans
         assert!(state.dir_index.is_some());
 
-        // First view fills the index; the second reuses it. Both see the gap.
+        // First view fills the index, the second reuses it. Both see the gap.
         let first = current_view(&state, ViewMode::GapsOnly).await;
         let second = current_view(&state, ViewMode::GapsOnly).await;
         assert!(matches!(first[0].state, RootState::Forest(_)));
@@ -684,8 +682,8 @@ mod tests {
             "Book is indexed after the scan"
         );
 
-        // Marking Book writes .no_ebook into it; its index entry must be dropped so
-        // the next walk re-lists it rather than trusting a pre-write mtime.
+        // Marking Book writes .no_ebook into it, so its index entry must be dropped
+        // and the next walk re-lists it rather than trusting a pre-write mtime.
         mark(&state, 0, "Book", Marker::NoEbook, ViewMode::GapsOnly)
             .await
             .unwrap();
@@ -750,8 +748,8 @@ mod tests {
                 audio_files: Vec::new(),
             }]),
         };
-        // Two flagged leaves; the bare container holds no direct audio, so it is
-        // not itself a gap.
+        // Two flagged leaves. The bare container holds no direct audio, so it is
+        // not a gap.
         assert_eq!(section_gaps(&section), 2);
     }
 
@@ -922,8 +920,8 @@ mod tests {
         assert!(matches!(after.view[0].state, RootState::Clean));
         assert!(dir.path().join("Book/.no_ebook").exists());
 
-        // A new gap appears on disk; the warm TTL means current_view returns the
-        // same marked view, proving mark did not trigger a rescan.
+        // A new gap appears on disk, but the warm TTL means current_view returns
+        // the same marked view, proving mark did not trigger a rescan.
         touch(&dir.path().join("Other/01.mp3"));
         let again = current_view(&state, ViewMode::GapsOnly).await;
         assert!(Arc::ptr_eq(&after.view, &again));
