@@ -211,7 +211,7 @@ async fn mark(
 }
 
 /// Redirect to the page for `mode`. Used after a POST so a refresh re-issues a
-/// GET instead of re-firing the action (Post/Redirect/Get); `Redirect::to` emits
+/// GET instead of re-firing the action (Post/Redirect/Get). `Redirect::to` emits
 /// 303 See Other.
 fn redirect_to_view(mode: ViewMode) -> Redirect {
     match mode {
