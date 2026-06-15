@@ -14,7 +14,7 @@ use crate::tree::Node;
 /// there is no flash, applies the two depth-typography opt-outs, and applies a
 /// saved custom accent inline. The default accent writes no override, so the
 /// stylesheet's tuned tokens apply. `deriveWarningInk` mirrors the copy in
-/// `app.js`, fenced by the `ACCENT-DERIVE` markers; `tests/accent/derive.test.mjs`
+/// `app.js`, fenced by the `ACCENT-DERIVE` markers. `tests/accent/derive.test.mjs`
 /// checks the two agree and that the ink clears AA. Interactive controls live in
 /// `app.js`.
 const PREPAINT_JS: &str = r#"(function () {
@@ -30,7 +30,7 @@ const PREPAINT_JS: &str = r#"(function () {
     document.documentElement.dataset.italicNested = 'off';
   }
 
-  // ACCENT-DERIVE:BEGIN (mirrored in assets/app.js; parity checked by tests/accent/derive.test.mjs)
+  // ACCENT-DERIVE:BEGIN. Mirrored in assets/app.js, parity checked by tests/accent/derive.test.mjs.
   function luminance(hex) {
     var ch = [1, 3, 5].map(function (i) {
       var c = parseInt(hex.slice(i, i + 2), 16) / 255;
