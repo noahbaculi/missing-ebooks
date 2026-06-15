@@ -90,7 +90,7 @@
   var ACCENT_DEFAULT = "#f5a524";
   var ACCENT_RE = /^#[0-9a-fA-F]{6}$/;
 
-  // ACCENT-DERIVE:BEGIN (mirrored in src/web/render.rs; parity checked by tests/accent/derive.test.mjs)
+  // ACCENT-DERIVE:BEGIN. Mirrored in src/web/render.rs, parity checked by tests/accent/derive.test.mjs.
   /**
    * Relative luminance of a #rrggbb hex, per WCAG.
    * @param {string} hex
@@ -279,7 +279,7 @@
    * @param {string} base
    */
   function applyAccent(base) {
-    // A malformed base would land in the inline styles; use the default.
+    // A malformed base would land in the inline styles. Use the default.
     if (!ACCENT_RE.test(base)) base = ACCENT_DEFAULT;
     var root = document.documentElement;
     if (base.toLowerCase() === ACCENT_DEFAULT) {
@@ -1222,7 +1222,7 @@
 
   // The whole tree filters client-side over the DOM already present. A node stays
   // visible when its own name matches the query or any descendant matches, so the
-  // path to a match reads correctly; non-matching branches collapse. The summary is
+  // path to a match reads correctly. Non-matching branches collapse. The summary is
   // never touched here: filtering changes what is visible, not how many gaps exist.
   /** @type {HTMLInputElement | null} */
   var searchInput = null;
