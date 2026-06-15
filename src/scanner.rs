@@ -153,141 +153,30 @@ pub struct WalkStats {
 }
 
 /// Walk `root` and return flagged folders, each with the audio filenames it holds,
-/// as paths relative to `root`. Order is unspecified; the tree builder sorts.
+/// as paths relative to `root`. A flagged folder is one that directly holds audio
+/// and is not covered, derived by filtering the full walk; the dedicated gaps walk
+/// was removed once benchmarks showed coverage pruning saves nothing on a flat
+/// library (see benchmarks/README.md). Order is unspecified; the tree builder sorts.
 #[must_use]
 pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<FlaggedFolder> {
     scan_with_stats(root, settings).0
 }
 
-/// Like `scan`, but also returns the walk's directory and entry counts. The flagged
-/// folders are identical; only a benchmark needs the counts.
+/// Like `scan`, but also returns the walk's counts. Runs the one full walk and
+/// reduces it to flagged folders, so the gaps view and the full view read the same
+/// directories.
 #[must_use]
 pub fn scan_with_stats(root: &Path, settings: &ScanSettings) -> (Vec<FlaggedFolder>, WalkStats) {
-    let mut flagged = Vec::new();
-    let mut stats = WalkStats::default();
-    // Level-synchronous breadth-first walk: read every directory in the current
-    // level concurrently, then descend into the survivors. Cost over a network
-    // mount is one round trip per directory, so reading a level at once overlaps
-    // the waits. Coverage pruning carries over: a covered directory yields no
-    // children. Order stays unspecified; `tree::build` sorts.
-    let mut frontier = vec![root.to_path_buf()];
-    while !frontier.is_empty() {
-        let level: Vec<GapsDir> = frontier
-            .par_iter()
-            .map(|dir| read_dir_gaps(root, dir, settings))
-            .collect();
-        let mut next = Vec::new();
-        for mut dir in level {
-            stats.dirs_visited += dir.stats.dirs_visited;
-            stats.entries_seen += dir.stats.entries_seen;
-            if let Some(folder) = dir.flagged.take() {
-                flagged.push(folder);
-            }
-            next.append(&mut dir.subdirs);
-        }
-        frontier = next;
-    }
-    (flagged, stats)
-}
-
-/// One directory's contribution to the gaps walk: the folder it flags (if any),
-/// the non-excluded subdirectories to descend into next, and its walk counts. A
-/// covered directory returns no subdirectories, which is how coverage prunes.
-struct GapsDir {
-    flagged: Option<FlaggedFolder>,
-    subdirs: Vec<PathBuf>,
-    stats: WalkStats,
-}
-
-/// Read and classify one directory for the gaps walk. Read-only: it only reads
-/// directory entries and their names and types.
-fn read_dir_gaps(root: &Path, dir: &Path, settings: &ScanSettings) -> GapsDir {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        // Unreadable directory (for example permission denied): log and skip it.
-        Err(err) => {
-            tracing::warn!(dir = %dir.display(), error = %err, "skipping unreadable directory");
-            return GapsDir {
-                flagged: None,
-                subdirs: Vec::new(),
-                stats: WalkStats::default(),
-            };
-        }
-    };
-    let mut stats = WalkStats {
-        dirs_visited: 1,
-        entries_seen: 0,
-    };
-
-    let mut subdirs: Vec<PathBuf> = Vec::new();
-    let mut audio_files: Vec<String> = Vec::new();
-    let mut covered = false;
-
-    for entry in entries.flatten() {
-        stats.entries_seen += 1;
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_dir() {
-            subdirs.push(entry.path());
-        } else {
-            let file_name = entry.file_name();
-            match classify_file(&file_name, settings) {
-                FileKind::Ebook | FileKind::Marker => covered = true,
-                FileKind::Audio => audio_files.push(file_name.to_string_lossy().into_owned()),
-                FileKind::Other => {}
-            }
-        }
-    }
-
-    if let Ok(rel) = dir.strip_prefix(root) {
-        tracing::trace!(
-            dir = %rel.display(),
-            subdirs = subdirs.len(),
-            audio = audio_files.len(),
-            covered,
-            "visited directory"
-        );
-    }
-
-    // A covering ebook or marker stops the descent and suppresses any flag.
-    if covered {
-        if dir == root {
-            tracing::warn!(
-                root = %root.display(),
-                "a covering ebook or marker sits directly in the library root; \
-                 this blanks the entire tree (see ADR-0005)"
-            );
-        }
-        return GapsDir {
-            flagged: None,
-            subdirs: Vec::new(),
-            stats,
-        };
-    }
-
-    let flagged = if audio_files.is_empty() {
-        None
-    } else if let Ok(rel) = dir.strip_prefix(root) {
-        audio_files.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
-        Some(FlaggedFolder {
-            rel_path: rel.to_path_buf(),
-            audio_files,
-        })
-    } else {
-        None
-    };
-    // A flag does not stop the descent: a child can be a separate gap. Drop
-    // excluded names here so the driver descends only what survives.
-    let subdirs = subdirs
+    let (folders, stats) = scan_all_with_stats(root, settings);
+    let flagged = folders
         .into_iter()
-        .filter(|sub| !is_excluded(root, sub, settings))
+        .filter(|f| f.directly_holds_audio && f.missing_ebook)
+        .map(|f| FlaggedFolder {
+            rel_path: f.rel_path,
+            audio_files: f.audio_files,
+        })
         .collect();
-    GapsDir {
-        flagged,
-        subdirs,
-        stats,
-    }
+    (flagged, stats)
 }
 
 /// One folder from a full walk, tagged with both facts. `scan_all` produces a
@@ -414,6 +303,16 @@ fn read_dir_all(
 
     // Coverage is monotonic: once an ancestor covers, everything below is covered.
     let covered = covered_from_above || !ebooks.is_empty() || !markers.is_empty();
+
+    // A covering ebook or marker directly in the library root blanks the whole
+    // tree (see ADR-0005). Warn once, where the full walk reads the root.
+    if dir == root && (!ebooks.is_empty() || !markers.is_empty()) {
+        tracing::warn!(
+            root = %root.display(),
+            "a covering ebook or marker sits directly in the library root; \
+             this blanks the entire tree (see ADR-0005)"
+        );
+    }
 
     if let Ok(rel) = dir.strip_prefix(root) {
         tracing::trace!(
@@ -974,17 +873,20 @@ mod tests {
     }
 
     #[test]
-    fn scan_with_stats_prunes_covered_subtrees() {
+    fn scan_with_stats_now_walks_the_full_tree_like_scan_all() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Series/Series.epub"));
         touch(&dir.path().join("Series/Book 1/01.mp3"));
         let settings = default_settings(&[]);
-        let (_flagged, gaps_stats) = scan_with_stats(dir.path(), &settings);
+        let (flagged, gaps_stats) = scan_with_stats(dir.path(), &settings);
         let (_all, all_stats) = scan_all_with_stats(dir.path(), &settings);
-        // The gaps walk stops at the covered Series and never reads Book 1.
-        assert_eq!(gaps_stats.dirs_visited, 2); // root, Series
-        assert_eq!(all_stats.dirs_visited, 3); // root, Series, Book 1
-        assert!(gaps_stats.entries_seen < all_stats.entries_seen);
+        // The gaps view is now a reduction over the full walk, so both read the
+        // same directories: root, Series, Book 1.
+        assert_eq!(gaps_stats, all_stats);
+        assert_eq!(all_stats.dirs_visited, 3);
+        // Book 1 holds audio but is covered by the ancestor Series.epub, and Series
+        // holds no direct audio, so nothing is flagged.
+        assert!(flagged.is_empty());
     }
 
     #[test]
