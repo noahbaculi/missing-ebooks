@@ -119,7 +119,7 @@ async fn bind_harness_listener(
     let preferred = explicit.unwrap_or(default_port);
     match TcpListener::bind((Ipv4Addr::LOCALHOST, preferred)).await {
         Ok(listener) => Ok(listener),
-        // Only the defaulting path falls back; an explicit --port stays exact,
+        // Only the defaulting path falls back. An explicit --port stays exact,
         // so its conflict propagates to the caller.
         Err(err) if explicit.is_none() && err.kind() == std::io::ErrorKind::AddrInUse => {
             eprintln!("port {preferred} is in use; serving on an OS-assigned port instead");
