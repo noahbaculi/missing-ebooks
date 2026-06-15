@@ -67,7 +67,7 @@ fn resolve(getenv: &dyn Fn(&str) -> Option<String>) -> Resolution {
 }
 
 /// Build the directive for a known level. `debug`/`trace` pin dependencies at the
-/// `info` baseline and raise only this crate; `info` and below apply one level
+/// `info` baseline and raise only this crate. `info` and below apply one level
 /// everywhere, so dependencies are never louder than the app.
 fn scoped_directive(level: &str) -> String {
     match level {
