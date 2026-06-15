@@ -21,7 +21,7 @@ use crate::marker::Marker;
 
 /// The raw, un-normalized lists one scan needs, as named fields so the four
 /// string lists cannot be passed in the wrong order. The caller builds this from
-/// a `Config`; the scanner stays config-agnostic so its tests stay light.
+/// a `Config`. The scanner stays config-agnostic, so its tests stay light.
 pub struct ScanInputs<'a> {
     /// Audio extensions; the leading dot is optional and case is ignored.
     pub audio_exts: &'a [String],
@@ -142,7 +142,7 @@ pub struct FlaggedFolder {
 
 /// Counts from one walk: the directory and entry totals that drive wall time on a
 /// network mount, where each is roughly a round trip. The scanner records them so a
-/// benchmark can divide its timings without re-walking; production ignores them.
+/// benchmark can divide its timings without re-walking. Production ignores them.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct WalkStats {
     /// Directories whose entries were read (one successful `read_dir` each).
@@ -157,7 +157,7 @@ pub struct WalkStats {
 }
 
 /// One directory's cached facts: its mtime and everything a walk would otherwise
-/// re-read. `subdirs` are the non-excluded children; `audio_files` and `cover_files`
+/// re-read. `subdirs` are the non-excluded children. `audio_files` and `cover_files`
 /// are already natural-sorted, the same order a fresh listing produces.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CachedDir {
@@ -251,7 +251,7 @@ pub fn scan_with_stats(root: &Path, settings: &ScanSettings) -> (Vec<FlaggedFold
 }
 
 /// One folder from a full walk, tagged with both facts. `scan_all` produces a
-/// `Vec<ScannedFolder>`; `tree::build_all` consumes it. The root walked is the
+/// `Vec<ScannedFolder>` that `tree::build_all` consumes. The root walked is the
 /// empty relative path (see ADR-0005), as `scan` spells the loose-root case.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScannedFolder {
