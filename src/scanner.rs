@@ -150,6 +150,70 @@ pub struct WalkStats {
     /// Directory entries iterated across every visited directory, i.e. the number of
     /// `file_type()` calls. Includes files that are neither audio nor ebook.
     pub entries_seen: usize,
+    /// Directories served from the index without a listing (incremental rescans).
+    /// Zero for a non-incremental walk. `dirs_visited - dirs_reused` is the number
+    /// of directories actually read.
+    pub dirs_reused: usize,
+}
+
+/// One directory's cached facts: its mtime and everything a walk would otherwise
+/// re-read. `subdirs` are the non-excluded children; `audio_files` and `cover_files`
+/// are already natural-sorted, the same order a fresh listing produces.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CachedDir {
+    /// The directory's modification time when it was last listed.
+    pub mtime: std::time::SystemTime,
+    /// Non-excluded child directories, to descend without re-listing.
+    pub subdirs: Vec<PathBuf>,
+    /// Audio filenames physically in this folder, natural-sorted.
+    pub audio_files: Vec<String>,
+    /// Ebook then marker filenames physically in this folder, natural-sorted.
+    pub cover_files: Vec<String>,
+}
+
+/// A per-directory cache shared across walks and across both view modes, keyed by
+/// the directory's path. A rescan reuses an entry whose mtime still matches and
+/// re-lists the rest. In-memory only: it is rebuilt on restart by the startup warm.
+#[derive(Debug, Default)]
+pub struct DirIndex {
+    entries: std::collections::HashMap<PathBuf, CachedDir>,
+}
+
+impl DirIndex {
+    /// An empty index.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The cached entry for `dir`, if any.
+    #[must_use]
+    pub fn get(&self, dir: &Path) -> Option<&CachedDir> {
+        self.entries.get(dir)
+    }
+
+    /// Insert or replace the entry for `dir`.
+    pub fn insert(&mut self, dir: PathBuf, cached: CachedDir) {
+        self.entries.insert(dir, cached);
+    }
+
+    /// Drop the entry for `dir`, so the next walk re-lists it. Returns whether one
+    /// was present.
+    pub fn invalidate(&mut self, dir: &Path) -> bool {
+        self.entries.remove(dir).is_some()
+    }
+
+    /// Number of cached directories.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether the index is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 }
 
 /// Walk `root` and return flagged folders, each with the audio filenames it holds,
@@ -276,6 +340,7 @@ fn read_dir_all(
     let mut stats = WalkStats {
         dirs_visited: 1,
         entries_seen: 0,
+        dirs_reused: 0,
     };
 
     let mut subdirs: Vec<PathBuf> = Vec::new();
@@ -870,6 +935,12 @@ mod tests {
         let (_folders, stats) = scan_all_with_stats(dir.path(), &default_settings(&[]));
         assert_eq!(stats.dirs_visited, 3); // root, Gap, Covered
         assert_eq!(stats.entries_seen, 6); // root sees 2 subdirs; Gap and Covered 2 files each
+    }
+
+    #[test]
+    fn walk_stats_default_has_no_reused_dirs() {
+        let stats = WalkStats::default();
+        assert_eq!(stats.dirs_reused, 0);
     }
 
     #[test]
