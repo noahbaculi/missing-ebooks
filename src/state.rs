@@ -91,8 +91,7 @@ impl Cache {
     {
         let mut slot = self.entries.lock().await;
         if let Some(entry) = slot.as_ref()
-            && let Some(ttl) = self.ttl
-            && entry.stored_at.elapsed() < ttl
+            && is_fresh(entry, self.ttl)
         {
             tracing::debug!("cache hit");
             return Arc::clone(&entry.raw);
@@ -118,9 +117,9 @@ impl Cache {
     /// task holds the only `Arc`, and clones it on write when a concurrent
     /// reader is still holding a snapshot; either way the reader keeps its
     /// pre-edit data and this task observes the edit. `stored_at` is left
-    /// untouched so the TTL still fires on schedule (ADR-0002). A cold slot
-    /// has nothing to edit, so it builds fresh; the fresh build already
-    /// reflects the marker on disk and is returned unedited.
+    /// untouched so the TTL still fires on schedule (ADR-0002). A cold or
+    /// stale slot is rebuilt from `build`; the fresh build already reflects
+    /// the marker on disk and is returned unedited.
     pub(crate) async fn apply_marker_or_build<E, F, Fut>(&self, edit: E, build: F) -> Arc<RawView>
     where
         E: FnOnce(&mut RawView),
@@ -128,7 +127,9 @@ impl Cache {
         Fut: Future<Output = RawView>,
     {
         let mut slot = self.entries.lock().await;
-        if let Some(entry) = slot.as_mut() {
+        if let Some(entry) = slot.as_mut()
+            && is_fresh(entry, self.ttl)
+        {
             let raw = Arc::make_mut(&mut entry.raw);
             edit(raw);
             return Arc::clone(&entry.raw);
@@ -141,7 +142,8 @@ impl Cache {
     /// leaving `stored_at` untouched so the TTL still fires on schedule. Used by
     /// undo: a marker delete can re-flag a subtree, and the in-place edit has
     /// already mutated the cache, so the section is rebuilt by a fresh per-root
-    /// scan. A cold slot is built fresh from `build_full`.
+    /// scan. A cold or stale slot is rebuilt from `build_full` rather than
+    /// spliced into stale neighbors.
     pub(crate) async fn rebuild_root<RS, RsFut, F, Fut>(
         &self,
         root: usize,
@@ -155,9 +157,13 @@ impl Cache {
         Fut: Future<Output = RawView>,
     {
         let mut slot = self.entries.lock().await;
-        if slot.is_some() {
+        // `is_some_and` drops the borrow before the await below; an `if let`
+        // binding here would hold a borrow across `rebuild_section().await` and
+        // conflict with the later `slot.as_mut()`. Matches the original
+        // `slot.is_some()` shape, extended with the freshness predicate.
+        if slot.as_ref().is_some_and(|entry| is_fresh(entry, self.ttl)) {
             let section = rebuild_section().await;
-            let entry = slot.as_mut().expect("checked is_some above");
+            let entry = slot.as_mut().expect("checked Some above");
             let raw = Arc::make_mut(&mut entry.raw);
             if root < raw.len() {
                 raw[root] = section;
@@ -167,6 +173,13 @@ impl Cache {
         let raw = build_full().await;
         store_fresh(&mut slot, raw)
     }
+}
+
+/// Whether a stored entry is still within the staleness window. `ttl == None`
+/// disables the cache (every read rescans), so any stored entry is treated as
+/// stale.
+fn is_fresh(entry: &CacheEntry, ttl: Option<Duration>) -> bool {
+    ttl.is_some_and(|ttl| entry.stored_at.elapsed() < ttl)
 }
 
 impl AppState {
@@ -360,5 +373,91 @@ mod tests {
             slot.as_ref().unwrap().stored_at
         };
         assert_eq!(stamped, after_edit, "an edit must not bump stored_at");
+    }
+
+    #[tokio::test]
+    async fn apply_marker_or_build_rebuilds_when_slot_is_stale() {
+        // A marker write that arrives after the TTL elapsed must not edit
+        // stale raw data: the slot is rebuilt from disk, and the edit closure
+        // is skipped because the fresh build already reflects the marker.
+        let cache = test_cache(Some(Duration::from_millis(10)));
+        cache.get_or_build(|| async { sample_raw("v1") }).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let returned = cache
+            .apply_marker_or_build(
+                |raw| raw[0].path = format!("{}-edited", raw[0].path),
+                || async { sample_raw("rebuilt") },
+            )
+            .await;
+        assert_eq!(
+            returned[0].path, "rebuilt",
+            "a stale slot must be rebuilt, not edited"
+        );
+        let after = {
+            let slot = cache.entries.lock().await;
+            slot.as_ref().unwrap().stored_at.elapsed()
+        };
+        assert!(
+            after < Duration::from_millis(10),
+            "stored_at must be refreshed by the rebuild"
+        );
+    }
+
+    #[tokio::test]
+    async fn rebuild_root_rebuilds_full_view_when_slot_is_stale() {
+        // The undo path against a stale slot rebuilds the whole view rather
+        // than splicing one section into stale neighbors.
+        let cache = test_cache(Some(Duration::from_millis(10)));
+        let two = || {
+            vec![
+                RawRootSection {
+                    path: "keep".to_string(),
+                    state: RawRootState::Clean,
+                },
+                RawRootSection {
+                    path: "old".to_string(),
+                    state: RawRootState::Clean,
+                },
+            ]
+        };
+        cache.get_or_build(|| async { two() }).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let fresh = || {
+            vec![
+                RawRootSection {
+                    path: "fresh-keep".to_string(),
+                    state: RawRootState::Clean,
+                },
+                RawRootSection {
+                    path: "fresh-new".to_string(),
+                    state: RawRootState::Clean,
+                },
+            ]
+        };
+        let returned = cache
+            .rebuild_root(
+                1,
+                || async {
+                    RawRootSection {
+                        path: "splice".to_string(),
+                        state: RawRootState::Clean,
+                    }
+                },
+                || async { fresh() },
+            )
+            .await;
+        assert_eq!(
+            returned[0].path, "fresh-keep",
+            "a stale slot must be rebuilt via build_full, not spliced"
+        );
+        assert_eq!(returned[1].path, "fresh-new");
+        let after = {
+            let slot = cache.entries.lock().await;
+            slot.as_ref().unwrap().stored_at.elapsed()
+        };
+        assert!(
+            after < Duration::from_millis(10),
+            "stored_at must be refreshed by the rebuild"
+        );
     }
 }
