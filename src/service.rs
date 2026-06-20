@@ -519,9 +519,9 @@ fn scan_root(
     let (folders, stats) = match index {
         Some(index) => {
             let mut guard = lock_index(index);
-            scanner::scan_all_incremental_with_stats(&canonical, settings, &mut guard)
+            scanner::scan_incremental_with_stats(&canonical, settings, &mut guard)
         }
-        None => scanner::scan_all_with_stats(&canonical, settings),
+        None => scanner::scan_with_stats(&canonical, settings),
     };
     tracing::debug!(
         root = %canonical.display(),

@@ -206,16 +206,16 @@ impl DirIndex {
     }
 }
 
-/// Walk `root` and return the flagged folders, derived by filtering the full
-/// walk. A flagged folder directly holds audio and is not covered; coverage
-/// pruning saves nothing on a flat, wide library (see benchmarks/README.md).
-/// Order is unspecified; the tree builder sorts.
+/// Walk `root` and return every folder with both facts, relative to `root`.
+/// Covered containers are walked down to their book folders, each tagged
+/// covered. Excluded names, exclude globs, dot directories, and symlinks
+/// prune. Order is unspecified; the tree builder sorts.
 #[must_use]
 pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<ScannedFolder> {
     scan_with_stats(root, settings).0
 }
 
-/// Reduce a full walk's folders to the flagged gaps: those that directly hold
+/// Reduce a walk's folders to the flagged gaps: those that directly hold
 /// audio and lack coverage. Each kept entry is a clone of the original
 /// `ScannedFolder` with every fact intact, so the unified tree builder consumes
 /// it directly. Borrowing input lets the per-request render path filter the
@@ -229,16 +229,9 @@ pub fn reduce_to_flagged(folders: &[ScannedFolder]) -> Vec<ScannedFolder> {
         .collect()
 }
 
-/// Like `scan`, but also returns the walk's counts.
-#[must_use]
-pub fn scan_with_stats(root: &Path, settings: &ScanSettings) -> (Vec<ScannedFolder>, WalkStats) {
-    let (folders, stats) = scan_all_with_stats(root, settings);
-    (reduce_to_flagged(&folders), stats)
-}
-
-/// One folder from a full walk, tagged with both facts. `scan_all` produces a
+/// One folder from a walk, tagged with both facts. `scan` produces a
 /// `Vec<ScannedFolder>` that `tree::build` consumes. The root walked is the
-/// empty relative path (see ADR-0005), as `scan` spells the loose-root case.
+/// empty relative path (see ADR-0005), the loose-root case.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScannedFolder {
     /// The folder's path relative to the walked root.
@@ -256,47 +249,23 @@ pub struct ScannedFolder {
     pub audio_files: Vec<String>,
 }
 
-/// Walk `root` and return every folder with both facts, relative to `root`.
-/// Unlike `scan`, coverage does not prune the descent: a covered container is
-/// still walked down to its book folders, each tagged covered. Excluded names,
-/// exclude globs, dot directories, and symlinks still prune. Order is
-/// unspecified; the tree builder sorts.
-#[must_use]
-pub fn scan_all(root: &Path, settings: &ScanSettings) -> Vec<ScannedFolder> {
-    scan_all_with_stats(root, settings).0
-}
-
-/// Like `scan_all`, but also returns the walk's counts. Non-incremental: every
+/// Like `scan`, but also returns the walk's counts. Non-incremental: every
 /// directory is listed (the escape-hatch and the bench baseline use this).
 #[must_use]
-pub fn scan_all_with_stats(
-    root: &Path,
-    settings: &ScanSettings,
-) -> (Vec<ScannedFolder>, WalkStats) {
+pub fn scan_with_stats(root: &Path, settings: &ScanSettings) -> (Vec<ScannedFolder>, WalkStats) {
     walk_all(root, settings, None)
 }
 
-/// The incremental full walk: stat each directory and reuse the index entry when
+/// The incremental walk: stat each directory and reuse the index entry when
 /// the mtime is unchanged, listing and re-indexing the rest. The same `index`
 /// passed across calls makes each rescan cheaper than the last cold walk.
-#[must_use]
-pub fn scan_all_incremental_with_stats(
-    root: &Path,
-    settings: &ScanSettings,
-    index: &mut DirIndex,
-) -> (Vec<ScannedFolder>, WalkStats) {
-    walk_all(root, settings, Some(index))
-}
-
-/// The incremental gaps walk: the full incremental walk reduced to flagged folders.
 #[must_use]
 pub fn scan_incremental_with_stats(
     root: &Path,
     settings: &ScanSettings,
     index: &mut DirIndex,
 ) -> (Vec<ScannedFolder>, WalkStats) {
-    let (folders, stats) = scan_all_incremental_with_stats(root, settings, index);
-    (reduce_to_flagged(&folders), stats)
+    walk_all(root, settings, Some(index))
 }
 
 /// The level-synchronous breadth-first walk shared by the incremental and
@@ -582,33 +551,19 @@ mod tests {
     fn flagged_set(root: &Path, settings: &ScanSettings) -> BTreeSet<String> {
         scan(root, settings)
             .iter()
+            .filter(|f| f.directly_holds_audio && f.missing_ebook)
             .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))
             .collect()
     }
 
-    /// Run the gaps walk forced onto a pool of exactly `threads` workers, returning
-    /// the full flagged Vec so a test can compare order and per-folder file lists,
-    /// not just the flagged set.
+    /// Run the walk forced onto a pool of exactly `threads` workers, returning
+    /// the full Vec so a test can compare order, tags, and per-folder file lists.
     fn scan_on_pool(root: &Path, settings: &ScanSettings, threads: usize) -> Vec<ScannedFolder> {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(threads)
             .build()
             .unwrap();
         pool.install(|| scan(root, settings))
-    }
-
-    /// Run the full walk forced onto a pool of exactly `threads` workers, returning
-    /// the full Vec so a test can compare order, tags, and per-folder file lists.
-    fn scan_all_on_pool(
-        root: &Path,
-        settings: &ScanSettings,
-        threads: usize,
-    ) -> Vec<ScannedFolder> {
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build()
-            .unwrap();
-        pool.install(|| scan_all(root, settings))
     }
 
     #[test]
@@ -627,8 +582,8 @@ mod tests {
         touch(&dir.path().join("Cycle (Abridged)/Book/01.m4b"));
         touch(&dir.path().join("01 - Loose Book.mp3"));
         let settings = default_settings(&["**/*(abridged)*"]);
-        let one = scan_on_pool(dir.path(), &settings, 1);
-        let many = scan_on_pool(dir.path(), &settings, 8);
+        let one = reduce_to_flagged(&scan_on_pool(dir.path(), &settings, 1));
+        let many = reduce_to_flagged(&scan_on_pool(dir.path(), &settings, 8));
         // The whole Vec, order and each folder's audio_files included: a BTreeSet
         // would hide a reordering or a dropped file.
         assert_eq!(one, many, "concurrency must not change the flagged Vec");
@@ -805,7 +760,7 @@ mod tests {
     }
 
     fn scanned(root: &Path, settings: &ScanSettings) -> BTreeMap<String, (bool, bool)> {
-        scan_all(root, settings)
+        scan(root, settings)
             .into_iter()
             .map(|f| {
                 let rel = f.rel_path.to_string_lossy().replace('\\', "/");
@@ -829,8 +784,8 @@ mod tests {
         touch(&dir.path().join("Cycle (Abridged)/Book/01.m4b"));
         touch(&dir.path().join("01 - Loose Book.mp3"));
         let settings = default_settings(&["**/*(abridged)*"]);
-        let one = scan_all_on_pool(dir.path(), &settings, 1);
-        let many = scan_all_on_pool(dir.path(), &settings, 8);
+        let one = scan_on_pool(dir.path(), &settings, 1);
+        let many = scan_on_pool(dir.path(), &settings, 8);
         assert_eq!(one, many, "concurrency must not change the full walk");
         let by_path: BTreeMap<String, &ScannedFolder> = one
             .iter()
@@ -859,7 +814,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_all_tags_a_gap_a_covered_audiobook_and_containers() {
+    fn scan_tags_a_gap_a_covered_audiobook_and_containers() {
         let dir = tempfile::tempdir().unwrap();
         // Gap: audio, no cover.
         touch(&dir.path().join("Gap Author/Gap Book/01.mp3"));
@@ -879,7 +834,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_all_carries_ancestor_coverage_down_into_a_covered_container() {
+    fn scan_carries_ancestor_coverage_down_into_a_covered_container() {
         let dir = tempfile::tempdir().unwrap();
         // A series-level epub covers the container and every book under it.
         touch(&dir.path().join("Series/Series.epub"));
@@ -893,7 +848,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_all_reports_a_plain_container_with_no_audio_anywhere() {
+    fn scan_reports_a_plain_container_with_no_audio_anywhere() {
         let dir = tempfile::tempdir().unwrap();
         // An empty-ish folder with no audio and no ebook.
         std::fs::create_dir_all(dir.path().join("Unsorted")).unwrap();
@@ -903,7 +858,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_all_still_prunes_excluded_dot_and_symlink() {
+    fn scan_still_prunes_excluded_dot_and_symlink() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("@eaDir/01.mp3"));
         touch(&dir.path().join(".@__thumb/01.mp3"));
@@ -925,7 +880,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_all_reports_loose_root_audio_as_the_empty_path() {
+    fn scan_reports_loose_root_audio_as_the_empty_path() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("01 - Loose.mp3"));
         let got = scanned(dir.path(), &default_settings(&[]));
@@ -935,7 +890,7 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn scan_all_does_not_follow_symlinked_directories() {
+    fn scan_does_not_follow_symlinked_directories() {
         let dir = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         touch(&outside.path().join("01.mp3"));
@@ -946,7 +901,7 @@ mod tests {
     }
 
     fn cover_files_of(root: &Path, settings: &ScanSettings) -> BTreeMap<String, Vec<String>> {
-        scan_all(root, settings)
+        scan(root, settings)
             .into_iter()
             .map(|f| {
                 let rel = f.rel_path.to_string_lossy().replace('\\', "/");
@@ -956,7 +911,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_all_records_ebook_and_marker_filenames_on_the_holding_folder() {
+    fn scan_records_ebook_and_marker_filenames_on_the_holding_folder() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Ebook Book/01.mp3"));
         touch(&dir.path().join("Ebook Book/Ebook Book.epub"));
@@ -970,7 +925,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_all_leaves_cover_files_empty_for_ancestor_covered_folders() {
+    fn scan_leaves_cover_files_empty_for_ancestor_covered_folders() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Series/Series.epub"));
         touch(&dir.path().join("Series/Book 1/01.mp3"));
@@ -983,7 +938,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_all_lists_ebooks_before_markers_for_different_named_formats() {
+    fn scan_lists_ebooks_before_markers_for_different_named_formats() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         touch(&dir.path().join("Book/Book.epub"));
@@ -1011,12 +966,12 @@ mod tests {
     }
 
     #[test]
-    fn scan_all_collects_natural_sorted_audio_filenames() {
+    fn scan_collects_natural_sorted_audio_filenames() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/02 - Two.mp3"));
         touch(&dir.path().join("Book/10 - Ten.mp3"));
         touch(&dir.path().join("Book/01 - One.mp3"));
-        let folders = scan_all(dir.path(), &default_settings(&[]));
+        let folders = scan(dir.path(), &default_settings(&[]));
         let book = folders
             .iter()
             .find(|f| f.rel_path == Path::new("Book"))
@@ -1034,13 +989,13 @@ mod tests {
     }
 
     #[test]
-    fn scan_all_with_stats_counts_dirs_and_entries() {
+    fn scan_with_stats_counts_dirs_and_entries() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Gap/01.mp3"));
         touch(&dir.path().join("Gap/02.mp3"));
         touch(&dir.path().join("Covered/01.mp3"));
         touch(&dir.path().join("Covered/Book.epub"));
-        let (_folders, stats) = scan_all_with_stats(dir.path(), &default_settings(&[]));
+        let (_folders, stats) = scan_with_stats(dir.path(), &default_settings(&[]));
         assert_eq!(stats.dirs_visited, 3); // root, Gap, Covered
         assert_eq!(stats.entries_seen, 6); // root sees 2 subdirs; Gap and Covered 2 files each
     }
@@ -1061,11 +1016,10 @@ mod tests {
         touch(&dir.path().join("AuthorB/Covered/Book.epub"));
         let settings = default_settings(&[]);
 
-        let baseline = scan_all(dir.path(), &settings);
+        let baseline = scan(dir.path(), &settings);
 
         let mut index = DirIndex::new();
-        let (first, first_stats) =
-            scan_all_incremental_with_stats(dir.path(), &settings, &mut index);
+        let (first, first_stats) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
         assert_eq!(
             first, baseline,
             "the first incremental walk equals the full walk"
@@ -1075,8 +1029,7 @@ mod tests {
             "nothing to reuse on the first walk"
         );
 
-        let (second, second_stats) =
-            scan_all_incremental_with_stats(dir.path(), &settings, &mut index);
+        let (second, second_stats) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
         assert_eq!(
             second, baseline,
             "an unchanged rescan still equals the full walk"
@@ -1110,10 +1063,12 @@ mod tests {
         set_file_mtime(&book, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
 
         let (second, stats) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        let book_after = second
+            .iter()
+            .find(|f| f.rel_path == Path::new("Author/Book"))
+            .expect("Author/Book is still in the walk, now covered");
         assert!(
-            !second
-                .iter()
-                .any(|f| f.rel_path == Path::new("Author/Book")),
+            !(book_after.directly_holds_audio && book_after.missing_ebook),
             "the gap is gone after the ebook lands"
         );
         assert!(
@@ -1207,23 +1162,6 @@ mod tests {
     }
 
     #[test]
-    fn scan_with_stats_now_walks_the_full_tree_like_scan_all() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Series/Series.epub"));
-        touch(&dir.path().join("Series/Book 1/01.mp3"));
-        let settings = default_settings(&[]);
-        let (flagged, gaps_stats) = scan_with_stats(dir.path(), &settings);
-        let (_all, all_stats) = scan_all_with_stats(dir.path(), &settings);
-        // The gaps view is now a reduction over the full walk, so both read the
-        // same directories: root, Series, Book 1.
-        assert_eq!(gaps_stats, all_stats);
-        assert_eq!(all_stats.dirs_visited, 3);
-        // Book 1 holds audio but is covered by the ancestor Series.epub, and Series
-        // holds no direct audio, so nothing is flagged.
-        assert!(flagged.is_empty());
-    }
-
-    #[test]
     fn walk_stats_skip_excluded_subtrees() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("@eaDir/01.mp3"));
@@ -1239,7 +1177,7 @@ mod tests {
             exclude_globs: &[],
         })
         .unwrap();
-        let (_folders, stats) = scan_all_with_stats(dir.path(), &settings);
+        let (_folders, stats) = scan_with_stats(dir.path(), &settings);
         // @eaDir is pruned: root and Book are read, the excluded dir is not.
         assert_eq!(stats.dirs_visited, 2); // root, Book
         assert_eq!(stats.entries_seen, 3); // root sees @eaDir + Book; Book sees 01.mp3

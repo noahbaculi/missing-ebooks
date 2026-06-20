@@ -488,6 +488,7 @@ mod tests {
         let settings = ScanSettings::compile(Config::default().scan_inputs()).unwrap();
         scanner::scan(root, &settings)
             .iter()
+            .filter(|f| f.directly_holds_audio && f.missing_ebook)
             .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))
             .collect()
     }
