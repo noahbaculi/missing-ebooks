@@ -1,10 +1,13 @@
-//! Build the flagged-only forest for one root from the flat list of flagged
-//! folder paths (relative to the root). Internal nodes are exactly the
-//! containers (ancestors of a flagged folder); because only flagged paths are
-//! inserted, no empty branch can appear. Siblings are ordered by case-
-//! insensitive natural sort, so `Book 2` precedes `Book 10`. The empty relative
-//! path is the library root itself (loose root audio, see ADR-0005): it becomes
-//! one flagged node named after the root with relative path `.`, pinned ahead of
+//! Build the forest of nodes for one root from the flat `Vec<ScannedFolder>`
+//! the scanner produces. Each folder carries its own facts; intermediate
+//! containers absent from the input get a safe-neutral placeholder
+//! (`directly_holds_audio = false, missing_ebook = true`). For a gaps-filtered
+//! input the placeholder reproduces a bare container above a flagged leaf; for
+//! a show-all input every folder appears, so each node's own entry overwrites
+//! the placeholder. Siblings are ordered by case-insensitive natural sort, so
+//! `Book 2` precedes `Book 10`. The empty relative path is the library root
+//! itself (loose root audio, see ADR-0005): when it directly holds audio it
+//! becomes a node named after the root with relative path `.`, pinned ahead of
 //! the forest. The types derive `Serialize` for a future JSON API.
 
 use std::path::Component;
@@ -53,63 +56,17 @@ impl Node {
     }
 }
 
-/// Build the forest of top-level nodes for one root. `root_name` names the node
-/// emitted when the root itself is flagged by loose root audio (see ADR-0005).
-///
-/// Each path in `flagged` is expected to be root-relative, as the scanner
-/// produces it. Non-normal components (a leading `/` or `..`) are dropped, so an
-/// absolute path would lose its prefix.
+/// Build the forest of top-level nodes for one root from the flat
+/// `Vec<ScannedFolder>` the scanner produces. Every folder carries its own two
+/// facts; intermediate containers absent from the input get a placeholder
+/// (`directly_holds_audio = false, missing_ebook = true`), the safe neutral. For
+/// a gaps-filtered input (`reduce_to_flagged` output) the placeholder reproduces
+/// today's pruned-walk behavior for the bare container above a flagged leaf. For
+/// a show-all input every folder appears, so each node's own entry overwrites
+/// the placeholder. `root_name` names the `.` node emitted when the root itself
+/// directly holds audio (see ADR-0005). Siblings are natural-sorted.
 #[must_use]
-pub fn build(root_name: &str, flagged: &[crate::scanner::FlaggedFolder]) -> Vec<Node> {
-    let mut roots: Vec<Node> = Vec::new();
-    let mut root_flagged = false;
-    let mut root_audio: Vec<String> = Vec::new();
-    for folder in flagged {
-        let components: Vec<String> = folder
-            .rel_path
-            .components()
-            .filter_map(|c| match c {
-                Component::Normal(os) => Some(os.to_string_lossy().into_owned()),
-                _ => None,
-            })
-            .collect();
-        if components.is_empty() {
-            // The empty relative path is the library root itself: it directly
-            // holds uncovered audio, so the root is a flagged gap (ADR-0005).
-            root_flagged = true;
-            root_audio = folder.audio_files.clone();
-            continue;
-        }
-        insert(&mut roots, &components, "", &folder.audio_files);
-    }
-    sort_forest(&mut roots);
-    if root_flagged {
-        // Pin the flagged root ahead of its natural-sorted children. Relative
-        // path "." is the root itself. Rendering substitutes the root label.
-        roots.insert(
-            0,
-            Node {
-                name: root_name.to_string(),
-                rel_path: ".".to_string(),
-                // Loose root audio: a gap. The old `flagged: true`.
-                directly_holds_audio: true,
-                missing_ebook: true,
-                children: Vec::new(),
-                cover_files: Vec::new(),
-                audio_files: root_audio,
-            },
-        );
-    }
-    roots
-}
-
-/// Build the full-tree forest for one root from `scanner::scan_all` output. Every
-/// folder carries its own two facts. Unlike `build`, intermediate nodes are not
-/// inferred as bare containers: `scan_all` emits every folder, so each node's own
-/// entry sets its facts. `root_name` names the `.` node emitted when the root
-/// itself directly holds audio (see ADR-0005).
-#[must_use]
-pub fn build_all(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> Vec<Node> {
+pub fn build(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> Vec<Node> {
     let mut roots: Vec<Node> = Vec::new();
     let mut root_entry: Option<&crate::scanner::ScannedFolder> = None;
     for folder in folders {
@@ -122,7 +79,7 @@ pub fn build_all(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> 
             })
             .collect();
         if components.is_empty() {
-            // The empty relative path is the library root itself.
+            // The empty relative path is the library root itself (see ADR-0005).
             root_entry = Some(folder);
             continue;
         }
@@ -132,8 +89,10 @@ pub fn build_all(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> 
     if let Some(entry) = root_entry
         && entry.directly_holds_audio
     {
-        // The root directly holds audio: surface it as a node, pinned ahead of the
-        // author forest (see ADR-0005). In show-all it shows even when covered.
+        // The root directly holds audio: surface it as a node, pinned ahead of
+        // the author forest (ADR-0005). In show-all it shows even when covered;
+        // in gaps the filter only keeps it when `missing_ebook` is also true, so
+        // it appears exactly when it is a gap.
         roots.insert(
             0,
             Node {
@@ -196,43 +155,6 @@ fn child_rel(parent_rel: &str, head: &str) -> String {
         head.to_string()
     } else {
         format!("{parent_rel}/{head}")
-    }
-}
-
-fn insert(
-    siblings: &mut Vec<Node>,
-    components: &[String],
-    parent_rel: &str,
-    audio_files: &[String],
-) {
-    let Some((head, tail)) = components.split_first() else {
-        return;
-    };
-    let rel_path = child_rel(parent_rel, head);
-    let idx = match siblings.iter().position(|n| &n.name == head) {
-        Some(i) => i,
-        None => {
-            siblings.push(Node {
-                name: head.clone(),
-                rel_path: rel_path.clone(),
-                // A container above a gap: uncovered (the pruned scan never emits
-                // a covered node), holds no direct audio yet. The old default.
-                directly_holds_audio: false,
-                missing_ebook: true,
-                children: Vec::new(),
-                cover_files: Vec::new(),
-                audio_files: Vec::new(),
-            });
-            siblings.len() - 1
-        }
-    };
-    if tail.is_empty() {
-        // This path's tail ends here: the folder directly holds audio. With
-        // `missing_ebook` already true, this is a gap. The old `flagged = true`.
-        siblings[idx].directly_holds_audio = true;
-        siblings[idx].audio_files = audio_files.to_vec();
-    } else {
-        insert(&mut siblings[idx].children, tail, &rel_path, audio_files);
     }
 }
 
@@ -331,15 +253,18 @@ mod tests {
     use crate::scanner::ScannedFolder;
     use std::path::PathBuf;
 
-    fn ff(rel: &str, audio: &[&str]) -> crate::scanner::FlaggedFolder {
-        crate::scanner::FlaggedFolder {
+    fn ff(rel: &str, audio: &[&str]) -> crate::scanner::ScannedFolder {
+        crate::scanner::ScannedFolder {
             rel_path: PathBuf::from(rel),
+            directly_holds_audio: true,
+            missing_ebook: true,
+            cover_files: Vec::new(),
             audio_files: audio.iter().map(|s| s.to_string()).collect(),
         }
     }
 
     fn forest(paths: &[&str]) -> Vec<Node> {
-        let owned: Vec<crate::scanner::FlaggedFolder> = paths.iter().map(|p| ff(p, &[])).collect();
+        let owned: Vec<crate::scanner::ScannedFolder> = paths.iter().map(|p| ff(p, &[])).collect();
         build("Audiobooks", &owned)
     }
 
@@ -541,7 +466,7 @@ mod tests {
             sf("Gap Author", false, true),     // plain container
             sf("Gap Author/Book", true, true), // gap
         ];
-        let forest = build_all("Audiobooks", &folders);
+        let forest = build("Audiobooks", &folders);
 
         // Top level is natural-sorted and the root has no `.` node.
         assert_eq!(names(&forest), vec!["Gap Author", "Series"]);
@@ -568,7 +493,7 @@ mod tests {
             sf("Andy Weir", false, true),
             sf("Andy Weir/Artemis", true, true),
         ];
-        let forest = build_all("Audiobooks", &folders);
+        let forest = build("Audiobooks", &folders);
         assert_eq!(names(&forest), vec!["Audiobooks", "Andy Weir"]);
         assert_eq!(forest[0].rel_path, ".");
         assert!(forest[0].needs_ebook());
@@ -591,7 +516,7 @@ mod tests {
             sf_cov("Series", false, false, &["Series.epub"]),
             sf_cov("Series/Book 1", true, false, &[]),
         ];
-        let forest = build_all("Audiobooks", &folders);
+        let forest = build("Audiobooks", &folders);
         assert_eq!(
             find(&forest, "Series").unwrap().cover_files,
             vec!["Series.epub".to_string()]
@@ -607,7 +532,7 @@ mod tests {
     #[test]
     fn build_all_carries_audio_files_onto_the_node() {
         let folders = vec![sf_audio("Book", &["01 - One.mp3", "02 - Two.mp3"])];
-        let forest = build_all("Audiobooks", &folders);
+        let forest = build("Audiobooks", &folders);
         assert_eq!(
             find(&forest, "Book").unwrap().audio_files,
             vec!["01 - One.mp3".to_string(), "02 - Two.mp3".to_string()]
@@ -620,9 +545,136 @@ mod tests {
             sf_cov("", true, false, &[".no_ebook"]),
             sf_cov("Author", false, true, &[]),
         ];
-        let forest = build_all("Audiobooks", &folders);
+        let forest = build("Audiobooks", &folders);
         assert_eq!(forest[0].rel_path, ".");
         assert_eq!(forest[0].cover_files, vec![".no_ebook".to_string()]);
+    }
+
+    /// The unified `build` (taking ScannedFolder) must emit a forest equivalent
+    /// to today's `build_all` for a show-all input: every input folder yields a
+    /// node, the `.` root node only appears when the empty-path entry holds
+    /// audio, and siblings come out natural-sorted. The expected forest is
+    /// hand-constructed so the test survives `build_all`'s deletion in Step 3.
+    #[test]
+    fn unified_build_emits_a_show_all_forest_for_every_input_folder() {
+        let folders = vec![
+            sf("", false, true),
+            sf("AuthorA", false, true),
+            sf("AuthorA/Book", true, true),
+            sf_cov("Series", false, false, &["Series.epub"]),
+            sf("Series/Book 1", true, false),
+            sf("Series/Book 10", true, false),
+            sf("Series/Book 2", true, false),
+        ];
+        let got = build("Audiobooks", &folders);
+        let expected = vec![
+            Node {
+                name: "AuthorA".to_string(),
+                rel_path: "AuthorA".to_string(),
+                directly_holds_audio: false,
+                missing_ebook: true,
+                children: vec![Node {
+                    name: "Book".to_string(),
+                    rel_path: "AuthorA/Book".to_string(),
+                    directly_holds_audio: true,
+                    missing_ebook: true,
+                    children: Vec::new(),
+                    cover_files: Vec::new(),
+                    audio_files: Vec::new(),
+                }],
+                cover_files: Vec::new(),
+                audio_files: Vec::new(),
+            },
+            Node {
+                name: "Series".to_string(),
+                rel_path: "Series".to_string(),
+                directly_holds_audio: false,
+                missing_ebook: false,
+                children: vec![
+                    Node {
+                        name: "Book 1".to_string(),
+                        rel_path: "Series/Book 1".to_string(),
+                        directly_holds_audio: true,
+                        missing_ebook: false,
+                        children: Vec::new(),
+                        cover_files: Vec::new(),
+                        audio_files: Vec::new(),
+                    },
+                    Node {
+                        name: "Book 2".to_string(),
+                        rel_path: "Series/Book 2".to_string(),
+                        directly_holds_audio: true,
+                        missing_ebook: false,
+                        children: Vec::new(),
+                        cover_files: Vec::new(),
+                        audio_files: Vec::new(),
+                    },
+                    Node {
+                        name: "Book 10".to_string(),
+                        rel_path: "Series/Book 10".to_string(),
+                        directly_holds_audio: true,
+                        missing_ebook: false,
+                        children: Vec::new(),
+                        cover_files: Vec::new(),
+                        audio_files: Vec::new(),
+                    },
+                ],
+                cover_files: vec!["Series.epub".to_string()],
+                audio_files: Vec::new(),
+            },
+        ];
+        assert_eq!(got, expected);
+    }
+
+    /// The unified `build` against a gaps-filtered input must match today's
+    /// `build` semantics: only flagged subtrees survive, intermediate containers
+    /// above kept gaps are inferred with `directly_holds_audio = false,
+    /// missing_ebook = true`, and order is the same natural-sorted forest.
+    #[test]
+    fn unified_build_matches_today_build_for_a_gaps_input() {
+        let folders = [
+            sf("", false, true),
+            sf("AuthorA", false, true),
+            sf_audio("AuthorA/Book 2", &["01.mp3"]),
+            sf_audio("AuthorA/Book 10", &["01.mp3"]),
+            sf_cov("Series", false, false, &["Series.epub"]),
+            sf("Series/Book 1", true, false), // covered, dropped by the filter
+        ];
+        let flagged_input: Vec<ScannedFolder> = folders
+            .iter()
+            .filter(|f| f.directly_holds_audio && f.missing_ebook)
+            .cloned()
+            .collect();
+        let unified = build("Audiobooks", &flagged_input);
+        let expected = vec![Node {
+            name: "AuthorA".to_string(),
+            rel_path: "AuthorA".to_string(),
+            directly_holds_audio: false,
+            missing_ebook: true,
+            children: vec![
+                Node {
+                    name: "Book 2".to_string(),
+                    rel_path: "AuthorA/Book 2".to_string(),
+                    directly_holds_audio: true,
+                    missing_ebook: true,
+                    children: Vec::new(),
+                    cover_files: Vec::new(),
+                    audio_files: vec!["01.mp3".to_string()],
+                },
+                Node {
+                    name: "Book 10".to_string(),
+                    rel_path: "AuthorA/Book 10".to_string(),
+                    directly_holds_audio: true,
+                    missing_ebook: true,
+                    children: Vec::new(),
+                    cover_files: Vec::new(),
+                    audio_files: vec!["01.mp3".to_string()],
+                },
+            ],
+            cover_files: Vec::new(),
+            audio_files: Vec::new(),
+        }];
+        assert_eq!(unified, expected);
     }
 
     #[test]

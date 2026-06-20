@@ -1,8 +1,9 @@
 //! Synthetic shape sweep over the tree builders. Generates `Vec<ScannedFolder>`
 //! in memory, then times the gaps render (`reduce_to_flagged` + `tree::build`)
-//! and the full render (`tree::build_all`) across a small grid of total folders,
-//! depth, fanout, and gap rate. No filesystem, no network: this isolates the
-//! render cost the unified-cache rework moves onto the request path.
+//! and the full render (`tree::build` over the unfiltered input) across a small
+//! grid of total folders, depth, fanout, and gap rate. No filesystem, no
+//! network: this isolates the render cost the unified-cache rework moves onto
+//! the request path.
 //!
 //! `cargo run --release --example tree_bench` runs the default sweep and prints
 //! one row per shape combination. CLI flags pin individual axes for ad hoc
@@ -235,13 +236,13 @@ fn run_shape(total: usize, depth: usize, fanout: usize, gap_rate: f64, iteration
 
     for _ in 0..iterations {
         let gaps_start = Instant::now();
-        let flagged = scanner::reduce_to_flagged(folders.clone());
+        let flagged = scanner::reduce_to_flagged(&folders);
         let forest = tree::build(root_name, &flagged);
         gaps_samples.push(round3(gaps_start.elapsed().as_secs_f64() * 1000.0));
         std::hint::black_box(&forest);
 
         let all_start = Instant::now();
-        let forest = tree::build_all(root_name, &folders);
+        let forest = tree::build(root_name, &folders);
         all_samples.push(round3(all_start.elapsed().as_secs_f64() * 1000.0));
         std::hint::black_box(&forest);
     }

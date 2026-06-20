@@ -291,7 +291,7 @@ fn mount_for_path(mounts: &str, path: &Path) -> Option<(String, String)> {
 /// and entry totals from the walk itself. `gaps` and `audio_files` are derived
 /// from the result after the clock stops. `tree_build_ms` is the wall time of the
 /// per-mode render (`reduce_to_flagged` then `tree::build` for gaps, direct
-/// `tree::build_all` for full, incremental matches its underlying mode), timed
+/// `tree::build` for full, incremental matches its underlying mode), timed
 /// after the walk so it does not inflate the walk number.
 struct WalkCounts {
     stats: WalkStats,
@@ -542,7 +542,7 @@ fn time_reuse_walk(
     let (folders, stats) = scanner::scan_all_incremental_with_stats(root, settings, index);
     let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
     let render_start = Instant::now();
-    let flagged = scanner::reduce_to_flagged(folders);
+    let flagged = scanner::reduce_to_flagged(&folders);
     let forest = tree::build(root_name(root), &flagged);
     let tree_build_ms = round3(render_start.elapsed().as_secs_f64() * 1000.0);
     let audio_files: usize = flagged.iter().map(|f| f.audio_files.len()).sum();
@@ -574,7 +574,7 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
                 .count();
             let audio_files = folders.iter().map(|f| f.audio_files.len()).sum();
             let render_start = Instant::now();
-            let forest = tree::build_all(root_name(root), &folders);
+            let forest = tree::build(root_name(root), &folders);
             let tree_build_ms = round3(render_start.elapsed().as_secs_f64() * 1000.0);
             std::hint::black_box(&forest);
             (
@@ -592,7 +592,7 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
             let (folders, stats) = scanner::scan_all_with_stats(root, settings);
             let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
             let render_start = Instant::now();
-            let flagged = scanner::reduce_to_flagged(folders);
+            let flagged = scanner::reduce_to_flagged(&folders);
             let forest = tree::build(root_name(root), &flagged);
             let tree_build_ms = round3(render_start.elapsed().as_secs_f64() * 1000.0);
             let audio_files: usize = flagged.iter().map(|f| f.audio_files.len()).sum();

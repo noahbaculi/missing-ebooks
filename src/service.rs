@@ -505,7 +505,7 @@ fn scan_root(
 
     let state = match mode {
         ViewMode::GapsOnly => {
-            let flagged = scanner::reduce_to_flagged(folders);
+            let flagged = scanner::reduce_to_flagged(&folders);
             let forest = tree::build(root_name, &flagged);
             if forest.is_empty() {
                 RootState::Clean
@@ -514,9 +514,9 @@ fn scan_root(
             }
         }
         // Show-all always yields a Forest, even an empty one. "Clean" is a
-        // gaps-only idea, so an all-mode root shows its full structure or an empty
-        // forest the renderer labels "nothing here".
-        ViewMode::All => RootState::Forest(tree::build_all(root_name, &folders)),
+        // gaps-only idea, so an all-mode root shows its full structure or an
+        // empty forest the renderer labels "nothing here".
+        ViewMode::All => RootState::Forest(tree::build(root_name, &folders)),
     };
     RootSection {
         path: canonical.display().to_string(),

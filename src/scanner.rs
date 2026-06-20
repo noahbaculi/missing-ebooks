@@ -129,17 +129,6 @@ fn classify_file(name: &OsStr, settings: &ScanSettings) -> FileKind {
     }
 }
 
-/// One flagged folder from the gaps-only walk: its path relative to the root and the
-/// audio filenames it directly holds, natural-sorted. `tree::build` consumes it. The
-/// empty relative path is the loose-root case (see ADR-0005).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FlaggedFolder {
-    /// The folder's path relative to the walked root.
-    pub rel_path: PathBuf,
-    /// Audio filenames that physically sit in this folder, natural-sorted.
-    pub audio_files: Vec<String>,
-}
-
 /// Counts from one walk: the directory and entry totals that drive wall time on a
 /// network mount, where each is roughly a round trip. The scanner records them so a
 /// benchmark can divide its timings without re-walking. Production ignores them.
@@ -217,41 +206,38 @@ impl DirIndex {
     }
 }
 
-/// Walk `root` and return flagged folders, each with the audio filenames it holds,
-/// as paths relative to `root`. A flagged folder directly holds audio and is not
-/// covered; this filters the full walk, since coverage pruning saves nothing on a
-/// flat, wide library (see benchmarks/README.md). Order is unspecified; the tree
-/// builder sorts.
+/// Walk `root` and return the flagged folders, derived by filtering the full
+/// walk. A flagged folder directly holds audio and is not covered; coverage
+/// pruning saves nothing on a flat, wide library (see benchmarks/README.md).
+/// Order is unspecified; the tree builder sorts.
 #[must_use]
-pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<FlaggedFolder> {
+pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<ScannedFolder> {
     scan_with_stats(root, settings).0
 }
 
 /// Reduce a full walk's folders to the flagged gaps: those that directly hold
-/// audio and lack coverage.
+/// audio and lack coverage. Each kept entry is a clone of the original
+/// `ScannedFolder` with every fact intact, so the unified tree builder consumes
+/// it directly. Borrowing input lets the per-request render path filter the
+/// cached raw view without deep-cloning the whole `Vec`.
 #[must_use]
-pub fn reduce_to_flagged(folders: Vec<ScannedFolder>) -> Vec<FlaggedFolder> {
+pub fn reduce_to_flagged(folders: &[ScannedFolder]) -> Vec<ScannedFolder> {
     folders
-        .into_iter()
+        .iter()
         .filter(|f| f.directly_holds_audio && f.missing_ebook)
-        .map(|f| FlaggedFolder {
-            rel_path: f.rel_path,
-            audio_files: f.audio_files,
-        })
+        .cloned()
         .collect()
 }
 
-/// Like `scan`, but also returns the walk's counts. Runs the one full walk and
-/// reduces it to flagged folders, so the gaps view and the full view read the same
-/// directories.
+/// Like `scan`, but also returns the walk's counts.
 #[must_use]
-pub fn scan_with_stats(root: &Path, settings: &ScanSettings) -> (Vec<FlaggedFolder>, WalkStats) {
+pub fn scan_with_stats(root: &Path, settings: &ScanSettings) -> (Vec<ScannedFolder>, WalkStats) {
     let (folders, stats) = scan_all_with_stats(root, settings);
-    (reduce_to_flagged(folders), stats)
+    (reduce_to_flagged(&folders), stats)
 }
 
 /// One folder from a full walk, tagged with both facts. `scan_all` produces a
-/// `Vec<ScannedFolder>` that `tree::build_all` consumes. The root walked is the
+/// `Vec<ScannedFolder>` that `tree::build` consumes. The root walked is the
 /// empty relative path (see ADR-0005), as `scan` spells the loose-root case.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScannedFolder {
@@ -308,9 +294,9 @@ pub fn scan_incremental_with_stats(
     root: &Path,
     settings: &ScanSettings,
     index: &mut DirIndex,
-) -> (Vec<FlaggedFolder>, WalkStats) {
+) -> (Vec<ScannedFolder>, WalkStats) {
     let (folders, stats) = scan_all_incremental_with_stats(root, settings, index);
-    (reduce_to_flagged(folders), stats)
+    (reduce_to_flagged(&folders), stats)
 }
 
 /// The level-synchronous breadth-first walk shared by the incremental and
@@ -603,7 +589,7 @@ mod tests {
     /// Run the gaps walk forced onto a pool of exactly `threads` workers, returning
     /// the full flagged Vec so a test can compare order and per-folder file lists,
     /// not just the flagged set.
-    fn scan_on_pool(root: &Path, settings: &ScanSettings, threads: usize) -> Vec<FlaggedFolder> {
+    fn scan_on_pool(root: &Path, settings: &ScanSettings, threads: usize) -> Vec<ScannedFolder> {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(threads)
             .build()
