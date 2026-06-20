@@ -646,8 +646,11 @@ pub(crate) fn render_section(
                 @match &section.state {
                     RootState::Forest(nodes) => {
                         @if nodes.is_empty() {
-                            // Show-all yields an empty forest only for a root with no
-                            // folders at all. Gaps-only sets Clean instead.
+                            // The normal empty-root path is RawRootState::Clean,
+                            // rendered as the Clean arm below. This arm is reached
+                            // only for the loose-root edge case where the walk
+                            // emits one entry with rel_path = "", which tree::build
+                            // skips because insert_all has no components to descend.
                             div.empty { span { "Nothing here" } }
                         } @else {
                             ul.menu {

@@ -124,7 +124,7 @@ fn insert_all(
                 name: head.clone(),
                 rel_path: rel_path.clone(),
                 // Placeholder facts, overwritten when this folder's own entry is
-                // processed. `scan_all` emits every folder, so that always happens.
+                // processed. `scan` emits every folder, so that always happens.
                 // A plain container is the safe neutral if it somehow were not.
                 directly_holds_audio: false,
                 missing_ebook: true,
