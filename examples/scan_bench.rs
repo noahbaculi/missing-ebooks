@@ -24,6 +24,7 @@ use std::time::Instant;
 
 use missing_ebooks::config::Config;
 use missing_ebooks::scanner::{self, ScanSettings, WalkStats};
+use missing_ebooks::tree;
 use serde::Serialize;
 
 /// Round to three decimals so the report and stdout stay readable. Sub-millisecond
@@ -287,18 +288,22 @@ fn mount_for_path(mounts: &str, path: &Path) -> Option<(String, String)> {
 }
 
 /// What one walk found: the counts the report records. `stats` holds the directory
-/// and entry totals from the walk itself. `gaps` and `audio_files` are derived from
-/// the result after the clock stops.
+/// and entry totals from the walk itself. `gaps` and `audio_files` are derived
+/// from the result after the clock stops. `tree_build_ms` is the wall time of the
+/// per-mode render (`reduce_to_flagged` then `tree::build` for gaps, direct
+/// `tree::build_all` for full, incremental matches its underlying mode), timed
+/// after the walk so it does not inflate the walk number.
 struct WalkCounts {
     stats: WalkStats,
     gaps: usize,
     audio_files: usize,
+    tree_build_ms: f64,
 }
 
 /// The report schema version, bumped when the JSON shape changes so a directory of
 /// mixed-vintage reports stays parseable. Schema 3 adds the `incremental` mode: a
 /// single-level entry carrying `dirs_reused`, absent on the `full` and `gaps` modes.
-const SCHEMA_VERSION: u32 = 3;
+const SCHEMA_VERSION: u32 = 4;
 
 /// The whole run: environment context plus one entry per root.
 #[derive(Debug, Serialize)]
@@ -345,6 +350,9 @@ struct LevelReport {
     audio_files: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     dirs_reused: Option<usize>,
+    /// Wall time of the per-mode render that runs after the walk, in milliseconds.
+    /// Zero in vintage reports (schema_version < 4); always present from v4 on.
+    tree_build_ms: f64,
     cold: Option<PhaseReport>,
     warm: PhaseReport,
 }
@@ -493,10 +501,11 @@ fn run_incremental(
 
     println!(
         "  mode=incremental  concurrency={threads}  dirs_visited={}  dirs_reused={}  \
-         entries_seen={}  (index {} dirs)",
+         entries_seen={}  tree_build_ms={}  (index {} dirs)",
         last.stats.dirs_visited,
         last.stats.dirs_reused,
         last.stats.entries_seen,
+        last.tree_build_ms,
         index.len()
     );
     if let Some(cold) = &cold {
@@ -512,6 +521,7 @@ fn run_incremental(
             gaps: last.gaps,
             audio_files: last.audio_files,
             dirs_reused: Some(last.stats.dirs_reused),
+            tree_build_ms: last.tree_build_ms,
             cold,
             warm,
         }],
@@ -528,64 +538,84 @@ fn time_reuse_walk(
     settings: &ScanSettings,
     index: &mut scanner::DirIndex,
 ) -> (f64, WalkCounts) {
-    let start = Instant::now();
+    let walk_start = Instant::now();
     let (folders, stats) = scanner::scan_all_incremental_with_stats(root, settings, index);
-    let ms = round3(start.elapsed().as_secs_f64() * 1000.0);
-    let gaps = folders
-        .iter()
-        .filter(|f| f.directly_holds_audio && f.missing_ebook)
-        .count();
-    let audio_files = folders.iter().map(|f| f.audio_files.len()).sum();
+    let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
+    let render_start = Instant::now();
+    let flagged = scanner::reduce_to_flagged(folders);
+    let forest = tree::build(root_name(root), &flagged);
+    let tree_build_ms = round3(render_start.elapsed().as_secs_f64() * 1000.0);
+    let audio_files: usize = flagged.iter().map(|f| f.audio_files.len()).sum();
+    std::hint::black_box(&forest);
     (
-        ms,
+        walk_ms,
         WalkCounts {
             stats,
-            gaps,
+            gaps: flagged.len(),
             audio_files,
+            tree_build_ms,
         },
     )
 }
 
-/// Time one read-only walk and tally what it found. Only the walk sits inside the
-/// `Instant`. The gap and audio counts are derived after the clock stops, so the
-/// tally never inflates the measured wall-clock.
+/// Time one read-only walk and the per-mode render that follows it. Only the walk
+/// sits inside the first `Instant`; the render is timed separately, so the walk
+/// number stays comparable across schema versions. The `gaps` and `audio_files`
+/// tallies are derived after both clocks stop.
 fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCounts) {
     match mode {
         Mode::Full => {
-            let start = Instant::now();
+            let walk_start = Instant::now();
             let (folders, stats) = scanner::scan_all_with_stats(root, settings);
-            let ms = round3(start.elapsed().as_secs_f64() * 1000.0);
+            let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
             let gaps = folders
                 .iter()
                 .filter(|f| f.directly_holds_audio && f.missing_ebook)
                 .count();
             let audio_files = folders.iter().map(|f| f.audio_files.len()).sum();
+            let render_start = Instant::now();
+            let forest = tree::build_all(root_name(root), &folders);
+            let tree_build_ms = round3(render_start.elapsed().as_secs_f64() * 1000.0);
+            std::hint::black_box(&forest);
             (
-                ms,
+                walk_ms,
                 WalkCounts {
                     stats,
                     gaps,
                     audio_files,
+                    tree_build_ms,
                 },
             )
         }
         Mode::Gaps => {
-            let start = Instant::now();
-            let (flagged, stats) = scanner::scan_with_stats(root, settings);
-            let ms = round3(start.elapsed().as_secs_f64() * 1000.0);
-            let audio_files = flagged.iter().map(|f| f.audio_files.len()).sum();
+            let walk_start = Instant::now();
+            let (folders, stats) = scanner::scan_all_with_stats(root, settings);
+            let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
+            let render_start = Instant::now();
+            let flagged = scanner::reduce_to_flagged(folders);
+            let forest = tree::build(root_name(root), &flagged);
+            let tree_build_ms = round3(render_start.elapsed().as_secs_f64() * 1000.0);
+            let audio_files: usize = flagged.iter().map(|f| f.audio_files.len()).sum();
+            std::hint::black_box(&forest);
             (
-                ms,
+                walk_ms,
                 WalkCounts {
                     stats,
                     gaps: flagged.len(),
                     audio_files,
+                    tree_build_ms,
                 },
             )
         }
         // Incremental is routed to run_incremental before any phase calls this.
         Mode::Incremental => unreachable!("incremental mode does not use time_walk"),
     }
+}
+
+/// The root's directory name as the tree builder expects it, or "." when the path
+/// has no file name (the canonical root, the unusual case the bench guards against).
+fn root_name(root: &Path) -> &str {
+    root.file_name().and_then(|n| n.to_str()).unwrap_or(".")
 }
 
 /// Cold phase: drop the cache before each of `iterations` runs, so every sample
@@ -789,13 +819,15 @@ fn main() -> ExitCode {
                     pool.install(|| warm_phase(mode, &canonical, &settings, args.iterations));
 
                 println!(
-                    "  mode={} concurrency={}  dirs_visited={}  entries_seen={}  gaps={}  audio_files={}",
+                    "  mode={} concurrency={}  dirs_visited={}  entries_seen={}  gaps={}  \
+                     audio_files={}  tree_build_ms={}",
                     mode.label(),
                     threads,
                     counts.stats.dirs_visited,
                     counts.stats.entries_seen,
                     counts.gaps,
-                    counts.audio_files
+                    counts.audio_files,
+                    counts.tree_build_ms
                 );
                 if let Some(cold) = &cold {
                     println!("{}", fmt_phase("cold", cold));
@@ -809,6 +841,7 @@ fn main() -> ExitCode {
                     gaps: counts.gaps,
                     audio_files: counts.audio_files,
                     dirs_reused: None,
+                    tree_build_ms: counts.tree_build_ms,
                     cold,
                     warm,
                 });
@@ -902,6 +935,30 @@ mod tests {
         let p = phase_report(&[10.0, 20.0], 0);
         assert_eq!(p.median_ms, 15.0);
         assert_eq!(p.ms_per_dir, None);
+    }
+
+    #[test]
+    fn level_report_records_tree_build_ms() {
+        let p = phase_report(&[10.0, 20.0, 30.0], 10);
+        let level = LevelReport {
+            concurrency: 16,
+            dirs_visited: 10,
+            entries_seen: 100,
+            gaps: 1,
+            audio_files: 5,
+            dirs_reused: None,
+            tree_build_ms: 0.42,
+            cold: None,
+            warm: p,
+        };
+        let json = serde_json::to_value(&level).unwrap();
+        assert_eq!(json["tree_build_ms"], serde_json::json!(0.42));
+    }
+
+    #[test]
+    fn schema_version_is_at_least_four() {
+        // Bumped from 3 with the tree_build_ms column.
+        const { assert!(SCHEMA_VERSION >= 4) };
     }
 
     #[test]
@@ -1154,9 +1211,10 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         assert_eq!(reuse.stats.dirs_visited, 3); // root, Gap, Covered
         assert_eq!(reuse.stats.dirs_reused, 3);
         assert_eq!(reuse.stats.entries_seen, 0);
-        // One gap (Gap/), and both folders' audio is tallied from the cached facts.
+        // One gap (Gap/); the audio tally is the gaps-render sum, so only Gap's
+        // file counts even though Covered's audio sits in the cached facts.
         assert_eq!(reuse.gaps, 1);
-        assert_eq!(reuse.audio_files, 2);
+        assert_eq!(reuse.audio_files, 1);
     }
 
     #[test]
@@ -1168,6 +1226,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             gaps: 1,
             audio_files: 3,
             dirs_reused: None,
+            tree_build_ms: 0.0,
             cold: None,
             warm: phase_report(&[10.0, 20.0], 3),
         }];
@@ -1178,6 +1237,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             gaps: 1,
             audio_files: 3,
             dirs_reused: Some(3),
+            tree_build_ms: 0.0,
             cold: None,
             warm: phase_report(&[1.0, 2.0], 3),
         }];
@@ -1212,7 +1272,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             }],
         };
         let json = serde_json::to_string(&report).unwrap();
-        assert!(json.contains("\"schema_version\":3"));
+        assert!(json.contains("\"schema_version\":4"));
         assert!(json.contains("\"tool\":\"scan_bench\""));
         assert!(json.contains("\"levels\""));
         assert!(json.contains("\"concurrency\":16"));
