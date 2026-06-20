@@ -1,10 +1,10 @@
 //! The demo's axum router and handlers. Handlers reuse the production `page`,
-//! `render_section`, `apply_mark`, and `apply_mark_all` from the library, plus
+//! `render_section`, `apply_mark_raw`, and `render_view` from the library, plus
 //! the static-asset handlers. A visitor is pinned to an in-memory session by a
-//! cookie; their marks are replayed on top of the shared base view per request.
-//! The full index page carries the demo banner; the `/mark` partial does not.
+//! cookie; their marks are replayed on top of the shared raw view per request,
+//! then rendered for the requested mode. The full index page carries the demo
+//! banner; the `/mark` partial does not.
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -14,7 +14,8 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 
-use crate::service::{FlaggedView, ViewMode, apply_mark, apply_mark_all};
+use crate::service::{FlaggedView, ViewMode, apply_mark_raw, render_view};
+use crate::state::RawView;
 use crate::web::{MarkRequest, ViewQuery, app_css, htmx_script, page, render_section};
 
 use super::banner;
@@ -116,26 +117,24 @@ fn resolve_in_store(
     }
 }
 
-/// Derive one session's view for a mode: replay the session's marks on top of the
-/// shared base. With no marks there is nothing to replay, so the base is borrowed
-/// rather than cloned; otherwise the base is cloned and the overlay mutates the
-/// clone. A mark naming an out-of-range root is skipped defensively; an unmatched
-/// `rel` is a no-op inside the overlay functions.
-fn derive_view<'a>(base: &'a FlaggedView, marks: &[Mark], mode: ViewMode) -> Cow<'a, FlaggedView> {
+/// Derive one session's rendered view for a mode: clone the shared raw view,
+/// replay every session mark via `apply_mark_raw`, then render. With no marks
+/// the clone-and-render still runs because per-request rendering is the new
+/// baseline; the per-request cost is bounded (see ADR-0022). A mark naming an
+/// out-of-range root is skipped defensively; an unmatched `rel` is a no-op
+/// inside `apply_mark_raw`.
+fn derive_view(base: &RawView, marks: &[Mark], mode: ViewMode) -> FlaggedView {
     if marks.is_empty() {
-        return Cow::Borrowed(base);
+        return render_view(base, mode);
     }
-    let mut view = base.to_vec();
+    let mut raw = base.clone();
     for mark in marks {
-        let Some(section) = view.get_mut(mark.root) else {
+        if mark.root >= raw.len() {
             continue;
-        };
-        match mode {
-            ViewMode::GapsOnly => apply_mark(section, &mark.rel),
-            ViewMode::All => apply_mark_all(section, &mark.rel, mark.kind),
         }
+        apply_mark_raw(&mut raw, mark.root, &mark.rel, mark.kind);
     }
-    Cow::Owned(view)
+    render_view(&raw, mode)
 }
 
 /// The 503 at-capacity response.
@@ -159,7 +158,7 @@ async fn index(
     let Some((set_cookie, marks)) = resolved else {
         return capacity_response();
     };
-    let view = derive_view(state.base(mode), &marks, mode);
+    let view = derive_view(state.base_raw(), &marks, mode);
     let html = page(&view, &state.search_links, mode).into_string();
     let mut response = Html(banner::inject(&html, mode)).into_response();
     if let Some(cookie) = set_cookie {
@@ -201,7 +200,7 @@ async fn mark(
     let Some((set_cookie, marks)) = resolved else {
         return capacity_response();
     };
-    let view = derive_view(state.base(mode), &marks, mode);
+    let view = derive_view(state.base_raw(), &marks, mode);
     let markup = render_section(&view[req.root], req.root, None, &state.search_links, mode);
     let mut response = Html(markup.into_string()).into_response();
     if let Some(cookie) = set_cookie {
@@ -594,24 +593,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn derive_view_borrows_when_there_are_no_marks() {
+    async fn derive_view_with_no_marks_matches_render_view_of_the_base() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
-        let base = state.base(ViewMode::GapsOnly);
 
-        // No marks means nothing to replay, so the base is borrowed, not cloned.
-        let empty = derive_view(base, &[], ViewMode::GapsOnly);
-        assert!(matches!(empty, Cow::Borrowed(_)));
+        let plain = render_view(state.base_raw(), ViewMode::GapsOnly);
+        let derived = derive_view(state.base_raw(), &[], ViewMode::GapsOnly);
+        assert_eq!(
+            serde_json::to_value(&plain).unwrap(),
+            serde_json::to_value(&derived).unwrap(),
+            "with no marks, derive_view must match a direct render"
+        );
 
-        // One mark forces a clone so the overlay has something of its own to mutate.
         let marks = [Mark {
             root: 0,
             rel: "Book".to_string(),
             kind: Marker::NoEbook,
         }];
-        let owned = derive_view(base, &marks, ViewMode::GapsOnly);
-        assert!(matches!(owned, Cow::Owned(_)));
+        let after = derive_view(state.base_raw(), &marks, ViewMode::GapsOnly);
+        let after_json = serde_json::to_value(&after).unwrap();
+        let plain_json = serde_json::to_value(&plain).unwrap();
+        assert_ne!(
+            after_json, plain_json,
+            "replaying a mark must change the view"
+        );
     }
 
     #[test]

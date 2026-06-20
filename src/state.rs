@@ -1,7 +1,8 @@
 //! Application state: the immutable `Arc<Config>` and compiled `Arc<ScanSettings>`,
-//! plus a TTL-memoized scan cache behind one mutex. The cache is filled on the
-//! first read and refreshed by the TTL or a rescan; a marker write updates the
-//! stored view in place rather than rewalking (see docs/adr/0002-v1-runtime-write-model.md).
+//! plus a TTL-memoized scan cache behind one mutex. The cache stores the raw
+//! per-root walk output and the response renders per `ViewMode` on each read
+//! (see ADR-0022); a marker write updates the stored raw view in place rather
+//! than rewalking (see docs/adr/0002-v1-runtime-write-model.md).
 
 use std::future::Future;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -10,8 +11,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 use crate::config::Config;
-use crate::scanner::{DirIndex, ScanSettings};
-use crate::service::{FlaggedView, RootSection, ViewMode};
+use crate::scanner::{DirIndex, ScanSettings, ScannedFolder};
 
 /// Everything a request handler needs: the immutable config and settings, and
 /// the scan cache. Shared as `Arc<AppState>`.
@@ -24,172 +24,149 @@ pub struct AppState {
     pub(crate) cache: Cache,
 }
 
-/// The two scan slots and the staleness window, behind one mutex so a marker
-/// write and a TTL rescan cannot interleave (see ADR-0002). A `None` TTL disables
-/// caching (every read rescans).
+/// The result of scanning one root, in raw form: enough to render either view
+/// without re-walking.
+#[derive(Debug, Clone)]
+pub struct RawRootSection {
+    /// The canonical root path when it resolved, else the configured path.
+    pub path: String,
+    /// What the scan found for this root.
+    pub state: RawRootState,
+}
+
+/// Per-root state held by the cache. `Walked` carries the full
+/// `Vec<ScannedFolder>` the scanner emitted; the response reduces it per mode.
+/// `Clean` is stored when the walk produced no entries at all so a render
+/// decision does not have to inspect an empty `Vec`. `Error` carries the
+/// scanner's message for a root that could not be canonicalized or was not a
+/// directory.
+#[derive(Debug, Clone)]
+pub enum RawRootState {
+    /// The scan completed and produced no entries to render.
+    Clean,
+    /// The scan completed; render the gaps or show-all view from these folders.
+    Walked(Vec<ScannedFolder>),
+    /// The scan failed; the message is surfaced in the response.
+    Error(String),
+}
+
+/// The whole raw view: one section per configured library root, in config order.
+pub type RawView = Vec<RawRootSection>;
+
+/// The cache: one raw slot and the staleness window, behind one mutex so a
+/// marker write and a TTL rescan cannot interleave (see ADR-0002). A `None` TTL
+/// disables caching (every read rescans). `entries` is `pub(crate)` so the
+/// service-layer tests can peek at the stored Arc to verify a render did not
+/// reseat it; no production code reaches in past the methods.
 pub(crate) struct Cache {
-    entries: Mutex<ModeSlots>,
+    pub(crate) entries: Mutex<Option<CacheEntry>>,
     ttl: Option<Duration>,
 }
 
-/// One cache entry per view mode. A slot is `None` until a viewer first asks for
-/// that mode; the `all` slot stays cold, and pays no full walk, until then.
-struct ModeSlots {
-    gaps_only: Option<CacheEntry>,
-    all: Option<CacheEntry>,
+/// A stored raw view and the instant it was scanned.
+pub(crate) struct CacheEntry {
+    pub(crate) stored_at: Instant,
+    pub(crate) raw: Arc<RawView>,
 }
 
-impl ModeSlots {
-    fn slot(&mut self, mode: ViewMode) -> &mut Option<CacheEntry> {
-        match mode {
-            ViewMode::GapsOnly => &mut self.gaps_only,
-            ViewMode::All => &mut self.all,
-        }
-    }
-}
-
-/// Stamp and store a freshly built view in a slot. The single place that sets
+/// Stamp and store a freshly built raw view. The single place that sets
 /// `stored_at = now`: a fresh build refreshes the freshness clock (ADR-0002).
-fn store_fresh(slot: &mut Option<CacheEntry>, view: FlaggedView) -> Arc<FlaggedView> {
-    let view = Arc::new(view);
+fn store_fresh(slot: &mut Option<CacheEntry>, raw: RawView) -> Arc<RawView> {
+    let raw = Arc::new(raw);
     *slot = Some(CacheEntry {
         stored_at: Instant::now(),
-        view: Arc::clone(&view),
+        raw: Arc::clone(&raw),
     });
-    view
-}
-
-/// The write-path tail: return the requested mode's warm slot, or build it fresh
-/// when it is cold. The `if let … return` form keeps the read borrow from
-/// overlapping the later write.
-async fn return_or_build<F, Fut>(
-    slots: &mut ModeSlots,
-    mode: ViewMode,
-    build: F,
-) -> Arc<FlaggedView>
-where
-    F: FnOnce() -> Fut,
-    Fut: Future<Output = FlaggedView>,
-{
-    if let Some(entry) = slots.slot(mode).as_ref() {
-        return Arc::clone(&entry.view);
-    }
-    let view = build().await;
-    store_fresh(slots.slot(mode), view)
+    raw
 }
 
 impl Cache {
-    /// Return the cached view for `mode` if it is still fresh, otherwise build one
-    /// under the lock and store it. Single-flight: the lock is held across `build`.
-    pub(crate) async fn get_or_build<F, Fut>(&self, mode: ViewMode, build: F) -> Arc<FlaggedView>
+    /// Return the cached raw view if it is still fresh, otherwise build one
+    /// under the lock and store it. Single-flight: the lock is held across
+    /// `build`.
+    pub(crate) async fn get_or_build<F, Fut>(&self, build: F) -> Arc<RawView>
     where
         F: FnOnce() -> Fut,
-        Fut: Future<Output = FlaggedView>,
+        Fut: Future<Output = RawView>,
     {
-        let mut slots = self.entries.lock().await;
-        if let Some(entry) = slots.slot(mode).as_ref()
+        let mut slot = self.entries.lock().await;
+        if let Some(entry) = slot.as_ref()
             && let Some(ttl) = self.ttl
             && entry.stored_at.elapsed() < ttl
         {
-            tracing::debug!(mode = mode.as_query(), "cache hit");
-            return Arc::clone(&entry.view);
+            tracing::debug!("cache hit");
+            return Arc::clone(&entry.raw);
         }
-        tracing::debug!(mode = mode.as_query(), "cache miss");
-        let view = build().await;
-        store_fresh(slots.slot(mode), view)
+        tracing::debug!("cache miss");
+        let raw = build().await;
+        store_fresh(&mut slot, raw)
     }
 
-    /// Build a fresh view for `mode` under the lock and store it, ignoring the TTL.
-    pub(crate) async fn rebuild<F, Fut>(&self, mode: ViewMode, build: F) -> Arc<FlaggedView>
+    /// Build a fresh raw view under the lock and store it, ignoring the TTL.
+    pub(crate) async fn rebuild<F, Fut>(&self, build: F) -> Arc<RawView>
     where
         F: FnOnce() -> Fut,
-        Fut: Future<Output = FlaggedView>,
+        Fut: Future<Output = RawView>,
     {
-        let mut slots = self.entries.lock().await;
-        let view = build().await;
-        store_fresh(slots.slot(mode), view)
+        let mut slot = self.entries.lock().await;
+        let raw = build().await;
+        store_fresh(&mut slot, raw)
     }
 
-    /// Apply a marker write to both slots under one lock, then return the view for
-    /// the requesting `mode`. Each warm slot is edited in place by its own closure
-    /// (`edit_gaps` removes the marked subtree, `edit_all` covers it), leaving
-    /// `stored_at` untouched so the TTL still fires on schedule (ADR-0002). A cold
-    /// slot is left cold, except the requested one: when it is cold there is
-    /// nothing to return, so it is built fresh (which already reflects the marker
-    /// on disk).
-    pub(crate) async fn edit_both_or_build<EG, EA, F, Fut>(
-        &self,
-        mode: ViewMode,
-        edit_gaps: EG,
-        edit_all: EA,
-        build: F,
-    ) -> Arc<FlaggedView>
+    /// Apply a marker write to the raw slot under one lock, then return the new
+    /// raw view. `Arc::make_mut` mutates the stored view in place when this
+    /// task holds the only `Arc`, and clones it on write when a concurrent
+    /// reader is still holding a snapshot; either way the reader keeps its
+    /// pre-edit data and this task observes the edit. `stored_at` is left
+    /// untouched so the TTL still fires on schedule (ADR-0002). A cold slot
+    /// has nothing to edit, so it builds fresh; the fresh build already
+    /// reflects the marker on disk and is returned unedited.
+    pub(crate) async fn apply_marker_or_build<E, F, Fut>(&self, edit: E, build: F) -> Arc<RawView>
     where
-        EG: FnOnce(&mut FlaggedView),
-        EA: FnOnce(&mut FlaggedView),
+        E: FnOnce(&mut RawView),
         F: FnOnce() -> Fut,
-        Fut: Future<Output = FlaggedView>,
+        Fut: Future<Output = RawView>,
     {
-        let mut slots = self.entries.lock().await;
-        if let Some(entry) = slots.gaps_only.as_mut() {
-            let mut view = (*entry.view).clone();
-            edit_gaps(&mut view);
-            entry.view = Arc::new(view);
+        let mut slot = self.entries.lock().await;
+        if let Some(entry) = slot.as_mut() {
+            let raw = Arc::make_mut(&mut entry.raw);
+            edit(raw);
+            return Arc::clone(&entry.raw);
         }
-        if let Some(entry) = slots.all.as_mut() {
-            let mut view = (*entry.view).clone();
-            edit_all(&mut view);
-            entry.view = Arc::new(view);
-        }
-        return_or_build(&mut slots, mode, build).await
+        let raw = build().await;
+        store_fresh(&mut slot, raw)
     }
 
-    /// Rescan one root and replace its section in each warm slot, under one lock,
+    /// Rescan one root and replace its section in the raw slot, under one lock,
     /// leaving `stored_at` untouched so the TTL still fires on schedule. Used by
-    /// undo: a marker delete can re-flag a subtree, and the cached view discarded
-    /// that structure when it marked, so the section is rebuilt by a fresh per-root
-    /// scan rather than edited in place. `rebuild_section` produces the section for
-    /// a given mode; a cold requested slot is built fresh with `build_full`.
-    pub(crate) async fn rebuild_root<RS, RsFut, B, BFut>(
+    /// undo: a marker delete can re-flag a subtree, and the in-place edit has
+    /// already mutated the cache, so the section is rebuilt by a fresh per-root
+    /// scan. A cold slot is built fresh from `build_full`.
+    pub(crate) async fn rebuild_root<RS, RsFut, F, Fut>(
         &self,
         root: usize,
-        mode: ViewMode,
-        mut rebuild_section: RS,
-        build_full: B,
-    ) -> Arc<FlaggedView>
+        rebuild_section: RS,
+        build_full: F,
+    ) -> Arc<RawView>
     where
-        RS: FnMut(ViewMode) -> RsFut,
-        RsFut: Future<Output = RootSection>,
-        B: FnOnce() -> BFut,
-        BFut: Future<Output = FlaggedView>,
+        RS: FnOnce() -> RsFut,
+        RsFut: Future<Output = RawRootSection>,
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = RawView>,
     {
-        let mut slots = self.entries.lock().await;
-        if slots.gaps_only.is_some() {
-            let section = rebuild_section(ViewMode::GapsOnly).await;
-            let entry = slots.gaps_only.as_mut().expect("checked is_some above");
-            let mut view = (*entry.view).clone();
-            if root < view.len() {
-                view[root] = section;
+        let mut slot = self.entries.lock().await;
+        if slot.is_some() {
+            let section = rebuild_section().await;
+            let entry = slot.as_mut().expect("checked is_some above");
+            let raw = Arc::make_mut(&mut entry.raw);
+            if root < raw.len() {
+                raw[root] = section;
             }
-            entry.view = Arc::new(view);
+            return Arc::clone(&entry.raw);
         }
-        if slots.all.is_some() {
-            let section = rebuild_section(ViewMode::All).await;
-            let entry = slots.all.as_mut().expect("checked is_some above");
-            let mut view = (*entry.view).clone();
-            if root < view.len() {
-                view[root] = section;
-            }
-            entry.view = Arc::new(view);
-        }
-        return_or_build(&mut slots, mode, build_full).await
+        let raw = build_full().await;
+        store_fresh(&mut slot, raw)
     }
-}
-
-/// A stored view and the instant it was scanned.
-pub(crate) struct CacheEntry {
-    pub(crate) stored_at: Instant,
-    pub(crate) view: Arc<FlaggedView>,
 }
 
 impl AppState {
@@ -209,10 +186,7 @@ impl AppState {
             settings: Arc::new(settings),
             dir_index,
             cache: Cache {
-                entries: Mutex::new(ModeSlots {
-                    gaps_only: None,
-                    all: None,
-                }),
+                entries: Mutex::new(None),
                 ttl,
             },
         }
@@ -222,189 +196,12 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::service::ViewMode;
-    use crate::service::{RootSection, RootState};
-
-    fn sample_view(tag: &str) -> FlaggedView {
-        vec![RootSection {
-            path: tag.to_string(),
-            state: RootState::Clean,
-        }]
-    }
 
     fn test_cache(ttl: Option<Duration>) -> Cache {
         Cache {
-            entries: Mutex::new(ModeSlots {
-                gaps_only: None,
-                all: None,
-            }),
+            entries: Mutex::new(None),
             ttl,
         }
-    }
-
-    #[tokio::test]
-    async fn get_or_build_returns_the_stored_view_within_ttl() {
-        let cache = test_cache(Some(Duration::from_secs(600)));
-        let first = cache
-            .get_or_build(ViewMode::GapsOnly, || async { sample_view("first") })
-            .await;
-        let second = cache
-            .get_or_build(ViewMode::GapsOnly, || async { sample_view("second") })
-            .await;
-        assert!(
-            Arc::ptr_eq(&first, &second),
-            "a fresh cache must not rebuild"
-        );
-        assert_eq!(second[0].path, "first");
-    }
-
-    #[tokio::test]
-    async fn the_two_slots_are_independent() {
-        let cache = test_cache(Some(Duration::from_secs(600)));
-        cache
-            .get_or_build(ViewMode::GapsOnly, || async { sample_view("gaps") })
-            .await;
-        // The all slot is cold, so it builds its own value, not the gaps one.
-        let all = cache
-            .get_or_build(ViewMode::All, || async { sample_view("all") })
-            .await;
-        assert_eq!(all[0].path, "all");
-    }
-
-    #[tokio::test]
-    async fn get_or_build_single_flights_a_cold_slot() {
-        // Two readers race a cold slot at once. The lock is held across build, so
-        // one builds and the other returns the stored view rather than building a
-        // second time. This is the guarantee the startup warm leans on to not
-        // double-scan a request that races it (see main.rs).
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        let cache = test_cache(Some(Duration::from_secs(600)));
-        let builds = AtomicUsize::new(0);
-        let build = || async {
-            builds.fetch_add(1, Ordering::SeqCst);
-            // Yield while holding the lock so the other reader actually contends.
-            tokio::task::yield_now().await;
-            sample_view("built")
-        };
-        let (first, second) = tokio::join!(
-            cache.get_or_build(ViewMode::GapsOnly, build),
-            cache.get_or_build(ViewMode::GapsOnly, build),
-        );
-        assert!(
-            Arc::ptr_eq(&first, &second),
-            "both readers must see the one stored view"
-        );
-        assert_eq!(
-            builds.load(Ordering::SeqCst),
-            1,
-            "a cold slot must build exactly once under contention"
-        );
-    }
-
-    #[tokio::test]
-    async fn rebuild_always_builds_and_stores_for_its_mode() {
-        let cache = test_cache(Some(Duration::from_secs(600)));
-        let first = cache
-            .get_or_build(ViewMode::GapsOnly, || async { sample_view("first") })
-            .await;
-        let second = cache
-            .rebuild(ViewMode::GapsOnly, || async { sample_view("second") })
-            .await;
-        assert!(!Arc::ptr_eq(&first, &second));
-        assert_eq!(second[0].path, "second");
-    }
-
-    #[tokio::test]
-    async fn edit_both_or_build_edits_each_warm_slot() {
-        let cache = test_cache(Some(Duration::from_secs(600)));
-        cache
-            .get_or_build(ViewMode::GapsOnly, || async { sample_view("gaps") })
-            .await;
-        cache
-            .get_or_build(ViewMode::All, || async { sample_view("all") })
-            .await;
-        let returned = cache
-            .edit_both_or_build(
-                ViewMode::All,
-                |view| view[0].path = format!("{}-g", view[0].path),
-                |view| view[0].path = format!("{}-a", view[0].path),
-                || async { sample_view("rebuilt") },
-            )
-            .await;
-        // The returned view is the all slot, edited by the all closure.
-        assert_eq!(returned[0].path, "all-a");
-        // The gaps slot was edited too, under the same lock.
-        let gaps = cache
-            .get_or_build(ViewMode::GapsOnly, || async { sample_view("ignored") })
-            .await;
-        assert_eq!(gaps[0].path, "gaps-g");
-    }
-
-    #[tokio::test]
-    async fn edit_both_or_build_builds_a_cold_requested_slot_and_leaves_the_other_cold() {
-        let cache = test_cache(Some(Duration::from_secs(600)));
-        // Only the gaps slot is warm; request the all slot.
-        cache
-            .get_or_build(ViewMode::GapsOnly, || async { sample_view("gaps") })
-            .await;
-        let returned = cache
-            .edit_both_or_build(
-                ViewMode::All,
-                |view| view[0].path = format!("{}-g", view[0].path),
-                |view| view[0].path = format!("{}-a", view[0].path),
-                || async { sample_view("all-built") },
-            )
-            .await;
-        // The requested (all) slot was cold, so it built fresh; its edit did not run.
-        assert_eq!(returned[0].path, "all-built");
-        // The warm gaps slot was edited in place.
-        let gaps = cache
-            .get_or_build(ViewMode::GapsOnly, || async { sample_view("ignored") })
-            .await;
-        assert_eq!(gaps[0].path, "gaps-g");
-    }
-
-    #[tokio::test]
-    async fn rebuild_root_replaces_one_root_in_each_warm_slot() {
-        let cache = test_cache(Some(Duration::from_secs(600)));
-        // Two roots per slot so we can prove only index 1 is touched.
-        let two = || {
-            vec![
-                RootSection {
-                    path: "keep".to_string(),
-                    state: RootState::Clean,
-                },
-                RootSection {
-                    path: "old".to_string(),
-                    state: RootState::Clean,
-                },
-            ]
-        };
-        cache
-            .get_or_build(ViewMode::GapsOnly, || async { two() })
-            .await;
-        cache.get_or_build(ViewMode::All, || async { two() }).await;
-
-        let returned = cache
-            .rebuild_root(
-                1,
-                ViewMode::GapsOnly,
-                |mode| async move {
-                    RootSection {
-                        path: format!("new-{}", mode.as_query()),
-                        state: RootState::Clean,
-                    }
-                },
-                || async { two() },
-            )
-            .await;
-
-        // Index 0 untouched, index 1 rebuilt with the gaps-mode section.
-        assert_eq!(returned[0].path, "keep");
-        assert_eq!(returned[1].path, "new-gaps");
-        // The all slot was rebuilt with the all-mode section under the same lock.
-        let all = cache.get_or_build(ViewMode::All, || async { two() }).await;
-        assert_eq!(all[1].path, "new-all");
     }
 
     fn settings() -> ScanSettings {
@@ -431,31 +228,136 @@ mod tests {
         assert_eq!(state.cache.ttl, Some(Duration::from_secs(90)));
     }
 
+    fn sample_raw(tag: &str) -> RawView {
+        vec![RawRootSection {
+            path: tag.to_string(),
+            state: RawRootState::Clean,
+        }]
+    }
+
+    #[tokio::test]
+    async fn get_or_build_returns_the_stored_raw_within_ttl_unkeyed() {
+        let cache = test_cache(Some(Duration::from_secs(600)));
+        let first = cache.get_or_build(|| async { sample_raw("first") }).await;
+        let second = cache.get_or_build(|| async { sample_raw("second") }).await;
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "a fresh cache must not rebuild the raw slot"
+        );
+        assert_eq!(second[0].path, "first");
+    }
+
+    #[tokio::test]
+    async fn get_or_build_single_flights_a_cold_slot() {
+        // Two readers race a cold slot at once. The lock is held across build,
+        // so one builds and the other returns the stored view rather than
+        // building a second time. This is the guarantee the startup warm leans
+        // on to not double-scan a request that races it (see main.rs).
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let cache = test_cache(Some(Duration::from_secs(600)));
+        let builds = AtomicUsize::new(0);
+        let build = || async {
+            builds.fetch_add(1, Ordering::SeqCst);
+            tokio::task::yield_now().await;
+            sample_raw("built")
+        };
+        let (first, second) = tokio::join!(cache.get_or_build(build), cache.get_or_build(build),);
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "both readers must see the one stored raw view"
+        );
+        assert_eq!(
+            builds.load(Ordering::SeqCst),
+            1,
+            "a cold slot must build exactly once under contention"
+        );
+    }
+
+    #[tokio::test]
+    async fn rebuild_always_builds_and_stores() {
+        let cache = test_cache(Some(Duration::from_secs(600)));
+        let first = cache.get_or_build(|| async { sample_raw("first") }).await;
+        let second = cache.rebuild(|| async { sample_raw("second") }).await;
+        assert!(!Arc::ptr_eq(&first, &second));
+        assert_eq!(second[0].path, "second");
+    }
+
+    #[tokio::test]
+    async fn apply_marker_or_build_edits_the_raw_slot_under_one_lock() {
+        let cache = test_cache(Some(Duration::from_secs(600)));
+        cache.get_or_build(|| async { sample_raw("gaps") }).await;
+        let returned = cache
+            .apply_marker_or_build(
+                |raw| raw[0].path = format!("{}-edited", raw[0].path),
+                || async { sample_raw("rebuilt") },
+            )
+            .await;
+        assert_eq!(returned[0].path, "gaps-edited");
+    }
+
+    #[tokio::test]
+    async fn apply_marker_or_build_builds_a_cold_slot() {
+        let cache = test_cache(Some(Duration::from_secs(600)));
+        let returned = cache
+            .apply_marker_or_build(
+                |raw| raw[0].path = format!("{}-edited", raw[0].path),
+                || async { sample_raw("built") },
+            )
+            .await;
+        // The cold slot was built fresh; the edit closure did not run because
+        // the fresh build already reflects the marker on disk.
+        assert_eq!(returned[0].path, "built");
+    }
+
+    #[tokio::test]
+    async fn rebuild_root_replaces_one_section_in_the_raw_slot() {
+        let cache = test_cache(Some(Duration::from_secs(600)));
+        let two = || {
+            vec![
+                RawRootSection {
+                    path: "keep".to_string(),
+                    state: RawRootState::Clean,
+                },
+                RawRootSection {
+                    path: "old".to_string(),
+                    state: RawRootState::Clean,
+                },
+            ]
+        };
+        cache.get_or_build(|| async { two() }).await;
+        let returned = cache
+            .rebuild_root(
+                1,
+                || async {
+                    RawRootSection {
+                        path: "new".to_string(),
+                        state: RawRootState::Clean,
+                    }
+                },
+                || async { two() },
+            )
+            .await;
+        assert_eq!(returned[0].path, "keep");
+        assert_eq!(returned[1].path, "new");
+    }
+
     #[tokio::test]
     async fn fresh_build_stamps_stored_at_and_edit_leaves_it() {
         let cache = test_cache(Some(Duration::from_secs(60)));
-
-        // A build stamps the clock.
-        cache
-            .get_or_build(ViewMode::GapsOnly, || async { sample_view("v1") })
-            .await;
+        cache.get_or_build(|| async { sample_raw("v1") }).await;
         let stamped = {
-            let slots = cache.entries.lock().await;
-            slots.gaps_only.as_ref().unwrap().stored_at
+            let slot = cache.entries.lock().await;
+            slot.as_ref().unwrap().stored_at
         };
-
-        // An in-place edit changes the data but not the clock.
         cache
-            .edit_both_or_build(
-                ViewMode::GapsOnly,
-                |view| view[0].path = "edited".to_string(),
-                |_view| {},
-                || async { sample_view("unused") },
+            .apply_marker_or_build(
+                |raw| raw[0].path = "edited".to_string(),
+                || async { sample_raw("unused") },
             )
             .await;
         let after_edit = {
-            let slots = cache.entries.lock().await;
-            slots.gaps_only.as_ref().unwrap().stored_at
+            let slot = cache.entries.lock().await;
+            slot.as_ref().unwrap().stored_at
         };
         assert_eq!(stamped, after_edit, "an edit must not bump stored_at");
     }

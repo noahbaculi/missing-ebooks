@@ -1,14 +1,16 @@
-//! The shared state behind the demo handlers: the read-only base views (one per
-//! view mode), the in-memory session table, the demo config, and the render
-//! search links. The base views are scanned once at startup; each request clones
-//! the one it needs and replays the session's marks on top.
+//! The shared state behind the demo handlers: the shared raw walked view
+//! built once at startup, the in-memory session table, the demo config, and
+//! the render search links. The raw view is scanned once at startup; each
+//! request clones it before replaying the session's marks and renders per
+//! mode (see ADR-0022).
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config::{Config, SearchLink};
 use crate::scanner::ScanSettings;
-use crate::service::{FlaggedView, ViewMode, build_view};
+use crate::service::build_view;
+use crate::state::RawView;
 
 use super::session::SessionStore;
 
@@ -29,26 +31,24 @@ pub struct DemoConfig {
 
 /// Everything the demo handlers share. Held as `Arc<DemoState>`.
 pub struct DemoState {
-    pub(crate) base_gaps: Arc<FlaggedView>,
-    pub(crate) base_all: Arc<FlaggedView>,
+    /// The raw walked view, shared and immutable across sessions. Each request
+    /// clones it before replaying the session's marks and rendering per mode.
+    pub(crate) base_raw: Arc<RawView>,
     pub(crate) sessions: Mutex<SessionStore>,
     pub(crate) config: DemoConfig,
     pub(crate) search_links: Vec<SearchLink>,
 }
 
 impl DemoState {
-    /// The shared base view for a mode, built once at startup.
-    pub(crate) fn base(&self, mode: ViewMode) -> &FlaggedView {
-        match mode {
-            ViewMode::GapsOnly => &self.base_gaps,
-            ViewMode::All => &self.base_all,
-        }
+    /// The shared raw view, built once at startup.
+    pub(crate) fn base_raw(&self) -> &Arc<RawView> {
+        &self.base_raw
     }
 
-    /// How many library roots the base views carry. Bounds the root index a mark
-    /// may name.
+    /// How many library roots the base view carries. Bounds the root index a
+    /// mark may name.
     pub(crate) fn num_roots(&self) -> usize {
-        self.base_gaps.len()
+        self.base_raw.len()
     }
 
     /// Drop every session idle past the configured window as of `now`. Returns the
@@ -61,20 +61,18 @@ impl DemoState {
     }
 }
 
-/// Scan the seeded library into the two base views and assemble the demo state.
-/// Runs once at startup.
+/// Scan the seeded library into the shared raw view and assemble the demo
+/// state. Runs once at startup.
 pub async fn build_state(
     config: Config,
     settings: ScanSettings,
     demo_config: DemoConfig,
 ) -> DemoState {
     let settings = Arc::new(settings);
-    // No index: the demo scans once into static views and never rescans.
-    let base_gaps = Arc::new(build_view(&config, &settings, ViewMode::GapsOnly, None).await);
-    let base_all = Arc::new(build_view(&config, &settings, ViewMode::All, None).await);
+    // No index: the demo scans once into a static raw view and never rescans.
+    let base_raw = Arc::new(build_view(&config, &settings, None).await);
     DemoState {
-        base_gaps,
-        base_all,
+        base_raw,
         sessions: Mutex::new(SessionStore::new(demo_config.max_sessions)),
         search_links: config.search_links,
         config: demo_config,
