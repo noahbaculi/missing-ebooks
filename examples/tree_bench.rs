@@ -42,6 +42,7 @@ fn median(samples: &[f64]) -> f64 {
 #[derive(Debug)]
 struct Row {
     total: usize,
+    actual: usize,
     depth: usize,
     fanout: usize,
     gap_rate: f64,
@@ -229,6 +230,7 @@ fn generate(total: usize, depth: usize, fanout: usize, gap_rate: f64) -> Vec<Sca
 /// times each. The medians are reported.
 fn run_shape(total: usize, depth: usize, fanout: usize, gap_rate: f64, iterations: usize) -> Row {
     let folders = generate(total, depth, fanout, gap_rate);
+    let actual = folders.len();
     let root_name = "Audiobooks";
 
     let mut gaps_samples: Vec<f64> = Vec::with_capacity(iterations);
@@ -249,6 +251,7 @@ fn run_shape(total: usize, depth: usize, fanout: usize, gap_rate: f64, iteration
 
     Row {
         total,
+        actual,
         depth,
         fanout,
         gap_rate,
@@ -264,13 +267,19 @@ const DEFAULT_GAP_RATE: f64 = 0.5;
 
 fn print_table(rows: &[Row]) {
     println!(
-        "{:<7} {:<6} {:<7} {:<9} {:<14} {:<13}",
-        "total", "depth", "fanout", "gap_rate", "build_gaps_ms", "build_all_ms"
+        "{:<7} {:<7} {:<6} {:<7} {:<9} {:<14} {:<13}",
+        "total", "actual", "depth", "fanout", "gap_rate", "build_gaps_ms", "build_all_ms"
     );
     for row in rows {
         println!(
-            "{:<7} {:<6} {:<7} {:<9.2} {:<14} {:<13}",
-            row.total, row.depth, row.fanout, row.gap_rate, row.build_gaps_ms, row.build_all_ms
+            "{:<7} {:<7} {:<6} {:<7} {:<9.2} {:<14} {:<13}",
+            row.total,
+            row.actual,
+            row.depth,
+            row.fanout,
+            row.gap_rate,
+            row.build_gaps_ms,
+            row.build_all_ms
         );
     }
 }
@@ -371,6 +380,16 @@ mod tests {
         assert!(row.build_gaps_ms.is_finite());
         assert!(row.build_all_ms.is_finite());
         assert_eq!(row.total, 50);
+    }
+
+    #[test]
+    fn run_shape_reports_actual_when_capacity_is_below_total() {
+        // depth=2, fanout=3 fits only 3 + 9 = 12 folders, far below the 10000
+        // requested. The row must report the requested total and the actual
+        // count so the table is self-documenting.
+        let row = run_shape(10_000, 2, 3, 0.5, 1);
+        assert_eq!(row.total, 10_000);
+        assert_eq!(row.actual, 12);
     }
 
     #[test]
