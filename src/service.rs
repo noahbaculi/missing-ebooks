@@ -645,6 +645,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn warm_concurrent_reads_share_one_raw_slot_and_render_equally() {
+        // Two simultaneous reads against a warm cache must:
+        // - render equal FlaggedView values (the rendered output is
+        //   deterministic over a stable RawView), and
+        // - share one Arc<RawView> in the cache slot (neither call rebuilt),
+        //   matching the property ADR-0022 documents for warm reads.
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = state_for(dir.path(), 600);
+
+        // Warm the cache once so the racing reads land on a fresh slot.
+        let _warm = current_view(&state, ViewMode::GapsOnly).await;
+        let raw_before = {
+            let slot = state.cache.entries.lock().await;
+            Arc::clone(&slot.as_ref().unwrap().raw)
+        };
+
+        let (a, b) = tokio::join!(
+            current_view(&state, ViewMode::GapsOnly),
+            current_view(&state, ViewMode::GapsOnly),
+        );
+        assert_eq!(*a, *b, "warm concurrent renders must produce equal views");
+
+        let raw_after = {
+            let slot = state.cache.entries.lock().await;
+            Arc::clone(&slot.as_ref().unwrap().raw)
+        };
+        assert!(
+            Arc::ptr_eq(&raw_before, &raw_after),
+            "warm concurrent reads must not rebuild the raw slot"
+        );
+    }
+
+    #[tokio::test]
     async fn ttl_zero_rescans_every_call() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
