@@ -17,7 +17,7 @@
      also the ink: by choice the default keeps the amber look over contrast, so
      --color-warning-text equals the base and reads below AA on the pale pill. The
      accent picker derives a readable per-theme ink for a custom base. See
-     docs/adr/0017. */
+     docs/adr/0021. */
   --color-warning: #f5a524;
   --color-success: #00b074;
   --color-error: #ef4565;
