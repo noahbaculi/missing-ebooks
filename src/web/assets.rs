@@ -59,6 +59,12 @@ static HTMX: Asset = Asset {
     cache_control: "public, max-age=604800",
     etag: OnceLock::new(),
 };
+static HTMX_SSE: Asset = Asset {
+    body: include_str!("../../assets/htmx-sse.js"),
+    content_type: "text/javascript;charset=utf-8",
+    cache_control: "public, max-age=604800",
+    etag: OnceLock::new(),
+};
 static STYLES: Asset = Asset {
     body: include_str!("../../assets/app.css"),
     content_type: "text/css;charset=utf-8",
@@ -74,6 +80,10 @@ static SCRIPT: Asset = Asset {
 
 pub(crate) async fn htmx_script(headers: HeaderMap) -> Response {
     HTMX.respond(&headers)
+}
+
+pub(crate) async fn htmx_sse_script(headers: HeaderMap) -> Response {
+    HTMX_SSE.respond(&headers)
 }
 
 pub(crate) async fn app_css(headers: HeaderMap) -> Response {

@@ -62,6 +62,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/rescan", post(rescan))
         .route("/events", get(events))
         .route("/static/htmx.min.js", get(assets::htmx_script))
+        .route("/static/htmx-sse.js", get(assets::htmx_sse_script))
         .route("/static/app.css", get(assets::app_css))
         .route("/static/app.js", get(assets::app_js))
         .with_state(state)
