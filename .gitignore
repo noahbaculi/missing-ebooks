@@ -15,6 +15,10 @@ target
 
 # Superpowers brainstorming companion scratch files
 .superpowers/
+docs/superpowers/
+
+# Serena LSP index and cache
+.serena/
 
 # Demo deploy secret: holds the live Cloudflare Tunnel token. Only the
 # .env.example template is tracked.
