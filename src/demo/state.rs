@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config::{Config, SearchLink};
-use crate::scanner::ScanSettings;
+use crate::scanner::{DirIndex, ScanSettings};
 use crate::service::build_view;
 use crate::state::RawView;
 
@@ -69,8 +69,11 @@ pub async fn build_state(
     demo_config: DemoConfig,
 ) -> DemoState {
     let settings = Arc::new(settings);
-    // No index: the demo scans once into a static raw view and never rescans.
-    let base_raw = Arc::new(build_view(&config, &settings, None).await);
+    // The demo scans once into a static raw view and never rescans, so the dir
+    // index this build feeds in is throwaway: it populates as the walk goes,
+    // then drops with the local Arc.
+    let throwaway_index = Arc::new(std::sync::Mutex::new(DirIndex::new()));
+    let base_raw = Arc::new(build_view(&config, &settings, throwaway_index).await);
     DemoState {
         base_raw,
         sessions: Mutex::new(SessionStore::new(demo_config.max_sessions)),

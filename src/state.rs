@@ -18,9 +18,10 @@ use crate::scanner::{DirIndex, ScanSettings, ScannedFolder};
 pub struct AppState {
     pub(crate) config: Arc<Config>,
     pub(crate) settings: Arc<ScanSettings>,
-    /// The shared per-directory index, present only when `incremental_scan` is on.
-    /// A blocking scan locks it to reuse unchanged directories (see scanner).
-    pub(crate) dir_index: Option<Arc<StdMutex<DirIndex>>>,
+    /// The shared per-directory mtime index. Read by every scan path and
+    /// discarded only on a `/rescan` click or process restart (see ADR-0020,
+    /// ADR-0023). A blocking scan locks it to reuse unchanged directories.
+    pub(crate) dir_index: Arc<StdMutex<DirIndex>>,
     pub(crate) cache: Cache,
 }
 
@@ -190,9 +191,7 @@ impl AppState {
         } else {
             Some(Duration::from_secs(config.ttl_seconds))
         };
-        let dir_index = config
-            .incremental_scan
-            .then(|| Arc::new(StdMutex::new(DirIndex::new())));
+        let dir_index = Arc::new(StdMutex::new(DirIndex::new()));
         AppState {
             config: Arc::new(config),
             settings: Arc::new(settings),

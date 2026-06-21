@@ -103,7 +103,7 @@ pub async fn current_view(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> 
             build_view(
                 state.config.as_ref(),
                 &state.settings,
-                state.dir_index.clone(),
+                Arc::clone(&state.dir_index),
             )
         })
         .await;
@@ -118,7 +118,7 @@ pub async fn rescan(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> {
             build_view(
                 state.config.as_ref(),
                 &state.settings,
-                state.dir_index.clone(),
+                Arc::clone(&state.dir_index),
             )
         })
         .await;
@@ -174,7 +174,7 @@ pub async fn mark(
                 build_view(
                     state.config.as_ref(),
                     &state.settings,
-                    state.dir_index.clone(),
+                    Arc::clone(&state.dir_index),
                 )
             },
         )
@@ -216,10 +216,10 @@ pub async fn unmark(
 
     let section_root = root_path.clone();
     let section_settings = Arc::clone(&state.settings);
-    let section_index = state.dir_index.clone();
+    let section_index = Arc::clone(&state.dir_index);
     let build_config = Arc::clone(&state.config);
     let build_settings = Arc::clone(&state.settings);
-    let build_index = state.dir_index.clone();
+    let build_index = Arc::clone(&state.dir_index);
     let raw = state
         .cache
         .rebuild_root(
@@ -227,13 +227,13 @@ pub async fn unmark(
             move || {
                 let path = section_root.clone();
                 let settings = Arc::clone(&section_settings);
-                let index = section_index.clone();
+                let index = Arc::clone(&section_index);
                 async move { build_section(path, settings, index).await }
             },
             move || {
                 let config = Arc::clone(&build_config);
                 let settings = Arc::clone(&build_settings);
-                let index = build_index.clone();
+                let index = Arc::clone(&build_index);
                 async move { build_view(config.as_ref(), &settings, index).await }
             },
         )
@@ -414,12 +414,12 @@ fn render_root_state(path: &str, state: &state::RawRootState, mode: ViewMode) ->
 pub(crate) async fn build_view(
     config: &Config,
     settings: &Arc<ScanSettings>,
-    index: Option<Arc<std::sync::Mutex<scanner::DirIndex>>>,
+    index: Arc<std::sync::Mutex<scanner::DirIndex>>,
 ) -> state::RawView {
     let started = Instant::now();
     let mut sections = Vec::with_capacity(config.library_roots.len());
     for root in &config.library_roots {
-        sections.push(build_section(root.clone(), Arc::clone(settings), index.clone()).await);
+        sections.push(build_section(root.clone(), Arc::clone(settings), Arc::clone(&index)).await);
     }
     tracing::info!(
         roots = sections.len(),
@@ -433,13 +433,11 @@ pub(crate) async fn build_view(
 async fn build_section(
     root: std::path::PathBuf,
     settings: Arc<ScanSettings>,
-    index: Option<Arc<std::sync::Mutex<scanner::DirIndex>>>,
+    index: Arc<std::sync::Mutex<scanner::DirIndex>>,
 ) -> state::RawRootSection {
     let started = Instant::now();
     let section =
-        match tokio::task::spawn_blocking(move || scan_root(&root, &settings, index.as_deref()))
-            .await
-        {
+        match tokio::task::spawn_blocking(move || scan_root(&root, &settings, &index)).await {
             Ok(section) => section,
             Err(join_err) => {
                 tracing::error!(error = %join_err, "scan task panicked");
@@ -460,7 +458,7 @@ async fn build_section(
 /// Lock the shared index, recovering the guard when a previous walk panicked while
 /// holding it. A poisoned `DirIndex` is not corrupt: a stale entry is re-listed on
 /// its next mtime check, so recovery beats wedging every later scan on a restart.
-fn lock_index(
+pub(crate) fn lock_index(
     index: &std::sync::Mutex<scanner::DirIndex>,
 ) -> std::sync::MutexGuard<'_, scanner::DirIndex> {
     index
@@ -471,17 +469,14 @@ fn lock_index(
 /// Drop the index entry for `rel` under `root` so the next walk re-lists it. Used
 /// after this process writes or deletes a marker, so the change is picked up even
 /// if the directory mtime resolution would have hidden the same-tick write. A
-/// no-op when incremental scanning is off or the path was never indexed.
+/// no-op when the path was never indexed.
 fn invalidate_index(state: &AppState, canonical_root: &Path, rel: &str) {
-    let Some(index) = state.dir_index.as_ref() else {
-        return;
-    };
     let target = if rel == "." {
         canonical_root.to_path_buf()
     } else {
         canonical_root.join(rel)
     };
-    lock_index(index).invalidate(&target);
+    lock_index(&state.dir_index).invalidate(&target);
 }
 
 /// The synchronous per-root work: canonicalize and scan into a raw section.
@@ -491,7 +486,7 @@ fn invalidate_index(state: &AppState, canonical_root: &Path, rel: &str) {
 fn scan_root(
     root: &Path,
     settings: &ScanSettings,
-    index: Option<&std::sync::Mutex<scanner::DirIndex>>,
+    index: &std::sync::Mutex<scanner::DirIndex>,
 ) -> state::RawRootSection {
     let canonical = match std::fs::canonicalize(root) {
         Ok(path) => path,
@@ -511,14 +506,12 @@ fn scan_root(
         };
     }
 
-    // Walk once (incremental when an index is configured). Rendering happens at
-    // request time from this raw output (see ADR-0022).
-    let (folders, stats) = match index {
-        Some(index) => {
-            let mut guard = lock_index(index);
-            scanner::scan_incremental_with_stats(&canonical, settings, &mut guard)
-        }
-        None => scanner::scan_with_stats(&canonical, settings),
+    // Always reuse the dir index. The /rescan handler clears it for an explicit
+    // cold scan; otherwise the index persists across page loads and autosync
+    // ticks (see ADR-0023).
+    let (folders, stats) = {
+        let mut guard = lock_index(index);
+        scanner::scan_incremental_with_stats(&canonical, settings, &mut guard)
     };
     tracing::debug!(
         root = %canonical.display(),
@@ -566,12 +559,16 @@ mod tests {
         Arc::new(ScanSettings::compile(Config::default().scan_inputs()).unwrap())
     }
 
+    fn test_index() -> Arc<std::sync::Mutex<scanner::DirIndex>> {
+        Arc::new(std::sync::Mutex::new(scanner::DirIndex::new()))
+    }
+
     #[tokio::test]
     async fn root_with_a_gap_yields_a_matching_forest() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Author/Book/01.mp3"));
         let cfg = test_config(vec![dir.path().to_path_buf()], 60);
-        let raw = build_view(&cfg, &test_settings(), None).await;
+        let raw = build_view(&cfg, &test_settings(), test_index()).await;
         let view = render_view(&raw, ViewMode::GapsOnly);
         assert_eq!(view.len(), 1);
         match &view[0].state {
@@ -588,7 +585,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("Empty")).unwrap();
         let cfg = test_config(vec![dir.path().to_path_buf()], 60);
-        let raw = build_view(&cfg, &test_settings(), None).await;
+        let raw = build_view(&cfg, &test_settings(), test_index()).await;
         let view = render_view(&raw, ViewMode::GapsOnly);
         assert!(matches!(view[0].state, RootState::Clean));
     }
@@ -604,7 +601,7 @@ mod tests {
             ],
             60,
         );
-        let raw = build_view(&cfg, &test_settings(), None).await;
+        let raw = build_view(&cfg, &test_settings(), test_index()).await;
         let view = render_view(&raw, ViewMode::GapsOnly);
         assert!(matches!(view[0].state, RootState::Error(_)));
         assert!(matches!(view[1].state, RootState::Forest(_)));
@@ -710,9 +707,8 @@ mod tests {
     async fn a_warm_state_rescan_reuses_the_index() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Author/Book/01.mp3"));
-        // Default config has incremental_scan on, so the state holds an index.
+        // The state always holds a dir index (see ADR-0023).
         let state = state_for(dir.path(), 0); // ttl 0 so every call rescans
-        assert!(state.dir_index.is_some());
 
         // First view fills the index, the second reuses it. Both see the gap.
         let first = current_view(&state, ViewMode::GapsOnly).await;
@@ -720,7 +716,7 @@ mod tests {
         assert!(matches!(first[0].state, RootState::Forest(_)));
         assert!(matches!(second[0].state, RootState::Forest(_)));
 
-        let reused = state.dir_index.as_ref().unwrap().lock().unwrap().len();
+        let reused = state.dir_index.lock().unwrap().len();
         assert!(reused > 0, "the index retained the walked directories");
     }
 
@@ -735,14 +731,7 @@ mod tests {
         let canonical = std::fs::canonicalize(dir.path()).unwrap();
         let book = canonical.join("Book");
         assert!(
-            state
-                .dir_index
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .get(&book)
-                .is_some(),
+            state.dir_index.lock().unwrap().get(&book).is_some(),
             "Book is indexed after the scan"
         );
 
@@ -752,14 +741,7 @@ mod tests {
             .await
             .unwrap();
         assert!(
-            state
-                .dir_index
-                .as_ref()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .get(&book)
-                .is_none(),
+            state.dir_index.lock().unwrap().get(&book).is_none(),
             "Book's index entry is invalidated by the marker write"
         );
     }
@@ -1045,7 +1027,7 @@ mod tests {
         touch(&dir.path().join("Author/Covered/01.mp3"));
         touch(&dir.path().join("Author/Covered/Covered.epub"));
         let cfg = test_config(vec![dir.path().to_path_buf()], 60);
-        let raw = build_view(&cfg, &test_settings(), None).await;
+        let raw = build_view(&cfg, &test_settings(), test_index()).await;
         let view = render_view(&raw, ViewMode::All);
         let RootState::Forest(nodes) = &view[0].state else {
             panic!("show-all always yields a Forest");

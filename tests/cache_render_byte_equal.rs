@@ -21,7 +21,6 @@ async fn render_is_byte_equal_across_hits_and_a_mark_undo_round_trip() {
     let config = Config {
         library_roots: roots,
         ttl_seconds: 600,
-        incremental_scan: false,
         ..Config::default()
     };
     let settings = ScanSettings::compile(config.scan_inputs()).unwrap();

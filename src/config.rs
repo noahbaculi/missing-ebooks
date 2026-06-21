@@ -39,10 +39,13 @@ pub struct Config {
     /// pool serves the whole process, so concurrent scans share it rather than
     /// each getting this many readers.
     pub scan_concurrency: usize,
-    /// Reuse unchanged directories across rescans via an in-memory mtime index.
-    /// On by default; set false to force a full listing walk on filesystems whose
-    /// directory mtime cannot be trusted.
-    pub incremental_scan: bool,
+    /// Background sync interval. When at least one browser tab is subscribed to
+    /// `/events`, the server runs a warm scan every N seconds and pushes any
+    /// changed root sections over SSE. The timer measures from scan completion
+    /// to next start, so a slow scan does not stack. `0` disables the loop;
+    /// the SSE endpoint still serves the initial snapshot but emits no further
+    /// section events.
+    pub autosync_interval_seconds: u64,
     /// Audio extensions counted as audio, compared case-insensitively.
     pub audio_exts: Vec<String>,
     /// Ebook extensions counted as coverage, compared case-insensitively.
@@ -65,7 +68,7 @@ impl Default for Config {
             port: 13379,
             ttl_seconds: 60,
             scan_concurrency: 16,
-            incremental_scan: true,
+            autosync_interval_seconds: 10,
             // Audiobookshelf's full supported sets; see ADR-0006.
             audio_exts: strings(&[
                 ".m4b", ".mp3", ".m4a", ".flac", ".opus", ".ogg", ".oga", ".mp4", ".aac", ".wma",
@@ -178,8 +181,9 @@ fn apply_env_overrides(cfg: &mut Config, getenv: &dyn Fn(&str) -> Option<String>
     if let Some(n) = getenv("MISSING_EBOOKS_SCAN_CONCURRENCY").and_then(|v| v.parse().ok()) {
         cfg.scan_concurrency = n;
     }
-    if let Some(v) = getenv("MISSING_EBOOKS_INCREMENTAL_SCAN").and_then(|v| v.parse().ok()) {
-        cfg.incremental_scan = v;
+    if let Some(v) = getenv("MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS").and_then(|v| v.parse().ok())
+    {
+        cfg.autosync_interval_seconds = v;
     }
 }
 
@@ -224,12 +228,14 @@ ttl_seconds = 60
 # parallelism. Also settable as MISSING_EBOOKS_SCAN_CONCURRENCY.
 scan_concurrency = 16
 
-# Reuse unchanged directories across rescans by checking each directory's mtime
-# and re-listing only the ones that changed, an in-memory index rebuilt on
-# restart. On by default. Set to false to force a full listing walk on a mount
-# whose directory mtime is unreliable. Also settable as
-# MISSING_EBOOKS_INCREMENTAL_SCAN.
-incremental_scan = true
+# Live updates while a browser tab is open. When at least one tab is subscribed
+# to /events, the server runs a warm scan every N seconds and pushes any
+# changed root sections back to the tab. The timer measures from completion to
+# next start, so a slow scan does not stack. Set to 0 to disable the loop
+# entirely; the SSE endpoint still serves the initial snapshot but emits no
+# further section events. Also settable as
+# MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS.
+autosync_interval_seconds = 10
 
 # File extensions, compared case-insensitively. Leading dot required. The
 # defaults mirror Audiobookshelf's full supported sets (see ADR-0006).
@@ -355,16 +361,16 @@ mod tests {
     }
 
     #[test]
-    fn incremental_scan_defaults_on() {
-        assert!(Config::default().incremental_scan);
+    fn autosync_interval_seconds_defaults_to_ten() {
+        assert_eq!(Config::default().autosync_interval_seconds, 10);
     }
 
     #[test]
-    fn env_overrides_incremental_scan() {
+    fn env_overrides_autosync_interval_seconds() {
         let mut cfg = Config::default();
-        let env = fake_env(&[("MISSING_EBOOKS_INCREMENTAL_SCAN", "false")]);
+        let env = fake_env(&[("MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS", "0")]);
         apply_env_overrides(&mut cfg, &|k| env.get(k).cloned());
-        assert!(!cfg.incremental_scan);
+        assert_eq!(cfg.autosync_interval_seconds, 0);
     }
 
     #[test]
