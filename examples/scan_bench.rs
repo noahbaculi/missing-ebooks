@@ -64,11 +64,28 @@ fn per_dir_ms(median_ms: f64, dirs: usize) -> Option<f64> {
     (dirs > 0).then(|| round3(median_ms / dirs as f64))
 }
 
+/// Per-iteration walk counts for the incremental mode, one row per measured
+/// iteration in `iterations_ms` order. A row whose `dirs_reused` or `entries_seen`
+/// drifts mid-run flags an external write to the supposedly unchanged tree.
+#[derive(Debug, Serialize, Clone, Copy)]
+struct IterCounts {
+    /// Directories the walk would have read, including the ones served from the index.
+    dirs_visited: usize,
+    /// Directories served from the index without a listing.
+    dirs_reused: usize,
+    /// Directory entries iterated. Zero on a fully reused walk.
+    entries_seen: usize,
+}
+
 /// One cache condition's timing summary for one root and mode.
 #[derive(Debug, Serialize)]
 struct PhaseReport {
     /// Each measured iteration's wall-clock, in milliseconds, in run order.
     iterations_ms: Vec<f64>,
+    /// Per-iteration walk counts, one row per `iterations_ms` sample. Recorded
+    /// for the incremental mode. Empty for the listing walks.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    iteration_counts: Vec<IterCounts>,
     median_ms: f64,
     min_ms: f64,
     max_ms: f64,
@@ -77,11 +94,13 @@ struct PhaseReport {
 }
 
 /// Summarize one phase's samples. `dirs` is the directory count for the median's
-/// per-directory figure.
-fn phase_report(samples: &[f64], dirs: usize) -> PhaseReport {
+/// per-directory figure. `counts` is the per-iteration counts for the incremental
+/// mode, empty for listing walks.
+fn phase_report(samples: &[f64], dirs: usize, counts: Vec<IterCounts>) -> PhaseReport {
     let median_ms = median(samples);
     PhaseReport {
         iterations_ms: samples.to_vec(),
+        iteration_counts: counts,
         median_ms,
         min_ms: min_of(samples),
         max_ms: max_of(samples),
@@ -303,7 +322,9 @@ struct WalkCounts {
 /// The report schema version, bumped when the JSON shape changes so a directory of
 /// mixed-vintage reports stays parseable. Schema 3 adds the `incremental` mode: a
 /// single-level entry carrying `dirs_reused`, absent on the `full` and `gaps` modes.
-const SCHEMA_VERSION: u32 = 4;
+/// Schema 4 adds `tree_build_ms` on every level. Schema 5 adds `iteration_counts`
+/// on the incremental phases.
+const SCHEMA_VERSION: u32 = 5;
 
 /// The whole run: environment context plus one entry per root.
 #[derive(Debug, Serialize)]
@@ -478,13 +499,15 @@ fn run_incremental(
 
     let cold = if drop_caches_enabled {
         let mut samples = Vec::with_capacity(iterations);
+        let mut iter_counts = Vec::with_capacity(iterations);
         for _ in 0..iterations {
             drop_caches()?;
             let (ms, counts) = pool.install(|| time_reuse_walk(root, settings, &mut index));
             samples.push(ms);
+            iter_counts.push(iter_counts_from(&counts));
             last = counts;
         }
-        Some(phase_report(&samples, last.stats.dirs_visited))
+        Some(phase_report(&samples, last.stats.dirs_visited, iter_counts))
     } else {
         None
     };
@@ -492,12 +515,14 @@ fn run_incremental(
     // Warm phase: one discarded warmup, then measured reuse walks with no drop.
     let _ = pool.install(|| time_reuse_walk(root, settings, &mut index));
     let mut samples = Vec::with_capacity(iterations);
+    let mut iter_counts = Vec::with_capacity(iterations);
     for _ in 0..iterations {
         let (ms, counts) = pool.install(|| time_reuse_walk(root, settings, &mut index));
         samples.push(ms);
+        iter_counts.push(iter_counts_from(&counts));
         last = counts;
     }
-    let warm = phase_report(&samples, last.stats.dirs_visited);
+    let warm = phase_report(&samples, last.stats.dirs_visited, iter_counts);
 
     println!(
         "  mode=incremental  concurrency={threads}  dirs_visited={}  dirs_reused={}  \
@@ -526,6 +551,56 @@ fn run_incremental(
             warm,
         }],
     })
+}
+
+/// Pull the per-iteration counts out of a `WalkCounts`.
+fn iter_counts_from(c: &WalkCounts) -> IterCounts {
+    IterCounts {
+        dirs_visited: c.stats.dirs_visited,
+        dirs_reused: c.stats.dirs_reused,
+        entries_seen: c.stats.entries_seen,
+    }
+}
+
+/// Format the one-line PASS/FAIL on the SMB validation gate. Returns `None` unless
+/// the run measured both `full` and `incremental`, since the speedup half needs
+/// both. Prefers cold medians and falls back to warm so a run without
+/// `--drop-caches` still prints a verdict.
+fn gate_verdict(modes: &BTreeMap<String, ModeReport>) -> Option<String> {
+    let incremental = modes.get("incremental")?.levels.first()?;
+    let full = modes.get("full")?.levels.first()?;
+
+    let reuse_fired =
+        incremental.dirs_reused == Some(incremental.dirs_visited) && incremental.entries_seen == 0;
+
+    // The warm reuse walk finishes inside the CIFS attribute cache window, so cold
+    // is the honest figure when both are present.
+    let (phase, full_med, inc_med) = match (full.cold.as_ref(), incremental.cold.as_ref()) {
+        (Some(f), Some(i)) => ("cold", f.median_ms, i.median_ms),
+        _ => ("warm", full.warm.median_ms, incremental.warm.median_ms),
+    };
+    let speedup_ok = inc_med > 0.0 && inc_med < full_med;
+    let ratio = if inc_med > 0.0 {
+        round3(full_med / inc_med)
+    } else {
+        0.0
+    };
+
+    let status = if reuse_fired && speedup_ok {
+        "PASS"
+    } else {
+        "FAIL"
+    };
+    Some(format!(
+        "gate: {status}  reuse {}/{} dirs, entries_seen={}  |  \
+         {phase} median incremental {} ms vs full {} ms ({}x)",
+        incremental.dirs_reused.unwrap_or(0),
+        incremental.dirs_visited,
+        incremental.entries_seen,
+        inc_med,
+        full_med,
+        ratio,
+    ))
 }
 
 /// Time one reuse walk against the prebuilt `index`, returning its wall-clock in
@@ -635,7 +710,10 @@ fn cold_phase(
         counts = Some(c);
     }
     let counts = counts.expect("iterations >= 1 guarantees a sample");
-    Ok((phase_report(&samples, counts.stats.dirs_visited), counts))
+    Ok((
+        phase_report(&samples, counts.stats.dirs_visited, Vec::new()),
+        counts,
+    ))
 }
 
 /// Warm phase: one discarded warmup run, then `iterations` consecutive measured
@@ -652,7 +730,10 @@ fn warm_phase(
         let (ms, _) = time_walk(mode, root, settings);
         samples.push(ms);
     }
-    (phase_report(&samples, counts.stats.dirs_visited), counts)
+    (
+        phase_report(&samples, counts.stats.dirs_visited, Vec::new()),
+        counts,
+    )
 }
 
 /// One phase line for stdout, with the per-directory figure when present.
@@ -739,6 +820,12 @@ fn main() -> ExitCode {
     }
     if args.drop_caches {
         println!("  note: cold means client-side cold; the SMB server may still cache the tree");
+    }
+    if args.modes.contains(&Mode::Incremental) {
+        println!(
+            "  note: incremental mode assumes nothing else writes to the tree between walks; \
+             pause backups, indexers, and beets"
+        );
     }
 
     let mut roots = Vec::new();
@@ -849,6 +936,10 @@ fn main() -> ExitCode {
             modes.insert(mode.label().to_string(), ModeReport { levels });
         }
 
+        if let Some(verdict) = gate_verdict(&modes) {
+            println!("  {verdict}");
+        }
+
         roots.push(RootReport {
             path: canonical.display().to_string(),
             fstype,
@@ -922,24 +1013,60 @@ mod tests {
 
     #[test]
     fn phase_report_aggregates_samples_with_per_dir() {
-        let p = phase_report(&[10.0, 20.0, 30.0], 10);
+        let p = phase_report(&[10.0, 20.0, 30.0], 10, Vec::new());
         assert_eq!(p.iterations_ms, vec![10.0, 20.0, 30.0]);
         assert_eq!(p.median_ms, 20.0);
         assert_eq!(p.min_ms, 10.0);
         assert_eq!(p.max_ms, 30.0);
         assert_eq!(p.ms_per_dir, Some(2.0));
+        assert!(p.iteration_counts.is_empty());
     }
 
     #[test]
     fn phase_report_leaves_per_dir_none_with_zero_dirs() {
-        let p = phase_report(&[10.0, 20.0], 0);
+        let p = phase_report(&[10.0, 20.0], 0, Vec::new());
         assert_eq!(p.median_ms, 15.0);
         assert_eq!(p.ms_per_dir, None);
     }
 
     #[test]
+    fn phase_report_carries_iteration_counts_when_provided() {
+        // The values land in the report verbatim, not aggregated, so the JSON shows
+        // a row that drifted.
+        let counts = vec![
+            IterCounts {
+                dirs_visited: 100,
+                dirs_reused: 100,
+                entries_seen: 0,
+            },
+            IterCounts {
+                dirs_visited: 100,
+                dirs_reused: 99,
+                entries_seen: 12,
+            },
+        ];
+        let p = phase_report(&[10.0, 20.0], 100, counts);
+        assert_eq!(p.iteration_counts.len(), 2);
+        assert_eq!(p.iteration_counts[0].dirs_reused, 100);
+        assert_eq!(p.iteration_counts[1].dirs_reused, 99);
+        assert_eq!(p.iteration_counts[1].entries_seen, 12);
+        // The field serializes when non-empty so a reader can spot the drift.
+        let json = serde_json::to_value(&p).unwrap();
+        assert!(json.get("iteration_counts").is_some());
+    }
+
+    #[test]
+    fn phase_report_skips_iteration_counts_when_empty() {
+        // Listing walks (full, gaps) walk the whole tree every iteration by
+        // definition, so the field is omitted to keep their JSON compact.
+        let p = phase_report(&[10.0], 1, Vec::new());
+        let json = serde_json::to_value(&p).unwrap();
+        assert!(json.get("iteration_counts").is_none());
+    }
+
+    #[test]
     fn level_report_records_tree_build_ms() {
-        let p = phase_report(&[10.0, 20.0, 30.0], 10);
+        let p = phase_report(&[10.0, 20.0, 30.0], 10, Vec::new());
         let level = LevelReport {
             concurrency: 16,
             dirs_visited: 10,
@@ -956,9 +1083,9 @@ mod tests {
     }
 
     #[test]
-    fn schema_version_is_at_least_four() {
-        // Bumped from 3 with the tree_build_ms column.
-        const { assert!(SCHEMA_VERSION >= 4) };
+    fn schema_version_is_at_least_five() {
+        // Schema 4 added tree_build_ms. Schema 5 added iteration_counts.
+        const { assert!(SCHEMA_VERSION >= 5) };
     }
 
     #[test]
@@ -1228,7 +1355,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             dirs_reused: None,
             tree_build_ms: 0.0,
             cold: None,
-            warm: phase_report(&[10.0, 20.0], 3),
+            warm: phase_report(&[10.0, 20.0], 3, Vec::new()),
         }];
         let incremental_levels = vec![LevelReport {
             concurrency: 16,
@@ -1239,7 +1366,22 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             dirs_reused: Some(3),
             tree_build_ms: 0.0,
             cold: None,
-            warm: phase_report(&[1.0, 2.0], 3),
+            warm: phase_report(
+                &[1.0, 2.0],
+                3,
+                vec![
+                    IterCounts {
+                        dirs_visited: 3,
+                        dirs_reused: 3,
+                        entries_seen: 0,
+                    },
+                    IterCounts {
+                        dirs_visited: 3,
+                        dirs_reused: 3,
+                        entries_seen: 0,
+                    },
+                ],
+            ),
         }];
         let mut modes = std::collections::BTreeMap::new();
         modes.insert(
@@ -1272,7 +1414,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             }],
         };
         let json = serde_json::to_string(&report).unwrap();
-        assert!(json.contains("\"schema_version\":4"));
+        assert!(json.contains("\"schema_version\":5"));
         assert!(json.contains("\"tool\":\"scan_bench\""));
         assert!(json.contains("\"levels\""));
         assert!(json.contains("\"concurrency\":16"));
@@ -1283,6 +1425,10 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         assert!(json.contains("\"dirs_reused\":3"));
         let full_block = json.split("\"incremental\"").next().unwrap();
         assert!(!full_block.contains("dirs_reused"));
+        // iteration_counts is present on the incremental phase only.
+        let incremental_block = json.split("\"incremental\"").nth(1).unwrap();
+        assert!(incremental_block.contains("\"iteration_counts\""));
+        assert!(!full_block.contains("iteration_counts"));
     }
 
     #[test]
@@ -1306,5 +1452,121 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
     #[test]
     fn build_profile_reports_a_known_value() {
         assert!(matches!(build_profile(), "debug" | "release"));
+    }
+
+    /// One-level mode with the given counts and a single warm/cold median sample,
+    /// so the gate-verdict tests stay readable.
+    fn mode_level(
+        dirs_visited: usize,
+        dirs_reused: Option<usize>,
+        entries_seen: usize,
+        warm_ms: f64,
+        cold_ms: Option<f64>,
+    ) -> ModeReport {
+        let warm = phase_report(&[warm_ms], dirs_visited, Vec::new());
+        let cold = cold_ms.map(|ms| phase_report(&[ms], dirs_visited, Vec::new()));
+        ModeReport {
+            levels: vec![LevelReport {
+                concurrency: 16,
+                dirs_visited,
+                entries_seen,
+                gaps: 0,
+                audio_files: 0,
+                dirs_reused,
+                tree_build_ms: 0.0,
+                cold,
+                warm,
+            }],
+        }
+    }
+
+    #[test]
+    fn gate_verdict_passes_when_reuse_fires_and_cold_beats_full() {
+        let mut modes = BTreeMap::new();
+        modes.insert(
+            "full".to_string(),
+            mode_level(901, None, 8802, 1800.0, Some(1800.0)),
+        );
+        modes.insert(
+            "incremental".to_string(),
+            mode_level(901, Some(901), 0, 100.0, Some(420.0)),
+        );
+        let line = gate_verdict(&modes).unwrap();
+        assert!(line.starts_with("gate: PASS"), "got: {line}");
+        assert!(line.contains("reuse 901/901"));
+        assert!(line.contains("entries_seen=0"));
+        // Cold medians are preferred when both are present.
+        assert!(line.contains("cold median"));
+        assert!(line.contains("420"));
+        assert!(line.contains("1800"));
+    }
+
+    #[test]
+    fn gate_verdict_fails_when_reuse_misses_a_directory() {
+        let mut modes = BTreeMap::new();
+        modes.insert(
+            "full".to_string(),
+            mode_level(901, None, 8802, 1800.0, Some(1800.0)),
+        );
+        // One dir was listed (entries_seen > 0), so the reuse half of the gate fails.
+        modes.insert(
+            "incremental".to_string(),
+            mode_level(901, Some(900), 12, 110.0, Some(430.0)),
+        );
+        let line = gate_verdict(&modes).unwrap();
+        assert!(line.starts_with("gate: FAIL"), "got: {line}");
+        assert!(line.contains("entries_seen=12"));
+    }
+
+    #[test]
+    fn gate_verdict_fails_when_incremental_is_not_faster() {
+        let mut modes = BTreeMap::new();
+        modes.insert(
+            "full".to_string(),
+            mode_level(901, None, 8802, 1800.0, Some(1800.0)),
+        );
+        // Reuse fires, but the cold reuse median did not beat the cold full median.
+        modes.insert(
+            "incremental".to_string(),
+            mode_level(901, Some(901), 0, 100.0, Some(1900.0)),
+        );
+        let line = gate_verdict(&modes).unwrap();
+        assert!(line.starts_with("gate: FAIL"), "got: {line}");
+    }
+
+    #[test]
+    fn gate_verdict_falls_back_to_warm_without_cold_phase() {
+        // No --drop-caches: cold is None on both modes, so the line judges against
+        // the warm medians and labels itself accordingly.
+        let mut modes = BTreeMap::new();
+        modes.insert(
+            "full".to_string(),
+            mode_level(901, None, 8802, 1700.0, None),
+        );
+        modes.insert(
+            "incremental".to_string(),
+            mode_level(901, Some(901), 0, 100.0, None),
+        );
+        let line = gate_verdict(&modes).unwrap();
+        assert!(line.contains("warm median"));
+        assert!(!line.contains("cold median"));
+        assert!(line.starts_with("gate: PASS"));
+    }
+
+    #[test]
+    fn gate_verdict_returns_none_without_both_modes() {
+        let mut modes = BTreeMap::new();
+        modes.insert(
+            "incremental".to_string(),
+            mode_level(901, Some(901), 0, 100.0, Some(420.0)),
+        );
+        assert!(gate_verdict(&modes).is_none());
+
+        let mut modes = BTreeMap::new();
+        modes.insert(
+            "full".to_string(),
+            mode_level(901, None, 8802, 1800.0, Some(1800.0)),
+        );
+        assert!(gate_verdict(&modes).is_none());
     }
 }
