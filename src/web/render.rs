@@ -441,6 +441,12 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                     }
                 }
                 (conn_banner())
+                // The autosync SSE listener: opens a /events connection on load
+                // and routes each section event's OOB-swap payload to its target
+                // `<section id="root-N-section">` by ID (see ADR-0023, ADR-0024).
+                div hx-ext="sse"
+                    sse-connect=(format!("/events?view={}", mode.as_query()))
+                    sse-swap="section,snapshot" {}
                 nav.navbar {
                     // The title is a home link: a plain GET to "/" that survives the
                     // htmx swaps, landing on the default gaps-only view with no filter,
@@ -477,6 +483,7 @@ pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
                 (confirm_dialog())
                 (toast())
                 script src="/static/htmx.min.js" {}
+                script src="/static/htmx-sse.js" {}
                 script src="/static/app.js" {}
             }
         }
