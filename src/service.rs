@@ -1,7 +1,7 @@
 //! Web-agnostic service layer: the read view types and the typed operations
 //! (current view, marker write) shared by the HTML UI and a future JSON API.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -154,7 +154,7 @@ pub async fn mark(
         .clone();
     let rel_owned = rel.to_string();
     let write_path = root_path.clone();
-    let created =
+    let (created, canonical_root) =
         tokio::task::spawn_blocking(move || write_marker(&write_path, &rel_owned, marker))
             .await
             .map_err(|_| {
@@ -162,7 +162,7 @@ pub async fn mark(
             })??;
 
     // A self-write may not bump the folder mtime, so force a re-list on rescan.
-    invalidate_index(state, &root_path, rel);
+    invalidate_index(state, &canonical_root, rel);
 
     let rel_for_edit = rel.to_string();
     let marker_for_edit = marker;
@@ -202,17 +202,17 @@ pub async fn unmark(
         .ok_or(DomainError::RootIndex)?
         .clone();
     let rel_owned = rel.to_string();
-    {
+    let canonical_root = {
         let delete_path = root_path.clone();
         tokio::task::spawn_blocking(move || delete_marker(&delete_path, &rel_owned, marker))
             .await
             .map_err(|_| {
                 DomainError::WriteFailed(std::io::Error::other("marker delete task failed"))
-            })??;
-    }
+            })??
+    };
 
     // A self-delete may not bump the folder mtime, so force a re-list on rebuild.
-    invalidate_index(state, &root_path, rel);
+    invalidate_index(state, &canonical_root, rel);
 
     let section_root = root_path.clone();
     let section_settings = Arc::clone(&state.settings);
@@ -247,7 +247,7 @@ pub async fn unmark(
 /// create-only: `Ok(true)` when this call made the file, `Ok(false)` when it was
 /// already there, which keeps a re-mark a no-op and lets undo delete only files it
 /// created.
-fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<bool, DomainError> {
+fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(bool, PathBuf), DomainError> {
     let started = Instant::now();
     let canonical_root = std::fs::canonicalize(root).map_err(|_| DomainError::TargetMissing)?;
     let target = if rel == "." {
@@ -279,18 +279,18 @@ fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<bool, DomainEr
         elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
         "wrote marker"
     );
-    Ok(created)
+    Ok((created, canonical_root))
 }
 
 /// Guard the target and delete the marker file. The guarded mirror of
 /// `write_marker`: same canonicalize-and-stay-inside-the-root check. Undo is
 /// tolerant: a missing file or a folder that no longer exists is success, since
 /// the intended end state (no marker) already holds. Runs on a blocking task.
-fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<(), DomainError> {
+fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<PathBuf, DomainError> {
     let started = Instant::now();
     let canonical_root = match std::fs::canonicalize(root) {
         Ok(path) => path,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(root.to_path_buf()),
         Err(_) => return Err(DomainError::TargetMissing),
     };
     let target = if rel == "." {
@@ -300,7 +300,7 @@ fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<(), DomainErr
     };
     let canonical_target = match std::fs::canonicalize(&target) {
         Ok(path) => path,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(canonical_root),
         Err(_) => return Err(DomainError::TargetMissing),
     };
     if !canonical_target.starts_with(&canonical_root) {
@@ -318,7 +318,7 @@ fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<(), DomainErr
         elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
         "removed marker"
     );
-    Ok(())
+    Ok(canonical_root)
 }
 
 /// Apply a marker write to the raw view. For a non-root mark with path `P`:
@@ -472,15 +472,12 @@ fn lock_index(
 /// after this process writes or deletes a marker, so the change is picked up even
 /// if the directory mtime resolution would have hidden the same-tick write. A
 /// no-op when incremental scanning is off or the path was never indexed.
-fn invalidate_index(state: &AppState, root: &Path, rel: &str) {
+fn invalidate_index(state: &AppState, canonical_root: &Path, rel: &str) {
     let Some(index) = state.dir_index.as_ref() else {
         return;
     };
-    let Ok(canonical_root) = std::fs::canonicalize(root) else {
-        return;
-    };
     let target = if rel == "." {
-        canonical_root
+        canonical_root.to_path_buf()
     } else {
         canonical_root.join(rel)
     };
@@ -829,9 +826,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join("Book")).unwrap();
         // First write creates the file.
-        assert!(write_marker(dir.path(), "Book", Marker::NoEbook).unwrap());
+        assert!(write_marker(dir.path(), "Book", Marker::NoEbook).unwrap().0);
         // Second write finds it already there: not created, file still present.
-        assert!(!write_marker(dir.path(), "Book", Marker::NoEbook).unwrap());
+        assert!(!write_marker(dir.path(), "Book", Marker::NoEbook).unwrap().0);
         assert!(dir.path().join("Book").join(".no_ebook").exists());
     }
 
