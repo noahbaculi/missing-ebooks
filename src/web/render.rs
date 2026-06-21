@@ -412,7 +412,7 @@ pub(crate) fn roots(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) ->
 /// `id="root-N-section"` on the outer `<section>`; this helper wraps each one in
 /// a `<div hx-swap-oob="…">` so HTMX routes each fragment to its targeted DOM
 /// element on the open page.
-pub(crate) fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
+pub fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         @for (root, section) in view.iter().enumerate() {
             div hx-swap-oob=(format!("outerHTML:#root-{root}-section transition:true")) {
@@ -645,7 +645,10 @@ fn root_badge(state: &RootState) -> Markup {
     }
 }
 
-pub(crate) fn render_section(
+/// Render one root's section with an optional inline alert. Public so SSE
+/// integration tests under `tests/` can compare the byte output against an
+/// OOB-wrapped snapshot fragment.
+pub fn render_section(
     section: &RootSection,
     root: usize,
     error: Option<&str>,

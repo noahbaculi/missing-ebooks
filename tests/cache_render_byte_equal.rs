@@ -11,6 +11,7 @@ use missing_ebooks::scanner::ScanSettings;
 use missing_ebooks::scenarios;
 use missing_ebooks::service::{ViewMode, current_view, mark, unmark};
 use missing_ebooks::state::AppState;
+use missing_ebooks::web::render::{oob_sections, render_section};
 
 #[tokio::test]
 async fn render_is_byte_equal_across_hits_and_a_mark_undo_round_trip() {
@@ -23,6 +24,9 @@ async fn render_is_byte_equal_across_hits_and_a_mark_undo_round_trip() {
         ttl_seconds: 600,
         ..Config::default()
     };
+    // Clone search_links before the config is consumed by AppState::new so the
+    // SSE-payload assertion below has a borrow to pass into render helpers.
+    let links = config.search_links.clone();
     let settings = ScanSettings::compile(config.scan_inputs()).unwrap();
     let state = Arc::new(AppState::new(config, settings));
 
@@ -65,6 +69,16 @@ async fn render_is_byte_equal_across_hits_and_a_mark_undo_round_trip() {
         serde_json::to_vec(&*gaps_one).unwrap(),
         serde_json::to_vec(&*restored).unwrap(),
         "undoing the mark must restore the gaps view byte-for-byte",
+    );
+
+    // The OOB-wrapped snapshot payload must contain the byte-for-byte fragment
+    // a direct render_section produces, so an SSE subscriber and a Rescan
+    // click see identical bytes for the same root (ADR-0024).
+    let direct = render_section(&restored[0], 0, None, &links, ViewMode::GapsOnly).into_string();
+    let snapshot = oob_sections(&restored, &links, ViewMode::GapsOnly).into_string();
+    assert!(
+        snapshot.contains(&direct),
+        "the OOB-wrapped snapshot must contain the same root-0 fragment as a direct render"
     );
 }
 

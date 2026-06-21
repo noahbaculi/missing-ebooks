@@ -25,7 +25,7 @@ use crate::service::{self, ViewMode};
 use crate::state::AppState;
 
 mod assets;
-pub(crate) mod render;
+pub mod render;
 
 // Re-exported so the demo router's `use crate::web::…` path stays put.
 pub(crate) use assets::{app_css, htmx_script, htmx_sse_script};
@@ -214,16 +214,30 @@ async fn events(
     let mode = ViewMode::from_query(query.view.as_deref());
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(16);
 
-    // Render the snapshot from the (already-fresh or just-built) render cache.
-    let view = service::current_view(&state, mode).await;
-    let snapshot = render::oob_sections(&view, &state.config.search_links, mode).into_string();
+    // Build the snapshot payload AND the per-root hashes from the same raw
+    // view, so the loop's first tick suppresses redundant section events for
+    // sections the snapshot already carried (see ADR-0024).
+    let raw = state
+        .cache
+        .get_or_build(|| {
+            service::build_view(
+                state.config.as_ref(),
+                &state.settings,
+                Arc::clone(&state.dir_index),
+            )
+        })
+        .await;
+    let (snapshot, seed_hashes) =
+        crate::autosync::snapshot_and_seed(&raw, mode, &state.config.search_links);
     let _ = tx
         .send(Ok(Event::default().event("snapshot").data(snapshot)))
         .await;
 
     // Register with the autosync registry. Spawns the loop if this is the
     // first subscriber and the interval is non-zero.
-    state.autosync.subscribe(&state, mode, tx);
+    state
+        .autosync
+        .subscribe(&state, mode, tx, Some(seed_hashes));
 
     Sse::new(ReceiverStream::new(rx)).keep_alive(
         KeepAlive::new()

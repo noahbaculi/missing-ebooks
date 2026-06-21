@@ -65,6 +65,47 @@ fn stable_hash(s: &str) -> u64 {
     hasher.finish()
 }
 
+/// Wrap one rendered section in the OOB-swap markup the autosync stream uses,
+/// so the client can route the fragment to its `<section id="root-N-section">`
+/// on the open page (see ADR-0024). Shared by the snapshot path and the loop's
+/// per-root diff so a section's bytes are identical on both wires.
+pub(crate) fn render_oob_section(
+    raw_section: &state::RawRootSection,
+    root_idx: usize,
+    mode: ViewMode,
+    links: &[crate::config::SearchLink],
+) -> String {
+    let rendered_state =
+        crate::service::render_root_state(&raw_section.path, &raw_section.state, mode);
+    let rendered_section = crate::service::RootSection {
+        path: raw_section.path.clone(),
+        state: rendered_state,
+    };
+    let inner = crate::web::render::render_section(&rendered_section, root_idx, None, links, mode)
+        .into_string();
+    format!("<div hx-swap-oob=\"outerHTML:#root-{root_idx}-section transition:true\">{inner}</div>")
+}
+
+/// Build the concatenated OOB-swap payload for an SSE `snapshot` event and the
+/// per-root hashes the autosync loop will use to suppress redundant first-tick
+/// section events. The handler sends the payload, then passes the hashes to
+/// `Autosync::subscribe` so the loop's first compute_pushes finds matching
+/// hashes and emits nothing until something actually changes.
+pub(crate) fn snapshot_and_seed(
+    raw: &state::RawView,
+    mode: ViewMode,
+    links: &[crate::config::SearchLink],
+) -> (String, Vec<u64>) {
+    let mut payload = String::with_capacity(raw.len() * 512);
+    let mut hashes = Vec::with_capacity(raw.len());
+    for (root_idx, section) in raw.iter().enumerate() {
+        let oob = render_oob_section(section, root_idx, mode, links);
+        hashes.push(stable_hash(&oob));
+        payload.push_str(&oob);
+    }
+    (payload, hashes)
+}
+
 /// One subscriber's outbound channel. The loop fans out to every sender in
 /// `subs[mode]`; a `try_send` failure prunes the sender.
 pub(crate) type SseSender = mpsc::Sender<Result<Event, Infallible>>;
@@ -110,14 +151,22 @@ impl Autosync {
     /// handle. The caller is responsible for sending the snapshot event into
     /// `sender` before calling this, so the channel's first event is always
     /// the snapshot.
+    ///
+    /// `seed_hashes` populates `last_hash[mode]` so the loop's first compute
+    /// suppresses redundant section events for sections the snapshot already
+    /// carried; pass `None` (tests only) to skip the seed.
     pub(crate) fn subscribe(
         &self,
         state: &Arc<crate::state::AppState>,
         mode: ViewMode,
         sender: SseSender,
+        seed_hashes: Option<Vec<u64>>,
     ) {
         let mut guard = self.inner.lock().expect("autosync mutex poisoned");
         guard.subs[mode].push(sender);
+        if let Some(hashes) = seed_hashes {
+            guard.last_hash[mode] = hashes.into_iter().map(Some).collect();
+        }
 
         let should_spawn = self.interval > Duration::ZERO
             && guard
@@ -206,23 +255,7 @@ async fn run_loop(
                 &mut guard.last_hash,
                 has_subs,
                 |mode, root_idx, raw_section| {
-                    let rendered_state = crate::service::render_root_state(
-                        &raw_section.path,
-                        &raw_section.state,
-                        mode,
-                    );
-                    let rendered_section = crate::service::RootSection {
-                        path: raw_section.path.clone(),
-                        state: rendered_state,
-                    };
-                    crate::web::render::render_section(
-                        &rendered_section,
-                        root_idx,
-                        None,
-                        links,
-                        mode,
-                    )
-                    .into_string()
+                    render_oob_section(raw_section, root_idx, mode, links)
                 },
             )
         };
@@ -379,7 +412,9 @@ mod tests {
     async fn first_subscribe_spawns_loop_last_unsub_lets_it_exit() {
         let state = test_state_with_interval(1);
         let (tx, rx) = mpsc::channel(8);
-        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx);
+        state
+            .autosync
+            .subscribe(&state, ViewMode::GapsOnly, tx, None);
         assert_eq!(state.autosync.subscriber_count(), 1);
         // Drop the receiver: the next loop tick's fan-out prunes the sender.
         drop(rx);
@@ -396,7 +431,9 @@ mod tests {
     async fn zero_interval_never_spawns_the_loop() {
         let state = test_state_with_interval(0);
         let (tx, _rx) = mpsc::channel(8);
-        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx);
+        state
+            .autosync
+            .subscribe(&state, ViewMode::GapsOnly, tx, None);
         // No loop task means the subscriber count stays put even after a
         // generous wait; pruning only happens inside the loop.
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -407,7 +444,9 @@ mod tests {
     async fn aborted_loop_respawns_on_next_subscribe() {
         let state = test_state_with_interval(60);
         let (tx1, _rx1) = mpsc::channel(8);
-        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx1);
+        state
+            .autosync
+            .subscribe(&state, ViewMode::GapsOnly, tx1, None);
 
         // Simulate a panic by aborting the loop task directly.
         state.autosync.abort_loop_for_test();
@@ -415,7 +454,9 @@ mod tests {
 
         // The next subscribe sees a finished JoinHandle (None after abort) and respawns.
         let (tx2, _rx2) = mpsc::channel(8);
-        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx2);
+        state
+            .autosync
+            .subscribe(&state, ViewMode::GapsOnly, tx2, None);
         let guard = state.autosync.inner.lock().unwrap();
         let handle = guard
             .loop_task
