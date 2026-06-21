@@ -63,8 +63,15 @@ async fn main() -> anyhow::Result<()> {
     let roots = (scenario.build)(&seed_dir);
 
     // The production config over the seeded roots, defaulted otherwise.
+    // autosync_interval_seconds=0 disables the autosync loop everywhere a
+    // production AppState would build one (ADR-0023). The demo never builds an
+    // AppState today, so this is a placeholder that documents the choice: the
+    // session sweep's idle signal does not yet track SSE traffic, so per-session
+    // loops would extend sessions inappropriately. A follow-up captures
+    // showcasing autosync in the demo properly.
     let config = Config {
         library_roots: roots,
+        autosync_interval_seconds: 0,
         ..Default::default()
     };
     let settings = ScanSettings::compile(config.scan_inputs())?;

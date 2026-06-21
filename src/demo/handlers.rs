@@ -5,18 +5,26 @@
 //! then rendered for the requested mode. The full index page carries the demo
 //! banner; the `/mark` partial does not.
 
+use std::convert::Infallible;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::extract::{Form, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
+use futures_util::Stream;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::service::{FlaggedView, ViewMode, apply_mark_raw, render_view};
 use crate::state::RawView;
-use crate::web::{MarkRequest, ViewQuery, app_css, htmx_script, page, render_section};
+use crate::web::render::oob_sections;
+use crate::web::{
+    MarkRequest, ViewQuery, app_css, htmx_script, htmx_sse_script, page, render_section,
+};
 
 use super::banner;
 use super::session::{AtCapacity, Mark, SessionId, SessionStore};
@@ -43,8 +51,10 @@ pub fn router(state: Arc<DemoState>) -> Router {
         .route("/mark", post(mark))
         .route("/reset", post(reset))
         .route("/rescan", post(rescan))
+        .route("/events", get(events))
         .route("/healthz", get(healthz))
         .route("/static/htmx.min.js", get(htmx_script))
+        .route("/static/htmx-sse.js", get(htmx_sse_script))
         .route("/static/app.css", get(app_css))
         .with_state(state)
 }
@@ -252,6 +262,43 @@ async fn rescan(Form(query): Form<ViewQuery>) -> Redirect {
     // returns the visitor to their current view.
     let mode = ViewMode::from_query(query.view.as_deref());
     redirect_to_view(mode)
+}
+
+/// The demo's `/events` endpoint. Serves the per-session snapshot once, then
+/// keeps the connection alive with pings so the page's SSE listener never 404s
+/// and never reconnects in a loop. The demo runs no autosync loop (its library
+/// is static and its marks are in-process), so no `section` events are ever
+/// emitted (ADR-0023). A follow-up captures showcasing autosync in the demo.
+async fn events(
+    State(state): State<Arc<DemoState>>,
+    headers: HeaderMap,
+    Query(query): Query<ViewQuery>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let mode = ViewMode::from_query(query.view.as_deref());
+    let now = Instant::now();
+    let existing = read_cookie(&headers, &state.config.cookie_name);
+    let marks = {
+        let mut store = state.sessions.lock().expect("session lock");
+        // resolve_in_store may fail under capacity; the SSE channel just sends
+        // an empty snapshot in that case, since the page's other GET would
+        // already have shown the capacity response.
+        resolve_in_store(&mut store, &state.config, existing, now)
+            .map(|(sid, _set_cookie)| store.marks(&sid).to_vec())
+            .unwrap_or_default()
+    };
+    let view = derive_view(state.base_raw(), &marks, mode);
+    let snapshot = oob_sections(&view, &state.search_links, mode).into_string();
+
+    let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(4);
+    let _ = tx
+        .send(Ok(Event::default().event("snapshot").data(snapshot)))
+        .await;
+
+    Sse::new(ReceiverStream::new(rx)).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("ping"),
+    )
 }
 
 /// Liveness probe for the container healthcheck. Answers without minting a
