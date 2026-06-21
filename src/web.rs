@@ -20,7 +20,7 @@ use crate::service::{self, ViewMode};
 use crate::state::AppState;
 
 mod assets;
-mod render;
+pub(crate) mod render;
 
 // Re-exported so the demo router's `use crate::web::…` path stays put.
 pub(crate) use assets::{app_css, htmx_script};

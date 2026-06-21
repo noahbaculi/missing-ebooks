@@ -13,8 +13,8 @@ use tokio::sync::Mutex;
 use crate::config::Config;
 use crate::scanner::{DirIndex, ScanSettings, ScannedFolder};
 
-/// Everything a request handler needs: the immutable config and settings, and
-/// the scan cache. Shared as `Arc<AppState>`.
+/// Everything a request handler needs: the immutable config and settings, the
+/// scan cache, and the autosync registry. Shared as `Arc<AppState>`.
 pub struct AppState {
     pub(crate) config: Arc<Config>,
     pub(crate) settings: Arc<ScanSettings>,
@@ -23,6 +23,11 @@ pub struct AppState {
     /// ADR-0023). A blocking scan locks it to reuse unchanged directories.
     pub(crate) dir_index: Arc<StdMutex<DirIndex>>,
     pub(crate) cache: Cache,
+    /// The autosync subscriber registry and loop handle. The loop spawns on the
+    /// first SSE subscription with a non-zero `autosync_interval_seconds` and
+    /// exits when the last subscriber disconnects (ADR-0023).
+    #[allow(dead_code, reason = "the SSE handler wires this in Task 7")]
+    pub(crate) autosync: crate::autosync::Autosync,
 }
 
 /// The result of scanning one root, in raw form: enough to render either view
@@ -192,6 +197,7 @@ impl AppState {
             Some(Duration::from_secs(config.ttl_seconds))
         };
         let dir_index = Arc::new(StdMutex::new(DirIndex::new()));
+        let autosync = crate::autosync::Autosync::new(config.autosync_interval_seconds);
         AppState {
             config: Arc::new(config),
             settings: Arc::new(settings),
@@ -200,6 +206,7 @@ impl AppState {
                 entries: Mutex::new(None),
                 ttl,
             },
+            autosync,
         }
     }
 
