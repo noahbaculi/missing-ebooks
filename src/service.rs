@@ -375,7 +375,7 @@ pub(crate) fn render_view(raw: &state::RawView, mode: ViewMode) -> FlaggedView {
     raw.iter()
         .map(|section| RootSection {
             path: section.path.clone(),
-            state: render_section(&section.path, &section.state, mode),
+            state: render_root_state(&section.path, &section.state, mode),
         })
         .collect()
 }
@@ -383,7 +383,7 @@ pub(crate) fn render_view(raw: &state::RawView, mode: ViewMode) -> FlaggedView {
 /// Render one section per mode. The root name for `tree::build`'s `.` node
 /// comes from the section's canonical path (last component, or "." when absent),
 /// the same rule `scan_root` used to derive it before the rework.
-fn render_section(path: &str, state: &state::RawRootState, mode: ViewMode) -> RootState {
+fn render_root_state(path: &str, state: &state::RawRootState, mode: ViewMode) -> RootState {
     match state {
         state::RawRootState::Clean => RootState::Clean,
         state::RawRootState::Error(err) => RootState::Error(err.clone()),
