@@ -71,6 +71,8 @@ pub(crate) struct CacheEntry {
 
 /// Stamp and store a freshly built raw view. The single place that sets
 /// `stored_at = now`: a fresh build refreshes the freshness clock (ADR-0002).
+/// `apply_marker_or_build` uses `Arc::make_mut` for in-place edits and
+/// intentionally bypasses this function, leaving `stored_at` unchanged.
 fn store_fresh(slot: &mut Option<CacheEntry>, raw: RawView) -> Arc<RawView> {
     let raw = Arc::new(raw);
     *slot = Some(CacheEntry {
