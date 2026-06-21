@@ -159,10 +159,7 @@ impl Cache {
         Fut: Future<Output = RawView>,
     {
         let mut slot = self.entries.lock().await;
-        // `is_some_and` drops the borrow before the await below; an `if let`
-        // binding here would hold a borrow across `rebuild_section().await` and
-        // conflict with the later `slot.as_mut()`. Matches the original
-        // `slot.is_some()` shape, extended with the freshness predicate.
+        // is_some_and drops the borrow before the await; an if-let binding would hold it across rebuild_section().await.
         if slot.as_ref().is_some_and(|entry| is_fresh(entry, self.ttl)) {
             let section = rebuild_section().await;
             let entry = slot.as_mut().expect("checked Some above");
