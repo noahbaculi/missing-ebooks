@@ -407,6 +407,21 @@ pub(crate) fn roots(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) ->
     }
 }
 
+/// Render every section of `view` as a sequence of OOB swap fragments, suitable
+/// for an SSE snapshot or section-event payload. `render_section` already emits
+/// `id="root-N-section"` on the outer `<section>`; this helper wraps each one in
+/// a `<div hx-swap-oob="…">` so HTMX routes each fragment to its targeted DOM
+/// element on the open page.
+pub(crate) fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
+    html! {
+        @for (root, section) in view.iter().enumerate() {
+            div hx-swap-oob=(format!("outerHTML:#root-{root}-section transition:true")) {
+                (render_section(section, root, None, links, mode))
+            }
+        }
+    }
+}
+
 pub(crate) fn page(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         (DOCTYPE)
@@ -631,8 +646,9 @@ pub(crate) fn render_section(
     mode: ViewMode,
 ) -> Markup {
     let counter = std::cell::Cell::new(0usize);
+    let section_id = format!("root-{root}-section");
     html! {
-        section.card.root data-root=(root) {
+        section.card.root id=(section_id) data-root=(root) {
             details.root-fold open {
                 summary.root-head {
                     (chevron())
@@ -676,8 +692,9 @@ pub(crate) fn render_section(
 /// index is out of range), carrying the same alert the in-fold error uses. Used by
 /// the failed-write path when the view has no section to render into.
 pub(crate) fn error_section(root: usize, message: &str) -> Markup {
+    let section_id = format!("root-{root}-section");
     html! {
-        section.card.root data-root=(root) {
+        section.card.root id=(section_id) data-root=(root) {
             div.alert.alert-error { (PreEscaped(ERROR_SVG)) span { (message) } }
         }
     }

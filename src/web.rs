@@ -3,16 +3,21 @@
 //! decoupled from the axum version. Marker writes use htmx to swap only the
 //! affected root's section. htmx is vendored and served from `/static`.
 
+use std::convert::Infallible;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::Router;
 use axum::extract::{Form, Query, State};
 use axum::http::{HeaderName, HeaderValue};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
+use futures_util::Stream;
 use maud::Markup;
 use serde::Deserialize;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::config::SearchLink;
 use crate::marker::Marker;
@@ -55,6 +60,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/mark", post(mark))
         .route("/unmark", post(unmark))
         .route("/rescan", post(rescan))
+        .route("/events", get(events))
         .route("/static/htmx.min.js", get(assets::htmx_script))
         .route("/static/app.css", get(assets::app_css))
         .route("/static/app.js", get(assets::app_js))
@@ -194,6 +200,35 @@ fn mode_path(mode: ViewMode) -> &'static str {
         ViewMode::GapsOnly => "/",
         ViewMode::All => "/?view=all",
     }
+}
+
+/// SSE endpoint. The first event is `snapshot`, an OOB-swap payload byte-
+/// identical to what `GET /?view=…` renders for those sections. Subsequent
+/// events are `section` events from the autosync loop. `ping` events come from
+/// `KeepAlive` every 15 seconds to survive idle TCP drops by reverse proxies.
+async fn events(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ViewQuery>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let mode = ViewMode::from_query(query.view.as_deref());
+    let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(16);
+
+    // Render the snapshot from the (already-fresh or just-built) render cache.
+    let view = service::current_view(&state, mode).await;
+    let snapshot = render::oob_sections(&view, &state.config.search_links, mode).into_string();
+    let _ = tx
+        .send(Ok(Event::default().event("snapshot").data(snapshot)))
+        .await;
+
+    // Register with the autosync registry. Spawns the loop if this is the
+    // first subscriber and the interval is non-zero.
+    state.autosync.subscribe(&state, mode, tx);
+
+    Sse::new(ReceiverStream::new(rx)).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("ping"),
+    )
 }
 
 /// JSON-escape any non-ASCII char to `\uXXXX` so an `HX-Trigger` value stays pure

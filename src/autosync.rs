@@ -73,7 +73,6 @@ pub(crate) type SseSender = mpsc::Sender<Result<Event, Infallible>>;
 /// The inner `Arc<Mutex<...>>` is cloned by the loop and by per-request handler
 /// views, so the registry is one shared object regardless of how many `Autosync`
 /// values point at it.
-#[allow(dead_code, reason = "the SSE handler wires subscribe in Task 7")]
 pub struct Autosync {
     inner: Arc<StdMutex<AutosyncInner>>,
     /// The configured idle gap. `0` disables the loop entirely; subscribing
@@ -111,7 +110,6 @@ impl Autosync {
     /// handle. The caller is responsible for sending the snapshot event into
     /// `sender` before calling this, so the channel's first event is always
     /// the snapshot.
-    #[allow(dead_code, reason = "wired by the SSE handler in Task 7")]
     pub(crate) fn subscribe(
         &self,
         state: &Arc<crate::state::AppState>,
@@ -138,18 +136,6 @@ impl Autosync {
         }
     }
 
-    /// Build a new `Autosync` value that shares the same registry as `self`.
-    /// Lets a web handler take an owned `Autosync` without an `Arc<Arc<…>>`,
-    /// since the inner registry already lives behind an `Arc<Mutex<…>>`.
-    #[must_use]
-    #[allow(dead_code, reason = "wired by the SSE handler in Task 7")]
-    pub(crate) fn clone_handle(&self) -> Self {
-        Self {
-            inner: Arc::clone(&self.inner),
-            interval: self.interval,
-        }
-    }
-
     /// Number of active subscribers across both modes. Tests reach in;
     /// production code does not.
     #[cfg(test)]
@@ -173,7 +159,6 @@ impl Autosync {
 /// The loop body. Holds a `Weak<AppState>` so the application can drop without
 /// leaking the loop; a failed upgrade per tick means the process is shutting
 /// down or the test scope ended, and the loop exits.
-#[allow(dead_code, reason = "spawned by subscribe, wired in Task 7")]
 async fn run_loop(
     weak_state: Weak<crate::state::AppState>,
     inner: Arc<StdMutex<AutosyncInner>>,
@@ -266,7 +251,6 @@ async fn run_loop(
 /// Build the SSE `section` event for one root's OOB swap fragment. The event
 /// name lines up with the client's `sse-swap="section"` attribute; the OOB
 /// target ID is carried inside the HTML body itself via `hx-swap-oob`.
-#[allow(dead_code, reason = "called from run_loop, wired in Task 7")]
 fn section_event(html: String) -> Event {
     Event::default().event("section").data(html)
 }
@@ -394,16 +378,15 @@ mod tests {
     #[tokio::test]
     async fn first_subscribe_spawns_loop_last_unsub_lets_it_exit() {
         let state = test_state_with_interval(1);
-        let autosync = state.autosync.clone_handle();
         let (tx, rx) = mpsc::channel(8);
-        autosync.subscribe(&state, ViewMode::GapsOnly, tx);
-        assert_eq!(autosync.subscriber_count(), 1);
+        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx);
+        assert_eq!(state.autosync.subscriber_count(), 1);
         // Drop the receiver: the next loop tick's fan-out prunes the sender.
         drop(rx);
         // Wait long enough for at least one tick (interval is 1 s).
         tokio::time::sleep(Duration::from_millis(1500)).await;
         assert_eq!(
-            autosync.subscriber_count(),
+            state.autosync.subscriber_count(),
             0,
             "the dead subscriber was pruned"
         );
@@ -412,30 +395,28 @@ mod tests {
     #[tokio::test]
     async fn zero_interval_never_spawns_the_loop() {
         let state = test_state_with_interval(0);
-        let autosync = state.autosync.clone_handle();
         let (tx, _rx) = mpsc::channel(8);
-        autosync.subscribe(&state, ViewMode::GapsOnly, tx);
+        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx);
         // No loop task means the subscriber count stays put even after a
         // generous wait; pruning only happens inside the loop.
         tokio::time::sleep(Duration::from_millis(100)).await;
-        assert_eq!(autosync.subscriber_count(), 1);
+        assert_eq!(state.autosync.subscriber_count(), 1);
     }
 
     #[tokio::test]
     async fn aborted_loop_respawns_on_next_subscribe() {
         let state = test_state_with_interval(60);
-        let autosync = state.autosync.clone_handle();
         let (tx1, _rx1) = mpsc::channel(8);
-        autosync.subscribe(&state, ViewMode::GapsOnly, tx1);
+        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx1);
 
         // Simulate a panic by aborting the loop task directly.
-        autosync.abort_loop_for_test();
+        state.autosync.abort_loop_for_test();
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         // The next subscribe sees a finished JoinHandle (None after abort) and respawns.
         let (tx2, _rx2) = mpsc::channel(8);
-        autosync.subscribe(&state, ViewMode::GapsOnly, tx2);
-        let guard = autosync.inner.lock().unwrap();
+        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx2);
+        let guard = state.autosync.inner.lock().unwrap();
         let handle = guard
             .loop_task
             .as_ref()

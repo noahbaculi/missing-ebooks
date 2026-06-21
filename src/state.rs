@@ -26,7 +26,6 @@ pub struct AppState {
     /// The autosync subscriber registry and loop handle. The loop spawns on the
     /// first SSE subscription with a non-zero `autosync_interval_seconds` and
     /// exits when the last subscriber disconnects (ADR-0023).
-    #[allow(dead_code, reason = "the SSE handler wires this in Task 7")]
     pub(crate) autosync: crate::autosync::Autosync,
 }
 
