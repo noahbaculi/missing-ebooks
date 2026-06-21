@@ -27,7 +27,7 @@ Each flagged row carries:
 - buttons that write a marker file into that folder
 - search links that open a prefilled book search in a new tab (Goodreads and OceanofPDF by default)
 
-A rescan button refreshes the view. Scans are cached with a staleness backstop (`ttl_seconds`).
+A rescan button forces a cold scan (clears the dir index, walks every directory). With `autosync_interval_seconds > 0`, open pages also refresh live as the background warm scan detects changes. Scans are cached with a staleness backstop (`ttl_seconds`).
 
 By default the page shows only the gaps. A "Show all folders" toggle beside the Rescan button switches to a fuller view that renders the whole library tree, covered folders included, so a gap can be read in the context of everything around it. Covered folders show dimmed with a check and carry no actions; the gaps keep their buttons and search links. The toggle is per view and is not saved.
 
@@ -106,7 +106,7 @@ These environment variables override the file when set:
 | `MISSING_EBOOKS_PORT`             | `port`                                   |
 | `MISSING_EBOOKS_TTL_SECONDS`      | `ttl_seconds`                            |
 | `MISSING_EBOOKS_SCAN_CONCURRENCY` | `scan_concurrency`                       |
-| `MISSING_EBOOKS_INCREMENTAL_SCAN` | `incremental_scan`                       |
+| `MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS` | `autosync_interval_seconds`              |
 | `PUID`                            | Container run-as user ID (Docker only)   |
 | `PGID`                            | Container run-as group ID (Docker only)  |
 
@@ -126,7 +126,7 @@ Reading more folders at once with `scan_concurrency` overlaps their round trips.
 
 `ttl_seconds` keeps a scanned view cached so repeat page loads do not rescan, and this matters more over SMB than locally. The client's own attribute cache ages out within a second, faster than a multi-second walk finishes, so a second walk re-queries the server and runs no faster than the first; the in-process cache is what spares the repeat cost. Raise `ttl_seconds` on a slow mount and treat the rescan button as the deliberate refresh.
 
-`incremental_scan` (default on) is the rescan-time complement. When the rescan button fires or `ttl_seconds` expires, the next walk stats every directory and re-lists only the ones whose mtime has changed, cutting a cold rescan of the same ~900-folder library from about 1.9 s to about 260 ms over SMB. A steady-state rescan where the client's attribute cache still holds the stats finishes in low single-digit milliseconds.
+`autosync_interval_seconds` (default 10) governs the background sync loop. While at least one browser tab is open to the server, the loop runs a warm scan every N seconds (idle gap: the timer measures from completion to next start) and pushes any changed root sections back to the tab over SSE. Warm scans reuse a per-directory mtime index built up by previous scans; on the README's ~900-folder reference library a steady-state warm scan finishes in low single-digit milliseconds over SMB. Set the value to `0` to disable the loop; the SSE endpoint still serves the initial snapshot but emits no further section events. The Rescan button takes a different path: it clears the dir index and walks every directory (a cold scan), the explicit "fix any drift" action, which on the same library is about 1.9 s over SMB.
 
 ## Markers
 
