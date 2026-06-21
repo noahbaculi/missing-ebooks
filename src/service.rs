@@ -18,7 +18,7 @@ use crate::tree::{self, Node};
 /// Selects the render applied to the cached raw scan output (see ADR-0022).
 /// Deserializes from the `view` form field; `from_query` is the lenient
 /// URL-query path that falls back to gaps-only.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, enum_map::Enum)]
 pub enum ViewMode {
     /// Today's view: only gaps and the containers above them.
     #[default]
