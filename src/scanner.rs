@@ -193,6 +193,12 @@ impl DirIndex {
         self.entries.remove(dir).is_some()
     }
 
+    /// Drop every cached entry. The next scan walks every directory from
+    /// scratch and repopulates the map as it goes.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
     /// Number of cached directories.
     #[must_use]
     pub fn len(&self) -> usize {

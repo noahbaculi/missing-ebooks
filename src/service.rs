@@ -110,8 +110,11 @@ pub async fn current_view(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> 
     Arc::new(render_view(&raw, mode))
 }
 
-/// Force a fresh scan, store it, and return it, ignoring the TTL.
+/// Force a fresh cold scan by clearing the dir index and rebuilding from
+/// scratch. Ignores the TTL. This is the explicit "fix any drift" path; the
+/// autosync loop keeps using warm scans (see ADR-0023).
 pub async fn rescan(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> {
+    state.clear_dir_index();
     let raw = state
         .cache
         .rebuild(|| {
@@ -701,6 +704,63 @@ mod tests {
         touch(&dir.path().join("Book/Book.epub"));
         let refreshed = rescan(&state, ViewMode::GapsOnly).await;
         assert!(matches!(refreshed[0].state, RootState::Clean));
+    }
+
+    #[tokio::test]
+    async fn rescan_clears_the_dir_index_then_repopulates_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let scenario = crate::scenarios::find_scenario("mixed-forest").expect("scenario exists");
+        let roots = (scenario.build)(dir.path());
+        let cfg = Config {
+            library_roots: roots,
+            ttl_seconds: 600,
+            ..Config::default()
+        };
+        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
+        let state = AppState::new(cfg, settings);
+
+        // Warm the index by reading once.
+        let _ = current_view(&state, ViewMode::GapsOnly).await;
+        let after_warm = state.dir_index.lock().unwrap().len();
+        assert!(after_warm > 0, "the warm read populated the dir index");
+
+        // Drop a synthetic entry into the index that no real walk could reach.
+        // A cold rescan must drop it; a warm rescan would preserve it.
+        let synthetic_path = std::path::PathBuf::from("/nonexistent/synthetic/marker/path");
+        state.dir_index.lock().unwrap().insert(
+            synthetic_path.clone(),
+            scanner::CachedDir {
+                mtime: std::time::UNIX_EPOCH,
+                subdirs: Vec::new(),
+                cover_files: Vec::new(),
+                audio_files: Vec::new(),
+            },
+        );
+        assert!(
+            state
+                .dir_index
+                .lock()
+                .unwrap()
+                .get(&synthetic_path)
+                .is_some()
+        );
+
+        // Rescan must drop every entry, then the rebuild repopulates it.
+        let _ = rescan(&state, ViewMode::GapsOnly).await;
+        assert!(
+            state
+                .dir_index
+                .lock()
+                .unwrap()
+                .get(&synthetic_path)
+                .is_none(),
+            "rescan must clear the dir index, dropping the synthetic entry"
+        );
+        let after_rescan = state.dir_index.lock().unwrap().len();
+        assert_eq!(
+            after_rescan, after_warm,
+            "rescan must clear and repopulate to the same count on an unchanged tree"
+        );
     }
 
     #[tokio::test]
