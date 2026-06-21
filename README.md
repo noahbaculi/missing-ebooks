@@ -126,6 +126,8 @@ Reading more folders at once with `scan_concurrency` overlaps their round trips.
 
 `ttl_seconds` keeps a scanned view cached so repeat page loads do not rescan, and this matters more over SMB than locally. The client's own attribute cache ages out within a second, faster than a multi-second walk finishes, so a second walk re-queries the server and runs no faster than the first; the in-process cache is what spares the repeat cost. Raise `ttl_seconds` on a slow mount and treat the rescan button as the deliberate refresh.
 
+`incremental_scan` (default on) is the rescan-time complement. When the rescan button fires or `ttl_seconds` expires, the next walk stats every directory and re-lists only the ones whose mtime has changed, cutting a cold rescan of the same ~900-folder library from about 1.9 s to about 260 ms over SMB. A steady-state rescan where the client's attribute cache still holds the stats finishes in low single-digit milliseconds.
+
 ## Markers
 
 Two fixed marker files mark a folder as covered on purpose. The names are not configurable.
