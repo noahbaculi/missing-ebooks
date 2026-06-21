@@ -28,6 +28,7 @@ test = true
 [dependencies]
 anyhow = "1.0.102"
 axum = "0.8.9"
+enum-map = "2.7"
 getrandom = "0.2"
 globset = "0.4.18"
 lexical-sort = "0.3.1"
