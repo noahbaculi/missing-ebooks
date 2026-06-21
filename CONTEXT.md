@@ -47,3 +47,19 @@ _Avoid_: ignore, blocklist entry.
 **Exclude glob**:
 A glob pattern matched against a folder's path relative to its library root, case-insensitively. A match drops that folder and its descendants, the same way an exclude name does; the two differ only in match criterion. Glob syntax is standard; the subtree-dropping follows the gitignore convention for applying globs to a tree.
 _Avoid_: filter, ignore pattern.
+
+**Render cache**:
+The in-memory cache holding the raw scan output (`Cache` in `src/state.rs`), TTL-bounded by `ttl_seconds`. One slot per process; both view modes render from the same raw data at request time (ADR-0022). This is the cache page loads and SSE snapshots hit.
+_Avoid_: the cache, scan cache (ambiguous with the dir index).
+
+**Dir index**:
+The in-memory per-directory mtime map (`dir_index` in `src/state.rs`) that lets a scan skip unchanged directories. Process-lifetime, written by every scan, discarded only by a `/rescan` click or process restart (see ADR-0020).
+_Avoid_: cache, mtime cache.
+
+**Warm scan**:
+A scan that reuses entries from a populated dir index, checking each directory's mtime via `stat` and re-listing only the ones whose mtime has changed. Fast on a hot index, microseconds per unchanged directory on local storage and the difference between a sub-second and a multi-second walk on SMB.
+_Avoid_: incremental scan (the implementation detail), cached scan.
+
+**Cold scan**:
+A scan that does not reuse any dir index entries, either because the index is empty (process just started) or because the path explicitly clears it (`/rescan` click). Walks every directory.
+_Avoid_: full scan, rescan (the verb for the user action, not the scan type).
