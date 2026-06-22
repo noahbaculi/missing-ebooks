@@ -392,12 +392,25 @@ pub(crate) fn count_audiobooks(state: &state::RawRootState) -> usize {
 /// `FlaggedView` per response and drops it after the response writes.
 pub(crate) fn render_view(raw: &state::RawView, mode: ViewMode) -> FlaggedView {
     raw.iter()
-        .map(|section| RootSection {
-            path: section.path.clone(),
-            state: render_root_state(&section.path, &section.state, mode),
-            total_audiobooks: count_audiobooks(&section.state),
-        })
+        .map(|section| render_section_from_raw(section, mode))
         .collect()
+}
+
+/// Build one `RootSection` from a raw section for the requested mode. The single
+/// place that owns the "raw → rendered" packaging: `render_view` calls it per
+/// section on the snapshot path, and `autosync::render_oob_section` calls it on
+/// the push path, so any future field (per-root coverage, per-root timestamps)
+/// only has to land here once. The autosync byte-equality test routes through
+/// this helper so a drift in the helper fails the test loudly.
+pub(crate) fn render_section_from_raw(
+    section: &state::RawRootSection,
+    mode: ViewMode,
+) -> RootSection {
+    RootSection {
+        path: section.path.clone(),
+        state: render_root_state(&section.path, &section.state, mode),
+        total_audiobooks: count_audiobooks(&section.state),
+    }
 }
 
 /// Render one section per mode. The root name for `tree::build`'s `.` node

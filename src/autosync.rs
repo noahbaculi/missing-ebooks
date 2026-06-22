@@ -66,22 +66,18 @@ fn stable_hash(s: &str) -> u64 {
 }
 
 /// Render one raw section as the OOB-swap string the autosync stream pushes.
-/// Renders the raw section into a `RootSection` for the requested mode, then
-/// delegates to `web::render::single_oob_section` so the OOB wrapping uses one
-/// renderer shared with the page-level snapshot path (see ADR-0024).
+/// Renders the raw section into a `RootSection` for the requested mode through
+/// `service::render_section_from_raw` (one place owns the raw → rendered
+/// packaging), then delegates to `web::render::single_oob_section` so the OOB
+/// wrapping uses one renderer shared with the page-level snapshot path (see
+/// ADR-0024).
 pub(crate) fn render_oob_section(
     raw_section: &state::RawRootSection,
     root_idx: usize,
     mode: ViewMode,
     links: &[crate::config::SearchLink],
 ) -> String {
-    let rendered_state =
-        crate::service::render_root_state(&raw_section.path, &raw_section.state, mode);
-    let rendered_section = crate::service::RootSection {
-        path: raw_section.path.clone(),
-        state: rendered_state,
-        total_audiobooks: crate::service::count_audiobooks(&raw_section.state),
-    };
+    let rendered_section = crate::service::render_section_from_raw(raw_section, mode);
     crate::web::render::single_oob_section(&rendered_section, root_idx, links, mode).into_string()
 }
 
@@ -598,7 +594,10 @@ mod tests {
         // The contract from ADR-0024: the bytes a tab receives via SSE for a
         // root equal the bytes a Rescan click would render for the same root.
         // After consolidation both paths share single_oob_section; this test
-        // pins that fact so a future divergence fails loudly.
+        // pins that fact so a future divergence fails loudly. Derive the
+        // rendered section through service::render_section_from_raw — the
+        // helper render_oob_section itself uses — so a drift in that helper
+        // fails this test rather than getting silently re-applied here.
         let raw = RawRootSection {
             path: "/some/root".to_string(),
             state: RawRootState::Clean,
@@ -607,13 +606,7 @@ mod tests {
 
         let via_autosync = render_oob_section(&raw, 7, ViewMode::GapsOnly, &links);
 
-        let rendered_state =
-            crate::service::render_root_state(&raw.path, &raw.state, ViewMode::GapsOnly);
-        let rendered_section = crate::service::RootSection {
-            path: raw.path.clone(),
-            state: rendered_state,
-            total_audiobooks: crate::service::count_audiobooks(&raw.state),
-        };
+        let rendered_section = crate::service::render_section_from_raw(&raw, ViewMode::GapsOnly);
         let via_render = crate::web::render::single_oob_section(
             &rendered_section,
             7,
