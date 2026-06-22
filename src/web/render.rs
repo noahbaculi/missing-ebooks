@@ -673,7 +673,8 @@ pub fn render_section(
     let counter = std::cell::Cell::new(0usize);
     let section_id = format!("root-{root}-section");
     html! {
-        section.card.root id=(section_id) data-root=(root) {
+        section.card.root id=(section_id) data-root=(root)
+            data-total-audiobooks=(section.total_audiobooks) {
             details.root-fold open {
                 summary.root-head {
                     (chevron())

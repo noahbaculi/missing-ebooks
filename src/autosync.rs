@@ -624,4 +624,34 @@ mod tests {
 
         assert_eq!(via_autosync, via_render, "byte-equal SSE contract");
     }
+
+    #[test]
+    fn render_oob_section_html_carries_total_audiobooks_for_a_walked_root() {
+        use crate::scanner::ScannedFolder;
+        use std::path::PathBuf;
+
+        let raw = RawRootSection {
+            path: "/lib".to_string(),
+            state: RawRootState::Walked(vec![
+                ScannedFolder {
+                    rel_path: PathBuf::from("Book"),
+                    directly_holds_audio: true,
+                    missing_ebook: true,
+                    cover_files: Vec::new(),
+                    audio_files: vec!["01.mp3".to_string()],
+                },
+                ScannedFolder {
+                    rel_path: PathBuf::from("Container"),
+                    directly_holds_audio: false,
+                    missing_ebook: false,
+                    cover_files: Vec::new(),
+                    audio_files: Vec::new(),
+                },
+            ]),
+        };
+        let html = render_oob_section(&raw, 0, ViewMode::GapsOnly, &[]);
+        // The pushed fragment includes the data attr on its section open tag,
+        // so the live page's coverage stays current after an autosync swap.
+        assert!(html.contains(r#"data-total-audiobooks="1""#));
+    }
 }

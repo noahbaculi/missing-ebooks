@@ -1813,6 +1813,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn section_open_tag_carries_total_audiobooks_data_attr() {
+        let dir = tempfile::tempdir().unwrap();
+        // Two audiobook folders, one covered, one a flagged gap.
+        touch(&dir.path().join("A/B1/01.mp3"));
+        touch(&dir.path().join("A/B2/01.mp3"));
+        touch(&dir.path().join("A/B2/B2.epub"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // Walked root carries the audiobook total on its outer <section>.
+        assert!(body.contains(r#"data-total-audiobooks="2""#));
+    }
+
+    #[tokio::test]
+    async fn section_open_tag_carries_zero_total_audiobooks_for_errored_root() {
+        let body = body_string(
+            app_for_roots(&[Path::new("/no/such/root/xyz123")])
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // Errored root still carries the attribute so the JS aggregator
+        // never has to special-case missing attrs.
+        assert!(body.contains(r#"data-total-audiobooks="0""#));
+    }
+
+    #[tokio::test]
+    async fn mark_response_carries_section_with_total_audiobooks() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("A/B1/01.mp3"));
+        touch(&dir.path().join("A/B2/01.mp3"));
+        // Mark B1 as no-ebook; the response is the re-rendered section.
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=A%2FB1&kind=no_ebook"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_string(response).await;
+        // The mark response is the re-rendered section; the total rides along
+        // unchanged because a scan total does not shift mid-mark.
+        assert!(body.contains(r#"data-total-audiobooks="2""#));
+    }
+
+    #[tokio::test]
     async fn gap_summary_shows_all_clear_for_a_covered_library() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
