@@ -7,23 +7,22 @@
 
 use std::convert::Infallible;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use axum::Router;
 use axum::extract::{Form, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::sse::Event;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use futures_util::Stream;
 use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 
 use crate::service::{FlaggedView, ViewMode, apply_mark_raw, render_view};
 use crate::state::RawView;
 use crate::web::render::oob_sections;
 use crate::web::{
-    MarkRequest, ViewQuery, app_css, htmx_script, htmx_sse_script, page, render_section,
+    MarkRequest, ViewQuery, app_css, events_response, htmx_script, htmx_sse_script, page,
+    render_section,
 };
 
 use super::banner;
@@ -273,7 +272,7 @@ async fn events(
     State(state): State<Arc<DemoState>>,
     headers: HeaderMap,
     Query(query): Query<ViewQuery>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Response {
     let mode = ViewMode::from_query(query.view.as_deref());
     let now = Instant::now();
     let existing = read_cookie(&headers, &state.config.cookie_name);
@@ -294,11 +293,7 @@ async fn events(
         .send(Ok(Event::default().event("snapshot").data(snapshot)))
         .await;
 
-    Sse::new(ReceiverStream::new(rx)).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("ping"),
-    )
+    events_response(rx)
 }
 
 /// Liveness probe for the container healthcheck. Answers without minting a

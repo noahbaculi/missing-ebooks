@@ -13,7 +13,6 @@ use axum::http::{HeaderName, HeaderValue};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
-use futures_util::Stream;
 use maud::Markup;
 use serde::Deserialize;
 use tokio::sync::mpsc;
@@ -203,6 +202,24 @@ fn mode_path(mode: ViewMode) -> &'static str {
     }
 }
 
+/// Wrap an SSE receiver into an axum `Response` with the `X-Accel-Buffering: no`
+/// header set so nginx (and other reverse proxies that respect this header) do
+/// not buffer the stream. axum's `Sse::into_response` sets `Content-Type:
+/// text/event-stream` and `Cache-Control: no-cache` but not this one. Shared
+/// by the production and demo `/events` handlers so they cannot drift.
+pub(crate) fn events_response(rx: mpsc::Receiver<Result<Event, Infallible>>) -> Response {
+    let sse = Sse::new(ReceiverStream::new(rx)).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("ping"),
+    );
+    let mut response = sse.into_response();
+    response
+        .headers_mut()
+        .insert("x-accel-buffering", HeaderValue::from_static("no"));
+    response
+}
+
 /// SSE endpoint. The first event is `snapshot`, an OOB-swap payload byte-
 /// identical to what `GET /?view=…` renders for those sections. Subsequent
 /// events are `section` events from the autosync loop. `ping` events come from
@@ -210,7 +227,7 @@ fn mode_path(mode: ViewMode) -> &'static str {
 async fn events(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ViewQuery>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Response {
     let mode = ViewMode::from_query(query.view.as_deref());
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(16);
 
@@ -239,11 +256,7 @@ async fn events(
         .autosync
         .subscribe(&state, mode, tx, Some(seed_hashes));
 
-    Sse::new(ReceiverStream::new(rx)).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("ping"),
-    )
+    events_response(rx)
 }
 
 /// JSON-escape any non-ASCII char to `\uXXXX` so an `HX-Trigger` value stays pure

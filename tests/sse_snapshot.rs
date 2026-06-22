@@ -56,6 +56,17 @@ async fn first_event_is_snapshot_matching_index_render() {
         )
         .await
         .unwrap();
+    // nginx buffers proxy responses by default; without X-Accel-Buffering: no
+    // the autosync ticks accumulate at the proxy and arrive in bursts. axum's
+    // Sse does not set this for us.
+    assert_eq!(
+        sse_response
+            .headers()
+            .get("x-accel-buffering")
+            .and_then(|v| v.to_str().ok()),
+        Some("no"),
+        "X-Accel-Buffering: no must be set so nginx does not buffer SSE",
+    );
     let mut stream = BodyStream::new(sse_response.into_body());
     let (name, data) = next_event(&mut stream, Duration::from_secs(2))
         .await
