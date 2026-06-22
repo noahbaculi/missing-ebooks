@@ -2,7 +2,7 @@
 //! roots, local disk versus an SMB (CIFS) mount.
 //!
 //! `cargo run --release --example scan_bench -- --config config.toml --label smb --drop-caches`
-//! loads the real `Config`, compiles `ScanSettings`, and times `scanner::scan_with_stats`
+//! loads the real `Config`, compiles `ScanSettings`, and times `scanner::scan_cold` and `scanner::scan_warm`
 //! per root, in cold and warm
 //! cache conditions, then saves a JSON report. The walks only read directory
 //! entries and names; nothing here writes to the library. The single privileged
@@ -614,7 +614,7 @@ fn time_reuse_walk(
     index: &mut scanner::DirIndex,
 ) -> (f64, WalkCounts) {
     let walk_start = Instant::now();
-    let (folders, stats) = scanner::scan_incremental_with_stats(root, settings, index);
+    let (folders, stats) = scanner::scan_warm(root, settings, index);
     let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
     let render_start = Instant::now();
     let flagged = scanner::reduce_to_flagged(&folders);
@@ -641,7 +641,7 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
     match mode {
         Mode::Full => {
             let walk_start = Instant::now();
-            let (folders, stats) = scanner::scan_with_stats(root, settings);
+            let (folders, stats) = scanner::scan_cold(root, settings);
             let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
             let gaps = folders
                 .iter()
@@ -664,7 +664,7 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
         }
         Mode::Gaps => {
             let walk_start = Instant::now();
-            let (folders, stats) = scanner::scan_with_stats(root, settings);
+            let (folders, stats) = scanner::scan_cold(root, settings);
             let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
             let render_start = Instant::now();
             let flagged = scanner::reduce_to_flagged(&folders);

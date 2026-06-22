@@ -8,6 +8,11 @@
 //! prunes the whole subtree (see docs/adr/0001-exclude-globs-prune-subtrees.md).
 //! The walk does not follow symlinks: only real directories are descended, and
 //! every non-directory entry is classified by its file name.
+//!
+//! Two entry points, named for the index they consult: [`scan_cold`] walks
+//! every directory from scratch, [`scan_warm`] reuses an `&mut DirIndex` to
+//! skip directories whose mtime is unchanged (see CONTEXT.md for the
+//! "Warm scan" / "Cold scan" vocabulary).
 
 use std::collections::HashSet;
 use std::ffi::OsStr;
@@ -212,15 +217,6 @@ impl DirIndex {
     }
 }
 
-/// Walk `root` and return every folder with both facts, relative to `root`.
-/// Covered containers are walked down to their book folders, each tagged
-/// covered. Excluded names, exclude globs, dot directories, and symlinks
-/// prune. Order is unspecified; the tree builder sorts.
-#[must_use]
-pub fn scan(root: &Path, settings: &ScanSettings) -> Vec<ScannedFolder> {
-    scan_with_stats(root, settings).0
-}
-
 /// Reduce a walk's folders to the flagged gaps: those that directly hold
 /// audio and lack coverage. Each kept entry is a clone of the original
 /// `ScannedFolder` with every fact intact, so the unified tree builder consumes
@@ -235,9 +231,10 @@ pub fn reduce_to_flagged(folders: &[ScannedFolder]) -> Vec<ScannedFolder> {
         .collect()
 }
 
-/// One folder from a walk, tagged with both facts. `scan` produces a
-/// `Vec<ScannedFolder>` that `tree::build` consumes. The root walked is the
-/// empty relative path (see ADR-0005), the loose-root case.
+/// One folder from a walk, tagged with both facts. `scan_cold` and `scan_warm`
+/// each return a `Vec<ScannedFolder>` (with `WalkStats`) that `tree::build`
+/// consumes. The root walked is the empty relative path (see ADR-0005),
+/// the loose-root case.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScannedFolder {
     /// The folder's path relative to the walked root.
@@ -255,18 +252,19 @@ pub struct ScannedFolder {
     pub audio_files: Vec<String>,
 }
 
-/// Like `scan`, but also returns the walk's counts. Non-incremental: every
-/// directory is listed (the escape-hatch and the bench baseline use this).
+/// A cold scan: walk every directory under `root` and return the flagged
+/// folders plus the walk's counts. The escape-hatch path (`/rescan`) and
+/// the bench baseline use this; the `dir_index` is not consulted.
 #[must_use]
-pub fn scan_with_stats(root: &Path, settings: &ScanSettings) -> (Vec<ScannedFolder>, WalkStats) {
+pub fn scan_cold(root: &Path, settings: &ScanSettings) -> (Vec<ScannedFolder>, WalkStats) {
     walk_all(root, settings, None)
 }
 
-/// The incremental walk: stat each directory and reuse the index entry when
-/// the mtime is unchanged, listing and re-indexing the rest. The same `index`
+/// A warm scan: stat each directory and reuse the `index` entry when the
+/// mtime is unchanged, listing and re-indexing the rest. The same `index`
 /// passed across calls makes each rescan cheaper than the last cold walk.
 #[must_use]
-pub fn scan_incremental_with_stats(
+pub fn scan_warm(
     root: &Path,
     settings: &ScanSettings,
     index: &mut DirIndex,
@@ -555,7 +553,7 @@ mod tests {
     }
 
     fn flagged_set(root: &Path, settings: &ScanSettings) -> BTreeSet<String> {
-        scan(root, settings)
+        scan_cold(root, settings).0
             .iter()
             .filter(|f| f.directly_holds_audio && f.missing_ebook)
             .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))
@@ -569,7 +567,7 @@ mod tests {
             .num_threads(threads)
             .build()
             .unwrap();
-        pool.install(|| scan(root, settings))
+        pool.install(|| scan_cold(root, settings).0)
     }
 
     #[test]
@@ -624,7 +622,7 @@ mod tests {
             .num_threads(4)
             .build()
             .unwrap();
-        let (_flagged, stats) = pool.install(|| scan_with_stats(dir.path(), &settings));
+        let (_flagged, stats) = pool.install(|| scan_cold(dir.path(), &settings));
         // root + AuthorA + Book1 + Book2.
         assert_eq!(stats.dirs_visited, 4);
     }
@@ -766,7 +764,7 @@ mod tests {
     }
 
     fn scanned(root: &Path, settings: &ScanSettings) -> BTreeMap<String, (bool, bool)> {
-        scan(root, settings)
+        scan_cold(root, settings).0
             .into_iter()
             .map(|f| {
                 let rel = f.rel_path.to_string_lossy().replace('\\', "/");
@@ -907,7 +905,7 @@ mod tests {
     }
 
     fn cover_files_of(root: &Path, settings: &ScanSettings) -> BTreeMap<String, Vec<String>> {
-        scan(root, settings)
+        scan_cold(root, settings).0
             .into_iter()
             .map(|f| {
                 let rel = f.rel_path.to_string_lossy().replace('\\', "/");
@@ -963,7 +961,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/02 - Two.mp3"));
         touch(&dir.path().join("Book/01 - One.mp3"));
-        let flagged = scan(dir.path(), &default_settings(&[]));
+        let flagged = scan_cold(dir.path(), &default_settings(&[])).0;
         let book = flagged
             .iter()
             .find(|f| f.rel_path == Path::new("Book"))
@@ -977,7 +975,7 @@ mod tests {
         touch(&dir.path().join("Book/02 - Two.mp3"));
         touch(&dir.path().join("Book/10 - Ten.mp3"));
         touch(&dir.path().join("Book/01 - One.mp3"));
-        let folders = scan(dir.path(), &default_settings(&[]));
+        let folders = scan_cold(dir.path(), &default_settings(&[])).0;
         let book = folders
             .iter()
             .find(|f| f.rel_path == Path::new("Book"))
@@ -995,13 +993,13 @@ mod tests {
     }
 
     #[test]
-    fn scan_with_stats_counts_dirs_and_entries() {
+    fn scan_cold_counts_dirs_and_entries() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Gap/01.mp3"));
         touch(&dir.path().join("Gap/02.mp3"));
         touch(&dir.path().join("Covered/01.mp3"));
         touch(&dir.path().join("Covered/Book.epub"));
-        let (_folders, stats) = scan_with_stats(dir.path(), &default_settings(&[]));
+        let (_folders, stats) = scan_cold(dir.path(), &default_settings(&[]));
         assert_eq!(stats.dirs_visited, 3); // root, Gap, Covered
         assert_eq!(stats.entries_seen, 6); // root sees 2 subdirs; Gap and Covered 2 files each
     }
@@ -1022,10 +1020,10 @@ mod tests {
         touch(&dir.path().join("AuthorB/Covered/Book.epub"));
         let settings = default_settings(&[]);
 
-        let baseline = scan(dir.path(), &settings);
+        let baseline = scan_cold(dir.path(), &settings).0;
 
         let mut index = DirIndex::new();
-        let (first, first_stats) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        let (first, first_stats) = scan_warm(dir.path(), &settings, &mut index);
         assert_eq!(
             first, baseline,
             "the first incremental walk equals the full walk"
@@ -1035,7 +1033,7 @@ mod tests {
             "nothing to reuse on the first walk"
         );
 
-        let (second, second_stats) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        let (second, second_stats) = scan_warm(dir.path(), &settings, &mut index);
         assert_eq!(
             second, baseline,
             "an unchanged rescan still equals the full walk"
@@ -1057,7 +1055,7 @@ mod tests {
         let settings = default_settings(&[]);
 
         let mut index = DirIndex::new();
-        let (first, _) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        let (first, _) = scan_warm(dir.path(), &settings, &mut index);
         assert!(
             first.iter().any(|f| f.rel_path == Path::new("Author/Book")),
             "Author/Book starts as a gap"
@@ -1068,7 +1066,7 @@ mod tests {
         touch(&book.join("Book.epub"));
         set_file_mtime(&book, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
 
-        let (second, stats) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        let (second, stats) = scan_warm(dir.path(), &settings, &mut index);
         let book_after = second
             .iter()
             .find(|f| f.rel_path == Path::new("Author/Book"))
@@ -1095,7 +1093,7 @@ mod tests {
         let settings = default_settings(&[]);
 
         let mut index = DirIndex::new();
-        let (first, _) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        let (first, _) = scan_warm(dir.path(), &settings, &mut index);
         assert!(
             first
                 .iter()
@@ -1114,7 +1112,7 @@ mod tests {
         touch(&author.join("Book 2/01.mp3"));
         set_file_mtime(&author, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
 
-        let (second, stats) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        let (second, stats) = scan_warm(dir.path(), &settings, &mut index);
         assert!(
             second
                 .iter()
@@ -1140,7 +1138,7 @@ mod tests {
         let settings = default_settings(&[]);
 
         let mut index = DirIndex::new();
-        let (first, _) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        let (first, _) = scan_warm(dir.path(), &settings, &mut index);
         assert!(
             first
                 .iter()
@@ -1152,7 +1150,7 @@ mod tests {
         std::fs::remove_dir_all(author.join("Book 2")).unwrap();
         set_file_mtime(&author, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
 
-        let (second, _) = scan_incremental_with_stats(dir.path(), &settings, &mut index);
+        let (second, _) = scan_warm(dir.path(), &settings, &mut index);
         assert!(
             !second
                 .iter()
@@ -1183,7 +1181,7 @@ mod tests {
             exclude_globs: &[],
         })
         .unwrap();
-        let (_folders, stats) = scan_with_stats(dir.path(), &settings);
+        let (_folders, stats) = scan_cold(dir.path(), &settings);
         // @eaDir is pruned: root and Book are read, the excluded dir is not.
         assert_eq!(stats.dirs_visited, 2); // root, Book
         assert_eq!(stats.entries_seen, 3); // root sees @eaDir + Book; Book sees 01.mp3

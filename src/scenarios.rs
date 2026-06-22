@@ -486,7 +486,8 @@ mod tests {
     /// root, as `/`-joined relative paths.
     fn flagged(root: &Path) -> BTreeSet<String> {
         let settings = ScanSettings::compile(Config::default().scan_inputs()).unwrap();
-        scanner::scan(root, &settings)
+        scanner::scan_cold(root, &settings)
+            .0
             .iter()
             .filter(|f| f.directly_holds_audio && f.missing_ebook)
             .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))

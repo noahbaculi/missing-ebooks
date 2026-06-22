@@ -522,7 +522,7 @@ fn scan_root(
     // ticks (see ADR-0023).
     let (folders, stats) = {
         let mut guard = lock_index(index);
-        scanner::scan_incremental_with_stats(&canonical, settings, &mut guard)
+        scanner::scan_warm(&canonical, settings, &mut guard)
     };
     tracing::debug!(
         root = %canonical.display(),
