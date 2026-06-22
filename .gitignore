@@ -20,6 +20,9 @@ docs/superpowers/
 # Serena LSP index and cache
 .serena/
 
+# Git worktrees for agent workflows
+.worktrees/
+
 # Demo deploy secret: holds the live Cloudflare Tunnel token. Only the
 # .env.example template is tracked.
 demo/.env
