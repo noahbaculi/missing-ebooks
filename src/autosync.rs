@@ -144,17 +144,56 @@ impl Autosync {
         }
     }
 
-    /// Register a subscriber's mpsc sender under `mode`. If the registry was
-    /// empty and the interval is non-zero, spawn the loop task and store its
-    /// handle. The caller is responsible for sending the snapshot event into
-    /// `sender` before calling this, so the channel's first event is always
-    /// the snapshot.
+    /// Register a subscriber's mpsc sender under `mode` without seeding the
+    /// per-mode baseline hashes. A test seam alongside `subscriber_count` and
+    /// `abort_loop_for_test`: the loop's first tick after this call may emit
+    /// a redundant section event for any root that has changed since the
+    /// last broadcast, which is fine for tests that don't care about the
+    /// first-tick diff. Production code wants `subscribe_and_seed`.
     ///
-    /// `seed_hashes` is the per-mode baseline the loop diffs against. Only
-    /// the first subscriber for a mode writes it; later subscribers leave
-    /// the existing baseline alone so a pending diff for an earlier tab is
-    /// not erased. Pass `None` (tests only) to skip the seed.
+    /// Like `subscribe_and_seed`, this spawns the loop task if the registry
+    /// was empty and the interval is non-zero, and the caller is responsible
+    /// for sending the snapshot event into `sender` first so the channel's
+    /// first event is always the snapshot.
+    #[cfg(test)]
     pub(crate) fn subscribe(
+        &self,
+        state: &Arc<crate::state::AppState>,
+        mode: ViewMode,
+        sender: SseSender,
+    ) {
+        self.subscribe_inner(state, mode, sender, None);
+    }
+
+    /// Register a subscriber's mpsc sender under `mode` and seed the per-mode
+    /// baseline hashes. Only the first subscriber for a mode writes the
+    /// baseline: later subscribers receive truth via their own snapshot over
+    /// their FIFO channel, and overwriting the shared baseline would erase
+    /// pending diffs for any earlier tab. A new subscriber may receive one
+    /// redundant section event on the next tick for a root that changed
+    /// since the baseline was set, which is acceptable compared to the
+    /// data-loss alternative.
+    ///
+    /// Spawns the loop task if the registry was empty and the interval is
+    /// non-zero. The caller is responsible for sending the snapshot event
+    /// into `sender` first so the channel's first event is always the
+    /// snapshot.
+    pub(crate) fn subscribe_and_seed(
+        &self,
+        state: &Arc<crate::state::AppState>,
+        mode: ViewMode,
+        sender: SseSender,
+        seed_hashes: Vec<u64>,
+    ) {
+        self.subscribe_inner(state, mode, sender, Some(seed_hashes));
+    }
+
+    /// Shared body for `subscribe` and `subscribe_and_seed`. Keeps the
+    /// register-then-maybe-seed-then-maybe-spawn ordering under one `guard`
+    /// lock so the no-overwrite, lifecycle, and loop-spawn invariants land
+    /// in one place. `Option<Vec<u64>>` is the internal carving; the two
+    /// public methods name each caller intent at the surface.
+    fn subscribe_inner(
         &self,
         state: &Arc<crate::state::AppState>,
         mode: ViewMode,
@@ -163,13 +202,6 @@ impl Autosync {
     ) {
         let mut guard = self.inner.lock().expect("autosync mutex poisoned");
         guard.subs[mode].push(sender);
-        // The seed establishes the per-mode baseline the loop diffs against.
-        // Only the first subscriber for a mode writes it: later subscribers
-        // receive truth via their own snapshot over their FIFO channel, and
-        // overwriting the shared baseline would erase pending diffs for any
-        // earlier tab. A new subscriber may receive one redundant section
-        // event on the next tick for a root that changed since the baseline
-        // was set, which is acceptable compared to the data-loss alternative.
         if let Some(hashes) = seed_hashes
             && guard.last_hash[mode].is_empty()
         {
@@ -431,7 +463,7 @@ mod tests {
         let (tx, rx) = mpsc::channel(8);
         state
             .autosync
-            .subscribe(&state, ViewMode::GapsOnly, tx, None);
+            .subscribe(&state, ViewMode::GapsOnly, tx);
         assert_eq!(state.autosync.subscriber_count(), 1);
         // Drop the receiver: the next loop tick's fan-out prunes the sender.
         drop(rx);
@@ -450,7 +482,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(8);
         state
             .autosync
-            .subscribe(&state, ViewMode::GapsOnly, tx, None);
+            .subscribe(&state, ViewMode::GapsOnly, tx);
         // No loop task means the subscriber count stays put even after a
         // generous wait; pruning only happens inside the loop.
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -463,7 +495,7 @@ mod tests {
         let (tx1, _rx1) = mpsc::channel(8);
         state
             .autosync
-            .subscribe(&state, ViewMode::GapsOnly, tx1, None);
+            .subscribe(&state, ViewMode::GapsOnly, tx1);
 
         // Simulate a panic by aborting the loop task directly.
         state.autosync.abort_loop_for_test();
@@ -473,7 +505,7 @@ mod tests {
         let (tx2, _rx2) = mpsc::channel(8);
         state
             .autosync
-            .subscribe(&state, ViewMode::GapsOnly, tx2, None);
+            .subscribe(&state, ViewMode::GapsOnly, tx2);
         let guard = state.autosync.inner.lock().unwrap();
         let handle = guard
             .loop_task
@@ -490,11 +522,11 @@ mod tests {
 
         let (tx1, _rx1) = mpsc::channel(8);
         let initial_hashes = vec![111u64, 222, 333];
-        state.autosync.subscribe(
+        state.autosync.subscribe_and_seed(
             &state,
             ViewMode::GapsOnly,
             tx1,
-            Some(initial_hashes.clone()),
+            initial_hashes.clone(),
         );
         let before = state.autosync.inner.lock().unwrap().last_hash[ViewMode::GapsOnly].clone();
         assert_eq!(
@@ -507,7 +539,7 @@ mod tests {
         let later_hashes = vec![999u64, 999, 999];
         state
             .autosync
-            .subscribe(&state, ViewMode::GapsOnly, tx2, Some(later_hashes));
+            .subscribe_and_seed(&state, ViewMode::GapsOnly, tx2, later_hashes);
         let after = state.autosync.inner.lock().unwrap().last_hash[ViewMode::GapsOnly].clone();
         assert_eq!(
             after, before,

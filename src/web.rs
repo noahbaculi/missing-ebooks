@@ -245,7 +245,7 @@ async fn events(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuer
     // first subscriber and the interval is non-zero.
     state
         .autosync
-        .subscribe(&state, mode, tx, Some(seed_hashes));
+        .subscribe_and_seed(&state, mode, tx, seed_hashes);
 
     events_response(rx)
 }
