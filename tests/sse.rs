@@ -252,10 +252,18 @@ async fn two_modes_isolated() {
     assert_eq!(gaps_snap, "snapshot");
     assert_eq!(all_snap, "snapshot");
 
-    // Mutate disk: add a second covered audiobook. Gaps view still Clean;
-    // show-all view now lists the new dimmed row.
-    touch(&dir.path().join("Author/Book2/01.mp3"));
-    touch(&dir.path().join("Author/Book2/Book2.epub"));
+    // Mutate disk: add a second ebook file to the covered audiobook. This
+    // extends `cover_files` (visible in the show-all tree) without changing
+    // `directly_holds_audio`, `missing_ebook`, or the audiobook count. Gaps
+    // view still Clean with total_audiobooks=1; show-all view's section
+    // re-renders with the extra ebook listed.
+    //
+    // Adding or removing a whole audiobook is not a show-all-only change
+    // anymore: both modes' `RootSection` carry `total_audiobooks`, so the
+    // coverage denominator shifts in both. A pure show-all-only change is one
+    // that touches state the show-all tree displays (cover/ebook filenames)
+    // without altering audiobook count or gap flagging.
+    touch(&dir.path().join("Author/Book1/Book1.companion.epub"));
 
     // Show-all subscriber must receive a section event within the deadline.
     let mut got_all_section = false;
