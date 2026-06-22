@@ -563,12 +563,19 @@ fn gap_summary(view: &FlaggedView) -> Markup {
             // total crosses zero so the strip converges on what a reload would
             // show, and so an undo back from the last mark can bring the head
             // back. The trailing coverage span is the audiobooks-present
-            // variant; a truly empty library keeps the line bare.
+            // variant; a truly empty library keeps the line bare. The two
+            // numeric spans inside are the only thing `app.js` rewrites on
+            // recompute, so the surrounding "· 100% covered (… of … audiobooks)"
+            // wording lives in one place (this template).
             p.gap-summary-clear id="gap-summary-clear" hidden[total_gaps != 0] {
                 (PreEscaped(CHECK_SVG))
                 span { "All clear. No gaps in your library." }
                 span.coverage-clear id="coverage-clear" hidden[!clear_tail_visible] {
-                    " · 100% covered (" (total_audiobooks) " of " (total_audiobooks) " audiobooks)"
+                    " · 100% covered ("
+                    span id="coverage-clear-covered" { (total_audiobooks) }
+                    " of "
+                    span id="coverage-clear-total" { (total_audiobooks) }
+                    " audiobooks)"
                 }
             }
             div.gap-summary-head id="gap-summary-head" hidden[total_gaps == 0] {

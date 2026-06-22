@@ -1910,11 +1910,16 @@ mod tests {
         )
         .await;
         // All-clear branch is visible, the trailing coverage span shows the
-        // T of T fragment and is not hidden.
+        // T of T fragment and is not hidden. The numbers ride in their own
+        // child spans so app.js only rewrites the digits and the surrounding
+        // wording stays in the server template.
         assert!(body.contains(r#"id="gap-summary-clear">"#));
         assert!(body.contains(r#"id="gap-summary-head" hidden"#));
         assert!(body.contains(r#"<span class="coverage-clear" id="coverage-clear">"#));
-        assert!(body.contains("100% covered (2 of 2 audiobooks)"));
+        assert!(body.contains("100% covered ("));
+        assert!(body.contains(r#"id="coverage-clear-covered">2</span>"#));
+        assert!(body.contains(r#"id="coverage-clear-total">2</span>"#));
+        assert!(body.contains("audiobooks)"));
     }
 
     #[tokio::test]
@@ -1976,8 +1981,12 @@ mod tests {
         assert!(body.contains(r#"id="gap-summary-clear">"#));
         assert!(body.contains(r#"id="gap-summary-head" hidden"#));
         // The trailing coverage fragment carries the audiobook count and is
-        // visible because the library has audiobooks but no gaps.
-        assert!(body.contains("100% covered (1 of 1 audiobooks)"));
+        // visible because the library has audiobooks but no gaps. The numbers
+        // ride in their own child spans.
+        assert!(body.contains("100% covered ("));
+        assert!(body.contains(r#"id="coverage-clear-covered">1</span>"#));
+        assert!(body.contains(r#"id="coverage-clear-total">1</span>"#));
+        assert!(body.contains("audiobooks)"));
         // The hidden bar still floors its max at 1, never a degenerate max-of-zero.
         assert!(body.contains(r#"aria-valuemax="1""#));
         assert!(!body.contains(r#"aria-valuemax="0""#));

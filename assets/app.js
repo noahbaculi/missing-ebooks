@@ -1495,12 +1495,14 @@
 
     // The all-clear line carries the trailing "· 100% covered (T of T audiobooks)"
     // when the library has audiobooks but no gaps; for a truly empty library the
-    // line stays bare so it does not read "0 of 0".
+    // line stays bare so it does not read "0 of 0". Only the two numeric spans
+    // get rewritten so the surrounding wording lives in the server template
+    // (`render::gap_summary`) and never drifts between Rust and JS.
     var clearTail = document.getElementById("coverage-clear");
     if (clearTail) {
       if (total > 0 && totalGaps === 0) {
-        clearTail.textContent =
-          " · 100% covered (" + total + " of " + total + " audiobooks)";
+        setText("coverage-clear-covered", String(total));
+        setText("coverage-clear-total", String(total));
         clearTail.hidden = false;
       } else {
         clearTail.hidden = true;
