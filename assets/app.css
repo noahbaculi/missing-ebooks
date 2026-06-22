@@ -1655,10 +1655,9 @@ li.leaving {
   }
 }
 .gap-coverage-readout {
-  margin: 0;
+  margin: 0 0 0.4rem;
   font-size: 0.9rem;
   color: var(--color-muted);
-  margin-bottom: 0.4rem;
 }
 .coverage-num {
   font-weight: 700;
