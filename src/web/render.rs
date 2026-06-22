@@ -407,17 +407,32 @@ pub(crate) fn roots(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) ->
     }
 }
 
+/// Wrap one rendered section in the OOB-swap fragment the SSE stream uses, so
+/// HTMX routes the fragment to its `<section id="root-N-section">` target on
+/// the open page (see ADR-0024). Shared by the page-level snapshot helper and
+/// the autosync per-root push so the bytes a tab receives via SSE equal the
+/// bytes a direct render would produce.
+pub fn single_oob_section(
+    section: &RootSection,
+    root: usize,
+    links: &[SearchLink],
+    mode: ViewMode,
+) -> Markup {
+    html! {
+        div hx-swap-oob=(format!("outerHTML:#root-{root}-section transition:true")) {
+            (render_section(section, root, None, links, mode))
+        }
+    }
+}
+
 /// Render every section of `view` as a sequence of OOB swap fragments, suitable
-/// for an SSE snapshot or section-event payload. `render_section` already emits
-/// `id="root-N-section"` on the outer `<section>`; this helper wraps each one in
-/// a `<div hx-swap-oob="…">` so HTMX routes each fragment to its targeted DOM
-/// element on the open page.
+/// for an SSE snapshot payload. Walks the view and delegates each section to
+/// `single_oob_section` so the per-section bytes are identical to what the
+/// autosync loop pushes one root at a time.
 pub fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         @for (root, section) in view.iter().enumerate() {
-            div hx-swap-oob=(format!("outerHTML:#root-{root}-section transition:true")) {
-                (render_section(section, root, None, links, mode))
-            }
+            (single_oob_section(section, root, links, mode))
         }
     }
 }

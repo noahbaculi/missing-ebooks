@@ -65,10 +65,10 @@ fn stable_hash(s: &str) -> u64 {
     hasher.finish()
 }
 
-/// Wrap one rendered section in the OOB-swap markup the autosync stream uses,
-/// so the client can route the fragment to its `<section id="root-N-section">`
-/// on the open page (see ADR-0024). Shared by the snapshot path and the loop's
-/// per-root diff so a section's bytes are identical on both wires.
+/// Render one raw section as the OOB-swap string the autosync stream pushes.
+/// Renders the raw section into a `RootSection` for the requested mode, then
+/// delegates to `web::render::single_oob_section` so the OOB wrapping uses one
+/// renderer shared with the page-level snapshot path (see ADR-0024).
 pub(crate) fn render_oob_section(
     raw_section: &state::RawRootSection,
     root_idx: usize,
@@ -81,9 +81,8 @@ pub(crate) fn render_oob_section(
         path: raw_section.path.clone(),
         state: rendered_state,
     };
-    let inner = crate::web::render::render_section(&rendered_section, root_idx, None, links, mode)
-        .into_string();
-    format!("<div hx-swap-oob=\"outerHTML:#root-{root_idx}-section transition:true\">{inner}</div>")
+    crate::web::render::single_oob_section(&rendered_section, root_idx, links, mode)
+        .into_string()
 }
 
 /// Build the concatenated OOB-swap payload for an SSE `snapshot` event and the
@@ -555,5 +554,33 @@ mod tests {
             inner.lock().unwrap().loop_task.is_none(),
             "loop_task must be cleared atomically with the exit decision",
         );
+    }
+
+    #[test]
+    fn render_oob_section_bytes_match_a_direct_single_oob_section_render() {
+        // The contract from ADR-0024: the bytes a tab receives via SSE for a
+        // root equal the bytes a Rescan click would render for the same root.
+        // After consolidation both paths share single_oob_section; this test
+        // pins that fact so a future divergence fails loudly.
+        let raw = RawRootSection {
+            path: "/some/root".to_string(),
+            state: RawRootState::Clean,
+        };
+        let links: Vec<crate::config::SearchLink> = Vec::new();
+
+        let via_autosync =
+            render_oob_section(&raw, 7, ViewMode::GapsOnly, &links);
+
+        let rendered_state =
+            crate::service::render_root_state(&raw.path, &raw.state, ViewMode::GapsOnly);
+        let rendered_section = crate::service::RootSection {
+            path: raw.path.clone(),
+            state: rendered_state,
+        };
+        let via_render =
+            crate::web::render::single_oob_section(&rendered_section, 7, &links, ViewMode::GapsOnly)
+                .into_string();
+
+        assert_eq!(via_autosync, via_render, "byte-equal SSE contract");
     }
 }
