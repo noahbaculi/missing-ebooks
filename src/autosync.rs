@@ -215,6 +215,19 @@ impl Autosync {
     }
 }
 
+/// Atomically check whether the loop should exit (no subscribers in any mode)
+/// and, if so, clear `loop_task` before returning. Holding the lock across
+/// both the check and the clear means a subscriber arriving in the gap
+/// cannot strand its registration against a loop that is about to exit.
+fn try_exit_loop(inner: &StdMutex<AutosyncInner>) -> bool {
+    let mut guard = inner.lock().expect("autosync mutex poisoned");
+    if guard.subs.values().all(Vec::is_empty) {
+        guard.loop_task = None;
+        return true;
+    }
+    false
+}
+
 /// The loop body. Holds a `Weak<AppState>` so the application can drop without
 /// leaking the loop; a failed upgrade per tick means the process is shutting
 /// down or the test scope ended, and the loop exits.
@@ -228,15 +241,11 @@ async fn run_loop(
             tracing::debug!("autosync loop exits: app state dropped");
             return;
         };
-        // Exit cleanly if every subscriber has gone away. Take the lock long
-        // enough to read the count; do not hold it across the rebuild.
-        let any_subs = {
-            let guard = inner.lock().expect("autosync mutex poisoned");
-            guard.subs.values().any(|v| !v.is_empty())
-        };
-        if !any_subs {
-            let mut guard = inner.lock().expect("autosync mutex poisoned");
-            guard.loop_task = None;
+        // Exit cleanly if every subscriber has gone away. The check and the
+        // loop_task clear happen under one lock acquisition so a subscriber
+        // arriving in the gap cannot strand its registration against a dead
+        // loop.
+        if try_exit_loop(&inner) {
             tracing::debug!("autosync loop exits: no subscribers");
             return;
         }
@@ -503,6 +512,48 @@ mod tests {
         assert_eq!(
             after, before,
             "second subscribe must not overwrite the baseline a prior subscriber set",
+        );
+    }
+
+    #[tokio::test]
+    async fn try_exit_loop_returns_false_and_keeps_loop_task_when_subs_present() {
+        // A registry with one fake sender and an active-looking loop_task. The
+        // helper must decline to exit and must not clear the task.
+        let (tx, _rx) = mpsc::channel::<Result<Event, Infallible>>(1);
+        let mut subs: EnumMap<ViewMode, Vec<SseSender>> = EnumMap::default();
+        subs[ViewMode::GapsOnly].push(tx);
+        let task = tokio::spawn(async {
+            // Idle long enough that is_finished() stays false during the assert.
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        let inner = Arc::new(StdMutex::new(AutosyncInner {
+            subs,
+            last_hash: EnumMap::default(),
+            loop_task: Some(task),
+        }));
+
+        assert!(!try_exit_loop(&inner), "subscribers present means do not exit");
+        assert!(
+            inner.lock().unwrap().loop_task.is_some(),
+            "loop_task must survive a decline-to-exit",
+        );
+    }
+
+    #[tokio::test]
+    async fn try_exit_loop_returns_true_and_clears_loop_task_when_no_subs() {
+        let task = tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+        let inner = Arc::new(StdMutex::new(AutosyncInner {
+            subs: EnumMap::default(),
+            last_hash: EnumMap::default(),
+            loop_task: Some(task),
+        }));
+
+        assert!(try_exit_loop(&inner), "no subscribers means exit");
+        assert!(
+            inner.lock().unwrap().loop_task.is_none(),
+            "loop_task must be cleared atomically with the exit decision",
         );
     }
 }
