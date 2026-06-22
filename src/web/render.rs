@@ -1013,6 +1013,7 @@ mod tests {
         let section = RootSection {
             path: "/some/root".to_string(),
             state: RootState::Clean,
+            total_audiobooks: 0,
         };
         let html = single_oob_section(&section, 3, &[], ViewMode::GapsOnly).into_string();
 

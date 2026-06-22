@@ -59,6 +59,10 @@ pub struct RootSection {
     pub path: String,
     /// What the scan found for this root.
     pub state: RootState,
+    /// Folders under this root that directly hold audio. Zero for `Clean` and
+    /// `Error`. The web layer surfaces it as `data-total-audiobooks` on the
+    /// section so the strip's library coverage stays current across swaps.
+    pub total_audiobooks: usize,
 }
 
 /// The result of scanning one root.
@@ -369,6 +373,18 @@ fn add_marker(cover_files: &mut Vec<String>, marker: Marker) {
     }
 }
 
+/// Folders directly holding audio in this root's raw state. Zero for `Clean`
+/// and `Error`. Used by `render_view` and `autosync::render_oob_section` to
+/// populate `RootSection.total_audiobooks`.
+pub(crate) fn count_audiobooks(state: &state::RawRootState) -> usize {
+    match state {
+        state::RawRootState::Walked(folders) => {
+            folders.iter().filter(|f| f.directly_holds_audio).count()
+        }
+        state::RawRootState::Clean | state::RawRootState::Error(_) => 0,
+    }
+}
+
 /// Render the cached raw view into the requested `ViewMode`'s `FlaggedView`. The
 /// gaps path filters with `reduce_to_flagged` and builds the forest; show-all
 /// builds directly from the raw folders. Both run on the request thread (the
@@ -379,6 +395,7 @@ pub(crate) fn render_view(raw: &state::RawView, mode: ViewMode) -> FlaggedView {
         .map(|section| RootSection {
             path: section.path.clone(),
             state: render_root_state(&section.path, &section.state, mode),
+            total_audiobooks: count_audiobooks(&section.state),
         })
         .collect()
 }
@@ -618,6 +635,69 @@ mod tests {
         assert!(matches!(view[1].state, RootState::Forest(_)));
     }
 
+    #[test]
+    fn count_audiobooks_counts_walked_folders_that_directly_hold_audio() {
+        use crate::scanner::ScannedFolder;
+        use std::path::PathBuf;
+
+        let walked = state::RawRootState::Walked(vec![
+            ScannedFolder {
+                rel_path: PathBuf::from("A/Book1"),
+                directly_holds_audio: true,
+                missing_ebook: true,
+                cover_files: Vec::new(),
+                audio_files: vec!["01.mp3".to_string()],
+            },
+            ScannedFolder {
+                rel_path: PathBuf::from("A"),
+                directly_holds_audio: false,
+                missing_ebook: false,
+                cover_files: Vec::new(),
+                audio_files: Vec::new(),
+            },
+            ScannedFolder {
+                rel_path: PathBuf::from("A/Book2"),
+                directly_holds_audio: true,
+                missing_ebook: false,
+                cover_files: vec!["Book2.epub".to_string()],
+                audio_files: vec!["01.mp3".to_string()],
+            },
+        ]);
+        assert_eq!(count_audiobooks(&walked), 2);
+        assert_eq!(count_audiobooks(&state::RawRootState::Clean), 0);
+        assert_eq!(
+            count_audiobooks(&state::RawRootState::Error("nope".into())),
+            0,
+        );
+    }
+
+    #[tokio::test]
+    async fn render_view_computes_total_audiobooks_per_root() {
+        let walked = tempfile::tempdir().unwrap();
+        // Two audiobooks under one author, plus a covered one.
+        touch(&walked.path().join("A/B1/01.mp3"));
+        touch(&walked.path().join("A/B2/01.mp3"));
+        touch(&walked.path().join("A/B2/B2.epub"));
+
+        let clean = tempfile::tempdir().unwrap();
+        fs::create_dir_all(clean.path().join("Empty")).unwrap();
+
+        let cfg = test_config(
+            vec![
+                walked.path().to_path_buf(),
+                clean.path().to_path_buf(),
+                PathBuf::from("/no/such/root/xyz123"),
+            ],
+            60,
+        );
+        let raw = build_view(&cfg, &test_settings(), test_index()).await;
+        let view = render_view(&raw, ViewMode::GapsOnly);
+
+        assert_eq!(view[0].total_audiobooks, 2, "two audiobook folders");
+        assert_eq!(view[1].total_audiobooks, 0, "clean root");
+        assert_eq!(view[2].total_audiobooks, 0, "errored root");
+    }
+
     fn state_for(root: &Path, ttl_seconds: u64) -> AppState {
         let cfg = test_config(vec![root.to_path_buf()], ttl_seconds);
         let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
@@ -840,11 +920,12 @@ mod tests {
         let section = RootSection {
             path: "/lib".to_string(),
             state: RootState::Clean,
+            total_audiobooks: 0,
         };
         let value = serde_json::to_value(&section).unwrap();
         assert_eq!(
             value,
-            serde_json::json!({ "path": "/lib", "state": "clean" })
+            serde_json::json!({ "path": "/lib", "state": "clean", "total_audiobooks": 0 })
         );
     }
 

@@ -80,6 +80,7 @@ pub(crate) fn render_oob_section(
     let rendered_section = crate::service::RootSection {
         path: raw_section.path.clone(),
         state: rendered_state,
+        total_audiobooks: crate::service::count_audiobooks(&raw_section.state),
     };
     crate::web::render::single_oob_section(&rendered_section, root_idx, links, mode).into_string()
 }
@@ -611,6 +612,7 @@ mod tests {
         let rendered_section = crate::service::RootSection {
             path: raw.path.clone(),
             state: rendered_state,
+            total_audiobooks: crate::service::count_audiobooks(&raw.state),
         };
         let via_render = crate::web::render::single_oob_section(
             &rendered_section,
