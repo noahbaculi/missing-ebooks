@@ -19,11 +19,9 @@ use tokio::sync::mpsc;
 
 use crate::service::{FlaggedView, ViewMode, apply_mark_raw, render_view};
 use crate::state::RawView;
-use crate::web::render::oob_sections;
-use crate::web::{
-    MarkRequest, ViewQuery, app_css, events_response, htmx_script, htmx_sse_script, page,
-    render_section,
-};
+use crate::web::assets::{app_css, htmx_script, htmx_sse_script};
+use crate::web::render::{oob_sections, page, render_section};
+use crate::web::{MarkRequest, ViewQuery, events_response};
 
 use super::banner;
 use super::session::{AtCapacity, Mark, SessionId, SessionStore};

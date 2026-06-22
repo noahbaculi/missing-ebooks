@@ -14,7 +14,8 @@ use axum::body::Body;
 use axum::http::Request;
 use http_body_util::BodyStream;
 use missing_ebooks::config::Config;
-use missing_ebooks::demo::{DemoConfig, build_state, router};
+use missing_ebooks::demo::handlers::router;
+use missing_ebooks::demo::state::{DemoConfig, build_state};
 use missing_ebooks::scanner::ScanSettings;
 use tower::ServiceExt;
 

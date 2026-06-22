@@ -9,7 +9,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use missing_ebooks::config::Config;
-use missing_ebooks::demo::{self, DemoConfig, DemoState};
+use missing_ebooks::demo::handlers::router as demo_router;
+use missing_ebooks::demo::state::{DemoConfig, DemoState, build_state};
 use missing_ebooks::scanner::ScanSettings;
 use missing_ebooks::scenarios;
 
@@ -77,13 +78,13 @@ async fn main() -> anyhow::Result<()> {
     let settings = ScanSettings::compile(config.scan_inputs())?;
 
     let bind = demo_config.bind.clone();
-    let state = Arc::new(demo::build_state(config, settings, demo_config).await);
+    let state = Arc::new(build_state(config, settings, demo_config).await);
 
     tokio::spawn(run_reaper(state.clone()));
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     tracing::info!(%bind, "missing-ebooks demo listening");
-    let serve = axum::serve(listener, demo::router(state)).with_graceful_shutdown(async {
+    let serve = axum::serve(listener, demo_router(state)).with_graceful_shutdown(async {
         tokio::signal::ctrl_c().await.ok();
     });
     serve.await?;

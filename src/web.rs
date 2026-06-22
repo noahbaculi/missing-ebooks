@@ -23,14 +23,8 @@ use crate::marker::Marker;
 use crate::service::{self, ViewMode};
 use crate::state::AppState;
 
-mod assets;
+pub(crate) mod assets;
 pub mod render;
-
-// Re-exported so the demo router's `use crate::web::…` path stays put.
-pub(crate) use assets::{app_css, htmx_script, htmx_sse_script};
-
-// Re-exported for the demo router's `use crate::web::…` path, same as above.
-pub(crate) use render::{page, render_section};
 
 /// The `view` parameter shared by the index query string and the rescan form. A
 /// lenient `Option<String>` so an absent or unknown value falls back to gaps-only
