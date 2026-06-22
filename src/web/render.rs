@@ -547,8 +547,12 @@ fn gap_summary(view: &FlaggedView) -> Markup {
     let total_gaps = total_gaps(view);
     let total_audiobooks: usize = view.iter().map(|s| s.total_audiobooks).sum();
     let covered = total_audiobooks.saturating_sub(total_gaps);
+    // Floor so 199 of 200 reads "99%" rather than rounding up to a false "100%"
+    // beside a hero that still says "1 gap to fill". The all-clear branch
+    // emits the literal "100%" itself, so the only path that prints `pct`
+    // alongside a non-zero gap total is the head, where the floor is honest.
     let pct = if total_audiobooks > 0 {
-        ((covered as f64 / total_audiobooks as f64) * 100.0).round() as usize
+        ((covered as f64 / total_audiobooks as f64) * 100.0).floor() as usize
     } else {
         0
     };

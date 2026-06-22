@@ -1475,7 +1475,11 @@
     var covered = Math.max(total - totalGaps, 0);
     var pct = total > 0 ? (covered / total) * 100 : 0;
 
-    setText("coverage-pct", String(Math.round(pct)));
+    // Floor so 199 of 200 reads "99%" rather than a false "100%" beside a
+    // hero that still says "1 gap to fill". Matches the server's `coverage_bar`
+    // floor; the bar width stays the fractional `pct` so the fill is visually
+    // accurate.
+    setText("coverage-pct", String(Math.floor(pct)));
     setText("coverage-covered", String(covered));
     setText("coverage-total", String(total));
 
