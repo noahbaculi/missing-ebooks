@@ -73,6 +73,8 @@ Then open http://127.0.0.1:13379.
 
 > [!WARNING]
 > The app has no authentication. The compose file above binds the host port to `127.0.0.1`, so it is reachable only from the machine running it. To reach it from the LAN, change the mapping to `"13379:13379"`, and put a reverse proxy with authentication in front of it before exposing it beyond your network.
+>
+> The `/events` SSE endpoint serves long-lived `text/event-stream` connections with a 15-second keepalive. A reverse proxy in front must not buffer this path and must hold the connection open past the keepalive interval. For nginx, that means `proxy_buffering off;` and `proxy_read_timeout 60s;` (or longer) on the `/events` location, plus passing the `X-Accel-Buffering: no` response header through. The server sets that header itself, so a proxy that respects it needs no extra config.
 
 ## Configuration
 
@@ -126,7 +128,7 @@ Reading more folders at once with `scan_concurrency` overlaps their round trips.
 
 `ttl_seconds` keeps a scanned view cached so repeat page loads do not rescan, and this matters more over SMB than locally. The client's own attribute cache ages out within a second, faster than a multi-second walk finishes, so a second walk re-queries the server and runs no faster than the first; the in-process cache is what spares the repeat cost. Raise `ttl_seconds` on a slow mount and treat the rescan button as the deliberate refresh.
 
-`autosync_interval_seconds` (default 10) governs the background sync loop. While at least one browser tab is open to the server, the loop runs a warm scan every N seconds (idle gap: the timer measures from completion to next start) and pushes any changed root sections back to the tab over SSE. Warm scans reuse a per-directory mtime index built up by previous scans; on the README's ~900-folder reference library a steady-state warm scan finishes in low single-digit milliseconds over SMB. Set the value to `0` to disable the loop; the SSE endpoint still serves the initial snapshot but emits no further section events. The Rescan button takes a different path: it clears the dir index and walks every directory (a cold scan), the explicit "fix any drift" action, which on the same library is about 1.9 s over SMB.
+`autosync_interval_seconds` (default 10) governs the background sync loop. While at least one browser tab is open to the server, the loop runs a warm scan every N seconds (idle gap: the timer measures from completion to next start) and pushes any changed root sections back to the tab over SSE. Warm scans reuse a per-directory mtime index built up by previous scans; on the README's ~900-folder reference library a steady-state warm scan finishes in low single-digit milliseconds over SMB. Set the value to `0` to disable the loop; the SSE endpoint still serves the initial snapshot but emits no further section events. The Rescan button takes a different path: it clears the dir index and walks every directory (a cold scan), the explicit "fix any drift" action, which on the same library is about 1.9 s over SMB. The previous `incremental_scan` boolean and `MISSING_EBOOKS_INCREMENTAL_SCAN` env var are gone: warm scans are the default for every scan path, and `/rescan` is now the explicit cold-scan recovery for any drift. A config file or env that still names `incremental_scan` will be rejected at startup because `deny_unknown_fields` is on.
 
 ## Markers
 
