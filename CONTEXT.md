@@ -63,3 +63,7 @@ _Avoid_: incremental scan (the implementation detail), cached scan.
 **Cold scan**:
 A scan that does not reuse any dir index entries, either because the index is empty (process just started) or because the path explicitly clears it (`/rescan` click). Walks every directory.
 _Avoid_: full scan, rescan (the verb for the user action, not the scan type).
+
+**Library coverage**:
+The fraction of audiobooks across all successfully-scanned library roots that are covered by an ebook or marker. Numerator and denominator are folder counts: folders that directly hold audio. Errored roots contribute to neither; their failure is already surfaced on the per-root section banner. The reported percentage is `Math.round(covered / total * 100)`.
+_Avoid_: completion, progress, done.

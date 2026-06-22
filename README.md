@@ -11,6 +11,8 @@ Each visit opens a private, throwaway sandbox seeded with sample audiobooks. Cha
 
 Point the server at one or more library roots. Each root is scanned and rendered as its own tree. A folder is flagged when it directly holds an audio file and nothing covers it: no ebook and no marker in that folder or any ancestor up to its root. One ebook or marker covers everything beneath it.
 
+A strip above the tree reads `{pct}% covered · {covered} of {total} audiobooks`, where an audiobook is a folder that directly holds audio. The readout updates live as gaps are marked and excludes errored roots from both sides of the ratio.
+
 ```
 Audiobooks/
   Andy Weir/
@@ -193,4 +195,3 @@ With the hook installed, any commit that touches Rust or build-config files runs
 - [x] Prettier UI
 - [ ] Tag-based search query built from path structure, not just the leaf folder name
 - [ ] Runtime button to append an exclude name and persist it to config
-- [ ] Library coverage percentage (covered audiobooks vs total), deferred until the cost of the full directory walk it needs is measured on a large library over a network mount
