@@ -60,11 +60,9 @@ pub type RawView = Vec<RawRootSection>;
 
 /// The cache: one raw slot and the staleness window, behind one mutex so a
 /// marker write and a TTL rescan cannot interleave (see ADR-0002). A `None` TTL
-/// disables caching (every read rescans). `entries` is `pub(crate)` so the
-/// service-layer tests can peek at the stored Arc to verify a render did not
-/// reseat it; no production code reaches in past the methods.
+/// disables caching (every read rescans).
 pub(crate) struct Cache {
-    pub(crate) entries: Mutex<Option<CacheEntry>>,
+    entries: Mutex<Option<CacheEntry>>,
     ttl: Option<Duration>,
 }
 
@@ -176,6 +174,18 @@ impl Cache {
         }
         let raw = build_full().await;
         store_fresh(&mut slot, raw)
+    }
+
+    /// Return a cloned `Arc<RawView>` to the stored raw view, if any.
+    ///
+    /// Service-layer tests use this to assert that a warm read did not
+    /// reseat the cache slot (`Arc::ptr_eq` against a prior snapshot) or
+    /// that the slot is populated at all (`.is_some()`). Gated behind
+    /// `#[cfg(test)]` so the field stays private at release.
+    #[cfg(test)]
+    pub(crate) async fn peek_stored_arc(&self) -> Option<Arc<RawView>> {
+        let slot = self.entries.lock().await;
+        slot.as_ref().map(|entry| Arc::clone(&entry.raw))
     }
 }
 

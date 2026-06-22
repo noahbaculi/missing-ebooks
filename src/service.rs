@@ -631,17 +631,11 @@ mod tests {
         let state = state_for(dir.path(), 600);
 
         let _first = current_view(&state, ViewMode::GapsOnly).await;
-        let raw_before = {
-            let slot = state.cache.entries.lock().await;
-            Arc::clone(&slot.as_ref().unwrap().raw)
-        };
+        let raw_before = state.cache.peek_stored_arc().await.expect("warmed slot");
         // Cover the gap on disk after the first scan.
         touch(&dir.path().join("Book/Book.epub"));
         let _second = current_view(&state, ViewMode::GapsOnly).await;
-        let raw_after = {
-            let slot = state.cache.entries.lock().await;
-            Arc::clone(&slot.as_ref().unwrap().raw)
-        };
+        let raw_after = state.cache.peek_stored_arc().await.expect("warmed slot");
 
         assert!(
             Arc::ptr_eq(&raw_before, &raw_after),
@@ -662,10 +656,7 @@ mod tests {
 
         // Warm the cache once so the racing reads land on a fresh slot.
         let _warm = current_view(&state, ViewMode::GapsOnly).await;
-        let raw_before = {
-            let slot = state.cache.entries.lock().await;
-            Arc::clone(&slot.as_ref().unwrap().raw)
-        };
+        let raw_before = state.cache.peek_stored_arc().await.expect("warmed slot");
 
         let (a, b) = tokio::join!(
             current_view(&state, ViewMode::GapsOnly),
@@ -673,10 +664,7 @@ mod tests {
         );
         assert_eq!(*a, *b, "warm concurrent renders must produce equal views");
 
-        let raw_after = {
-            let slot = state.cache.entries.lock().await;
-            Arc::clone(&slot.as_ref().unwrap().raw)
-        };
+        let raw_after = state.cache.peek_stored_arc().await.expect("warmed slot");
         assert!(
             Arc::ptr_eq(&raw_before, &raw_after),
             "warm concurrent reads must not rebuild the raw slot"
@@ -835,9 +823,8 @@ mod tests {
 
         // The same raw cache served both renders: with a warm TTL, the second
         // call must take the cached slot rather than rebuild.
-        let slot = state.cache.entries.lock().await;
         assert!(
-            slot.is_some(),
+            state.cache.peek_stored_arc().await.is_some(),
             "the cache holds the raw view between renders"
         );
     }
@@ -960,19 +947,13 @@ mod tests {
             .unwrap();
         assert!(matches!(after.view[0].state, RootState::Clean));
         assert!(dir.path().join("Book/.no_ebook").exists());
-        let raw_after_mark = {
-            let slot = state.cache.entries.lock().await;
-            Arc::clone(&slot.as_ref().unwrap().raw)
-        };
+        let raw_after_mark = state.cache.peek_stored_arc().await.expect("warmed slot");
 
         // A new gap appears on disk, but the warm TTL means the next read
         // serves from the cached raw slot rather than rescanning.
         touch(&dir.path().join("Other/01.mp3"));
         let _again = current_view(&state, ViewMode::GapsOnly).await;
-        let raw_after_read = {
-            let slot = state.cache.entries.lock().await;
-            Arc::clone(&slot.as_ref().unwrap().raw)
-        };
+        let raw_after_read = state.cache.peek_stored_arc().await.expect("warmed slot");
         // Drop the post-mark snapshot before the assert so the diagnostic
         // doesn't accidentally include extra holders if the test is extended.
         drop(raw_after_read.clone());
