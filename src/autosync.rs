@@ -152,9 +152,10 @@ impl Autosync {
     /// `sender` before calling this, so the channel's first event is always
     /// the snapshot.
     ///
-    /// `seed_hashes` populates `last_hash[mode]` so the loop's first compute
-    /// suppresses redundant section events for sections the snapshot already
-    /// carried; pass `None` (tests only) to skip the seed.
+    /// `seed_hashes` is the per-mode baseline the loop diffs against. Only
+    /// the first subscriber for a mode writes it; later subscribers leave
+    /// the existing baseline alone so a pending diff for an earlier tab is
+    /// not erased. Pass `None` (tests only) to skip the seed.
     pub(crate) fn subscribe(
         &self,
         state: &Arc<crate::state::AppState>,
@@ -164,7 +165,16 @@ impl Autosync {
     ) {
         let mut guard = self.inner.lock().expect("autosync mutex poisoned");
         guard.subs[mode].push(sender);
-        if let Some(hashes) = seed_hashes {
+        // The seed establishes the per-mode baseline the loop diffs against.
+        // Only the first subscriber for a mode writes it: later subscribers
+        // receive truth via their own snapshot over their FIFO channel, and
+        // overwriting the shared baseline would erase pending diffs for any
+        // earlier tab. A new subscriber may receive one redundant section
+        // event on the next tick for a root that changed since the baseline
+        // was set, which is acceptable compared to the data-loss alternative.
+        if let Some(hashes) = seed_hashes
+            && guard.last_hash[mode].is_empty()
+        {
             guard.last_hash[mode] = hashes.into_iter().map(Some).collect();
         }
 
@@ -463,5 +473,36 @@ mod tests {
             .as_ref()
             .expect("respawn left a live JoinHandle");
         assert!(!handle.is_finished(), "respawned task is running");
+    }
+
+    #[tokio::test]
+    async fn second_subscribe_for_same_mode_does_not_overwrite_baseline_hashes() {
+        // Interval of 60 s keeps the loop from ticking during the test so we can
+        // observe the registry state without races against the loop body.
+        let state = test_state_with_interval(60);
+
+        let (tx1, _rx1) = mpsc::channel(8);
+        let initial_hashes = vec![111u64, 222, 333];
+        state.autosync.subscribe(
+            &state,
+            ViewMode::GapsOnly,
+            tx1,
+            Some(initial_hashes.clone()),
+        );
+        let before = state.autosync.inner.lock().unwrap().last_hash[ViewMode::GapsOnly].clone();
+        assert_eq!(
+            before,
+            vec![Some(111), Some(222), Some(333)],
+            "first subscribe seeds the baseline",
+        );
+
+        let (tx2, _rx2) = mpsc::channel(8);
+        let later_hashes = vec![999u64, 999, 999];
+        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx2, Some(later_hashes));
+        let after = state.autosync.inner.lock().unwrap().last_hash[ViewMode::GapsOnly].clone();
+        assert_eq!(
+            after, before,
+            "second subscribe must not overwrite the baseline a prior subscriber set",
+        );
     }
 }
