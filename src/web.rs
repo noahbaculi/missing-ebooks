@@ -224,10 +224,7 @@ pub(crate) fn events_response(rx: mpsc::Receiver<Result<Event, Infallible>>) -> 
 /// identical to what `GET /?view=…` renders for those sections. Subsequent
 /// events are `section` events from the autosync loop. `ping` events come from
 /// `KeepAlive` every 15 seconds to survive idle TCP drops by reverse proxies.
-async fn events(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<ViewQuery>,
-) -> Response {
+async fn events(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery>) -> Response {
     let mode = ViewMode::from_query(query.view.as_deref());
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(16);
 

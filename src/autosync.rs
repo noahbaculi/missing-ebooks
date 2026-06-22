@@ -81,8 +81,7 @@ pub(crate) fn render_oob_section(
         path: raw_section.path.clone(),
         state: rendered_state,
     };
-    crate::web::render::single_oob_section(&rendered_section, root_idx, links, mode)
-        .into_string()
+    crate::web::render::single_oob_section(&rendered_section, root_idx, links, mode).into_string()
 }
 
 /// Build the concatenated OOB-swap payload for an SSE `snapshot` event and the
@@ -506,7 +505,9 @@ mod tests {
 
         let (tx2, _rx2) = mpsc::channel(8);
         let later_hashes = vec![999u64, 999, 999];
-        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx2, Some(later_hashes));
+        state
+            .autosync
+            .subscribe(&state, ViewMode::GapsOnly, tx2, Some(later_hashes));
         let after = state.autosync.inner.lock().unwrap().last_hash[ViewMode::GapsOnly].clone();
         assert_eq!(
             after, before,
@@ -531,7 +532,10 @@ mod tests {
             loop_task: Some(task),
         }));
 
-        assert!(!try_exit_loop(&inner), "subscribers present means do not exit");
+        assert!(
+            !try_exit_loop(&inner),
+            "subscribers present means do not exit"
+        );
         assert!(
             inner.lock().unwrap().loop_task.is_some(),
             "loop_task must survive a decline-to-exit",
@@ -568,8 +572,7 @@ mod tests {
         };
         let links: Vec<crate::config::SearchLink> = Vec::new();
 
-        let via_autosync =
-            render_oob_section(&raw, 7, ViewMode::GapsOnly, &links);
+        let via_autosync = render_oob_section(&raw, 7, ViewMode::GapsOnly, &links);
 
         let rendered_state =
             crate::service::render_root_state(&raw.path, &raw.state, ViewMode::GapsOnly);
@@ -577,9 +580,13 @@ mod tests {
             path: raw.path.clone(),
             state: rendered_state,
         };
-        let via_render =
-            crate::web::render::single_oob_section(&rendered_section, 7, &links, ViewMode::GapsOnly)
-                .into_string();
+        let via_render = crate::web::render::single_oob_section(
+            &rendered_section,
+            7,
+            &links,
+            ViewMode::GapsOnly,
+        )
+        .into_string();
 
         assert_eq!(via_autosync, via_render, "byte-equal SSE contract");
     }
