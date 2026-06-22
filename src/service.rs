@@ -477,6 +477,10 @@ pub(crate) fn lock_index(
 /// after this process writes or deletes a marker, so the change is picked up even
 /// if the directory mtime resolution would have hidden the same-tick write. A
 /// no-op when the path was never indexed.
+///
+/// `canonical_root` must already be canonicalized by the caller. `write_marker`
+/// and `delete_marker` do that on `spawn_blocking` and hand back the result, so
+/// the sync `canonicalize` syscall stays off the async runtime thread.
 fn invalidate_index(state: &AppState, canonical_root: &Path, rel: &str) {
     let target = if rel == "." {
         canonical_root.to_path_buf()
