@@ -426,16 +426,18 @@ mod tests {
     }
 
     #[test]
-    fn stylesheet_styles_the_gap_summary_and_session_bar() {
-        // The strip, its chips, and the session bar are themed.
+    fn stylesheet_styles_the_gap_summary_and_coverage_bar() {
+        // The strip, its chips, and the coverage bar are themed.
         assert!(APP_CSS_BYTES.contains(".gap-summary"));
         assert!(APP_CSS_BYTES.contains(".gap-chip"));
         assert!(APP_CSS_BYTES.contains(".gap-bar-fill"));
         // The fill animates its width, and the strip stacks on a phone.
         assert!(APP_CSS_BYTES.contains("transition: width"));
         assert!(APP_CSS_BYTES.contains(".gap-summary-head"));
-        // The session coverage block is themed.
-        assert!(APP_CSS_BYTES.contains(".gap-session"));
+        // The library coverage block is themed.
+        assert!(APP_CSS_BYTES.contains(".gap-coverage"));
+        // The old session selectors are gone.
+        assert!(!APP_CSS_BYTES.contains(".gap-session"));
     }
 
     #[test]
@@ -506,20 +508,23 @@ mod tests {
     }
 
     #[test]
-    fn app_script_recomputes_the_summary_and_session_bar() {
-        // The summary is recomputed from the DOM as marks land, and the session bar
-        // tracks resolved-over-baseline, with the baseline seeded from the strip's
-        // data hook and reset on a rescan.
+    fn app_script_recomputes_the_summary_and_library_coverage() {
+        // The summary is recomputed from the DOM as marks land, and the library
+        // coverage block reads `data-total-audiobooks` off each section.
         assert!(APP_JS_BYTES.contains("recomputeSummary"));
-        assert!(APP_JS_BYTES.contains("sessionBaseline"));
-        assert!(APP_JS_BYTES.contains("gap-bar-fill"));
-        assert!(APP_JS_BYTES.contains("gapsAtLoad"));
+        assert!(APP_JS_BYTES.contains("updateLibraryCoverage"));
+        assert!(APP_JS_BYTES.contains("coverage-bar-fill"));
+        assert!(APP_JS_BYTES.contains("totalAudiobooks"));
         // It runs on a confirmed mark, on an undo/section swap, and on a rescan.
         assert!(APP_JS_BYTES.contains(r#"addEventListener("marked""#));
         assert!(APP_JS_BYTES.contains("htmx:afterSwap"));
-        // The readout numbers track the bar: resolved of baseline, and the percent.
-        assert!(APP_JS_BYTES.contains("gap-resolved"));
-        assert!(APP_JS_BYTES.contains("gap-pct"));
+        // The readout numbers track the bar: covered of total audiobooks, plus
+        // the percent.
+        assert!(APP_JS_BYTES.contains("coverage-covered"));
+        assert!(APP_JS_BYTES.contains("coverage-pct"));
+        // The old session plumbing is gone.
+        assert!(!APP_JS_BYTES.contains("sessionBaseline"));
+        assert!(!APP_JS_BYTES.contains("gapsAtLoad"));
     }
 
     #[test]

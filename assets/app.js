@@ -1398,7 +1398,6 @@
   // mid-collapse (already resolved) so the count leads the delayed section swap.
   /** @type {HTMLElement | null} */
   var summary = null;
-  var sessionBaseline = 0;
 
   /**
    * Gap rows under `scope`, mid-collapse rows excluded. `.leaving` rides the
@@ -1433,7 +1432,7 @@
   }
 
   // Repaint the strip from the DOM: the hero total, the per-root chips, and the
-  // session coverage readout and bar.
+  // library coverage readout and bar.
   function recomputeSummary() {
     if (!summary) return;
     var total = currentGapTotal();
@@ -1454,42 +1453,59 @@
         num.textContent = String(countGapRows(section));
       }
     }
-    updateSessionBar(total);
+    updateLibraryCoverage(total);
   }
 
   /**
-   * The session bar: gaps resolved this sitting (baseline minus what is left) over
-   * the baseline, clamped so it never reads negative or past full.
-   * @param {number} total
+   * Library coverage: total audiobooks across every root sums per-section
+   * `data-total-audiobooks` attrs from the rendered tree, covered is the
+   * remainder after subtracting the still-flagged rows. Errored roots carry
+   * `0` so they fold out of the sum naturally; a section that vanishes from
+   * the DOM stops counting.
+   * @param {number} totalGaps
    */
-  function updateSessionBar(total) {
+  function updateLibraryCoverage(totalGaps) {
     if (!summary) return;
-    var bar = summary.querySelector(".gap-bar");
-    var fill = document.getElementById("gap-bar-fill");
-    if (!bar || !fill) return;
-    var resolved = Math.max(sessionBaseline - total, 0);
-    var pct = sessionBaseline > 0 ? (resolved / sessionBaseline) * 100 : 0;
-    fill.style.width = pct + "%";
-    bar.setAttribute("aria-valuenow", String(resolved));
-    bar.setAttribute("aria-valuemax", String(sessionBaseline));
-    // The readout is the bar in words: resolved of baseline audiobooks, rounded
-    // percent. The baseline updates too, since a rescan reseeds it.
-    setText("gap-resolved", String(resolved));
-    setText("gap-baseline", String(sessionBaseline));
-    setText("gap-pct", String(Math.round(pct)));
-  }
+    /** @type {NodeListOf<HTMLElement>} */
+    var sections = document.querySelectorAll("section.root");
+    var total = 0;
+    for (var i = 0; i < sections.length; i++) {
+      total += parseInt(sections[i].dataset.totalAudiobooks || "0", 10) || 0;
+    }
+    var covered = Math.max(total - totalGaps, 0);
+    var pct = total > 0 ? (covered / total) * 100 : 0;
 
-  // A fresh tree (rescan) resets the baseline to the new total, so the bar measures
-  // the new sitting from empty.
-  function resetSessionBaseline() {
-    sessionBaseline = currentGapTotal();
+    setText("coverage-pct", String(Math.round(pct)));
+    setText("coverage-covered", String(covered));
+    setText("coverage-total", String(total));
+
+    var fill = document.getElementById("coverage-bar-fill");
+    if (fill) fill.style.width = pct + "%";
+    var bar = summary.querySelector(".gap-bar");
+    if (bar) {
+      // Floor max at 1 so a zero-total render keeps a valid ARIA range; the
+      // strip is hidden in that case but the attribute still has to parse.
+      bar.setAttribute("aria-valuemax", String(Math.max(total, 1)));
+      bar.setAttribute("aria-valuenow", String(covered));
+    }
+
+    // The all-clear line carries the trailing "· 100% covered (T of T audiobooks)"
+    // when the library has audiobooks but no gaps; for a truly empty library the
+    // line stays bare so it does not read "0 of 0".
+    var clearTail = document.getElementById("coverage-clear");
+    if (clearTail) {
+      if (total > 0 && totalGaps === 0) {
+        clearTail.textContent =
+          " · 100% covered (" + total + " of " + total + " audiobooks)";
+        clearTail.hidden = false;
+      } else {
+        clearTail.hidden = true;
+      }
+    }
   }
 
   document.addEventListener("DOMContentLoaded", function () {
     summary = document.getElementById("gap-summary");
-    if (summary) {
-      sessionBaseline = parseInt(summary.dataset.gapsAtLoad || "", 10) || 0;
-    }
   });
 
   // A confirmed mark fires `marked`; recompute now that the resolved row is
@@ -1498,12 +1514,10 @@
     recomputeSummary();
   });
 
-  // An undo and the delayed mark swap both land as a section swap; a rescan swaps
-  // all of #roots. Recompute after any of them; on a rescan reset the baseline, and
-  // re-apply an active filter to the fresh rows so the new tree respects the query.
-  document.body.addEventListener("htmx:afterSwap", function (evt) {
-    var target = evt.detail && evt.detail.target;
-    if (target && target.id === "roots") resetSessionBaseline();
+  // An undo and the delayed mark swap both land as a section swap; a rescan
+  // swaps all of #roots. Recompute after any of them, and re-apply an active
+  // filter to the fresh rows so the new tree respects the query.
+  document.body.addEventListener("htmx:afterSwap", function () {
     recomputeSummary();
     if (searchInput && searchInput.value.trim() !== "") applyFilter();
   });

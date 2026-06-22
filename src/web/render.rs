@@ -538,29 +538,41 @@ fn gap_word(n: usize) -> &'static str {
     if n == 1 { "gap" } else { "gaps" }
 }
 
-/// The gap summary strip between the navbar and the roots, computed from the
-/// `FlaggedView` already on hand so it needs no scanner change. Holds the hero gap
-/// total, a session coverage readout with its bar, and optional per-root chips for
-/// a multi-root setup. `app.js` keeps the hero and readout current as marks land;
-/// this render is the first paint. `data-gaps-at-load` seeds the session bar's
-/// baseline.
+/// The gap summary strip between the navbar and the roots. Holds the hero gap
+/// total on the left, a library coverage readout with its bar on the right,
+/// and optional per-root chips for a multi-root setup. `app.js` keeps every
+/// number current as marks land, rescans complete, and autosync section pushes
+/// arrive; this render is the first paint.
 fn gap_summary(view: &FlaggedView) -> Markup {
-    let total = total_gaps(view);
+    let total_gaps = total_gaps(view);
+    let total_audiobooks: usize = view.iter().map(|s| s.total_audiobooks).sum();
+    let covered = total_audiobooks.saturating_sub(total_gaps);
+    let pct = if total_audiobooks > 0 {
+        ((covered as f64 / total_audiobooks as f64) * 100.0).round() as usize
+    } else {
+        0
+    };
+    let clear_tail_visible = total_audiobooks > 0 && total_gaps == 0;
     html! {
-        section.gap-summary id="gap-summary" data-gaps-at-load=(total) {
-            // Both end-states render; `app.js` toggles `hidden` as the live total
-            // crosses zero so the strip converges on what a reload would show, and so
-            // an undo back from the last mark can bring the hero and bar back.
-            p.gap-summary-clear id="gap-summary-clear" hidden[total != 0] {
+        section.gap-summary id="gap-summary" {
+            // Both end-states render; `app.js` toggles `hidden` as the live
+            // total crosses zero so the strip converges on what a reload would
+            // show, and so an undo back from the last mark can bring the head
+            // back. The trailing coverage span is the audiobooks-present
+            // variant; a truly empty library keeps the line bare.
+            p.gap-summary-clear id="gap-summary-clear" hidden[total_gaps != 0] {
                 (PreEscaped(CHECK_SVG))
                 span { "All clear. No gaps in your library." }
-            }
-            div.gap-summary-head id="gap-summary-head" hidden[total == 0] {
-                div.gap-hero {
-                    span.gap-hero-num id="gap-total" { (total) }
-                    span.gap-hero-label { (gap_word(total)) " to fill" }
+                span.coverage-clear id="coverage-clear" hidden[!clear_tail_visible] {
+                    " · 100% covered (" (total_audiobooks) " of " (total_audiobooks) " audiobooks)"
                 }
-                (session_bar(total))
+            }
+            div.gap-summary-head id="gap-summary-head" hidden[total_gaps == 0] {
+                div.gap-hero {
+                    span.gap-hero-num id="gap-total" { (total_gaps) }
+                    span.gap-hero-label { (gap_word(total_gaps)) " to fill" }
+                }
+                (coverage_bar(covered, total_audiobooks, pct))
             }
             @if view.len() > 1 {
                 div.gap-chips id="gap-chips" {
@@ -602,33 +614,31 @@ fn root_chip(root: usize, section: &RootSection) -> Markup {
     }
 }
 
-/// The session coverage block beside the hero: a readout of gaps resolved this
-/// sitting over the count at load (`{resolved} of {baseline} audiobooks · {pct}%`),
-/// with a `progressbar` so the value is announced. The numbers aggregate every
-/// root, and `app.js` resets the baseline on a rescan. The fill transition is
-/// dropped under reduced motion in CSS. The block always renders, even at a clean
-/// load where its head is hidden, because a rescan re-renders only `#roots` and
-/// never this strip, so `app.js` reaches in to fill the bar and rewrite the readout
-/// when a rescan turns up new gaps.
-fn session_bar(total: usize) -> Markup {
+/// The library coverage block beside the hero: a readout of covered over total
+/// audiobooks (`{pct}% covered · {covered} of {total} audiobooks`) with a
+/// `progressbar` so the value is announced. The block always renders, even at
+/// a clean load where its head is hidden, because a rescan re-renders only
+/// `#roots` and never this strip, so `app.js` reaches in to fill the bar and
+/// rewrite the readout when a rescan turns up new gaps.
+fn coverage_bar(covered: usize, total: usize, pct: usize) -> Markup {
     html! {
-        div.gap-session {
-            div.gap-session-head {
-                p.gap-session-readout {
-                    span.gap-session-num id="gap-resolved" { "0" }
-                    " of "
-                    span.gap-session-num id="gap-baseline" { (total) }
-                    " audiobooks · "
-                    span.gap-session-num id="gap-pct" { "0" } "%"
-                }
+        div.gap-coverage {
+            p.gap-coverage-readout {
+                span.coverage-num id="coverage-pct" { (pct) } "%"
+                " covered · "
+                span.coverage-num id="coverage-covered" { (covered) }
+                " of "
+                span.coverage-num id="coverage-total" { (total) }
+                " audiobooks"
             }
-            // Floor the max at 1: a clean load renders this bar hidden with no gaps to
-            // span, and `aria-valuemax="0"` would be a degenerate range. `app.js` sets
-            // the real baseline the moment the bar has gaps to measure.
+            // Floor the max at 1 on a zero-total render so the attribute parses
+            // even though the head is hidden in that case. Matches the pattern
+            // the old session bar used.
             div.gap-bar role="progressbar"
-                aria-label="Gaps resolved this session"
-                aria-valuemin="0" aria-valuemax=(total.max(1)) aria-valuenow="0" {
-                span.gap-bar-fill id="gap-bar-fill" {}
+                aria-label="Library coverage"
+                aria-valuemin="0" aria-valuemax=(total.max(1)) aria-valuenow=(covered) {
+                span.gap-bar-fill id="coverage-bar-fill"
+                    style=(format!("width: {pct}%")) {}
             }
         }
     }

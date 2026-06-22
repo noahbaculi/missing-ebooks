@@ -1639,37 +1639,36 @@ li.leaving {
   font-size: 0.95rem;
   font-weight: 600;
 }
-/* session coverage: a label, the readout, and the bar grouped beside the hero */
-.gap-session {
+/* library coverage: a label, the readout, and the bar grouped beside the hero */
+.gap-coverage {
   flex: 1 1 16rem;
   min-width: 0;
 }
 /* On mobile .gap-summary-head turns flex-direction: column, so the 16rem above
-   becomes a height floor, stretching the ~40px session block to 256px and opening
+   becomes a height floor, stretching the ~40px coverage block to 256px and opening
    an empty band above the chips. Reset it to its natural height. Placed after the
    base rule, not in the main mobile @media block: the section is defined past that
    block, so a same-specificity override there loses the cascade. */
 @media (max-width: 600px) {
-  .gap-session {
+  .gap-coverage {
     flex: 0 1 auto;
   }
 }
-.gap-session-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.15rem 1rem;
-  margin-bottom: 0.4rem;
+.gap-coverage-readout {
+  margin: 0;
   font-size: 0.9rem;
   color: var(--color-muted);
+  margin-bottom: 0.4rem;
 }
-.gap-session-readout {
-  margin: 0;
-}
-.gap-session-num {
+.coverage-num {
   font-weight: 700;
   color: var(--color-base-content);
+}
+/* The trailing "· 100% covered (T of T audiobooks)" inside the all-clear line.
+   Same dimmed muted color as the surrounding text; no other reshape needed. */
+.coverage-clear {
+  color: var(--color-muted);
+  font-weight: 500;
 }
 .gap-summary-clear {
   display: flex;

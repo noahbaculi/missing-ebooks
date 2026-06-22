@@ -1557,7 +1557,7 @@ mod tests {
         .await;
         // No status markers and no covered rows in the gaps-only output.
         assert!(!body.contains(r#"class="status""#));
-        assert!(!body.contains(r#"covered""#));
+        assert!(!body.contains(r#" covered""#));
         // The gap and its buttons are still there.
         assert!(body.contains("Book"));
         assert!(body.contains(r#"hx-post="/mark""#));
@@ -1798,15 +1798,12 @@ mod tests {
         .await;
         // The strip renders server-side, between the navbar and the roots.
         assert!(body.contains(r#"id="gap-summary""#));
-        // The hero gap total has its own hook, and the session bar's load-time
-        // baseline rides on the strip as a data attribute. One gap here (Book).
+        // The hero gap total has its own hook; the library coverage readout
+        // and bar carry the new coverage-* ids.
         assert!(body.contains(r#"id="gap-total""#));
-        assert!(body.contains(r#"data-gaps-at-load="1""#));
-        // The session coverage readout: resolved of baseline audiobooks with a
-        // percent. First paint is 0 of 1.
-        assert!(body.contains(r#"id="gap-resolved""#));
-        assert!(body.contains(r#"id="gap-baseline""#));
-        assert!(body.contains(r#"id="gap-pct""#));
+        assert!(body.contains(r#"id="coverage-pct""#));
+        assert!(body.contains(r#"id="coverage-covered""#));
+        assert!(body.contains(r#"id="coverage-total""#));
         assert!(body.contains("audiobooks"));
         // The all-clear line renders too, hidden until the live total reaches zero.
         assert!(body.contains(r#"id="gap-summary-clear" hidden"#));
@@ -1869,6 +1866,99 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gap_summary_initial_paint_carries_library_coverage_readout() {
+        let dir = tempfile::tempdir().unwrap();
+        // Three audiobooks, one of them a gap, two covered.
+        touch(&dir.path().join("A/B1/01.mp3"));
+        touch(&dir.path().join("A/B2/01.mp3"));
+        touch(&dir.path().join("A/B2/B2.epub"));
+        touch(&dir.path().join("A/B3/01.mp3"));
+        touch(&dir.path().join("A/B3/B3.epub"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The strip carries the three coverage hooks the JS keeps current.
+        assert!(body.contains(r#"id="coverage-pct""#));
+        assert!(body.contains(r#"id="coverage-covered""#));
+        assert!(body.contains(r#"id="coverage-total""#));
+        assert!(body.contains(r#"id="coverage-bar-fill""#));
+        // Bar values match the load: covered=2, total=3, label is the library.
+        assert!(body.contains(r#"aria-label="Library coverage""#));
+        assert!(body.contains(r#"aria-valuenow="2""#));
+        assert!(body.contains(r#"aria-valuemax="3""#));
+        // The data-gaps-at-load hook is gone; nothing reads it anymore.
+        assert!(!body.contains("data-gaps-at-load"));
+    }
+
+    #[tokio::test]
+    async fn gap_summary_all_clear_with_audiobooks_shows_trailing_coverage_fragment() {
+        let dir = tempfile::tempdir().unwrap();
+        // Two covered audiobooks, no gaps.
+        touch(&dir.path().join("B1/01.mp3"));
+        touch(&dir.path().join("B1/B1.epub"));
+        touch(&dir.path().join("B2/01.mp3"));
+        touch(&dir.path().join("B2/B2.epub"));
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // All-clear branch is visible, the trailing coverage span shows the
+        // T of T fragment and is not hidden.
+        assert!(body.contains(r#"id="gap-summary-clear">"#));
+        assert!(body.contains(r#"id="gap-summary-head" hidden"#));
+        assert!(body.contains(r#"<span class="coverage-clear" id="coverage-clear">"#));
+        assert!(body.contains("100% covered (2 of 2 audiobooks)"));
+    }
+
+    #[tokio::test]
+    async fn gap_summary_empty_library_keeps_coverage_fragment_hidden() {
+        let dir = tempfile::tempdir().unwrap();
+        // No audio at all; the strip is in its empty-library state.
+        std::fs::create_dir_all(dir.path().join("Empty")).unwrap();
+        let body = body_string(
+            app_for(dir.path())
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // The all-clear line shows but the coverage trailing fragment stays
+        // hidden so the line does not read "0 of 0".
+        assert!(body.contains("All clear"));
+        assert!(body.contains(r#"id="coverage-clear" hidden"#));
+        assert!(body.contains(r#"id="gap-summary-head" hidden"#));
+    }
+
+    #[tokio::test]
+    async fn gap_summary_excludes_errored_roots_from_the_coverage_total() {
+        let good = tempfile::tempdir().unwrap();
+        // 100 audiobooks under the good root, all of them gaps.
+        for i in 0..100 {
+            touch(&good.path().join(format!("B{i:03}/01.mp3")));
+        }
+        let body = body_string(
+            app_for_roots(&[good.path(), Path::new("/no/such/root/xyz123")])
+                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                .await
+                .unwrap(),
+        )
+        .await;
+        // Total reads 100 (errored root contributes zero); covered = 0; pct = 0.
+        assert!(body.contains(r#"aria-valuemax="100""#));
+        assert!(body.contains(r#"aria-valuenow="0""#));
+        // The readout text reflects the same numbers.
+        assert!(body.contains(r#"id="coverage-total">100"#));
+        assert!(body.contains(r#"id="coverage-covered">0"#));
+    }
+
+    #[tokio::test]
     async fn gap_summary_shows_all_clear_for_a_covered_library() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
@@ -1880,13 +1970,14 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // Total zero: the all-clear line shows and the zero baseline rides the strip.
-        // The hero-and-bar head still renders so an undo back from the last mark can
-        // bring it back, but it loads hidden.
-        assert!(body.contains(r#"data-gaps-at-load="0""#));
+        // Total zero: the all-clear line shows and the head loads hidden so an
+        // undo back from the last mark can bring it back.
         assert!(body.contains("All clear"));
         assert!(body.contains(r#"id="gap-summary-clear">"#));
         assert!(body.contains(r#"id="gap-summary-head" hidden"#));
+        // The trailing coverage fragment carries the audiobook count and is
+        // visible because the library has audiobooks but no gaps.
+        assert!(body.contains("100% covered (1 of 1 audiobooks)"));
         // The hidden bar still floors its max at 1, never a degenerate max-of-zero.
         assert!(body.contains(r#"aria-valuemax="1""#));
         assert!(!body.contains(r#"aria-valuemax="0""#));
@@ -1948,7 +2039,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gap_summary_renders_a_session_progressbar() {
+    async fn gap_summary_renders_a_library_coverage_progressbar() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Author/Book/01.mp3"));
         let body = body_string(
@@ -1958,12 +2049,14 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // A progressbar that starts empty: this sitting's resolved-over-baseline meter.
+        // A progressbar that measures the library: covered over total audiobooks.
+        // With one audiobook and one gap, covered=0 of total=1.
         assert!(body.contains(r#"role="progressbar""#));
+        assert!(body.contains(r#"aria-label="Library coverage""#));
         assert!(body.contains(r#"aria-valuenow="0""#));
         assert!(body.contains(r#"aria-valuemax="1""#));
         assert!(body.contains(r#"aria-valuemin="0""#));
-        assert!(body.contains(r#"id="gap-bar-fill""#));
+        assert!(body.contains(r#"id="coverage-bar-fill""#));
     }
 
     #[tokio::test]
@@ -2114,5 +2207,4 @@ mod tests {
         let body = body_string(response).await;
         assert!(body.contains(r#"id="roots""#));
     }
-
 }
