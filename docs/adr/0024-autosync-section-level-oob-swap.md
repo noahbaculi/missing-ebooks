@@ -8,9 +8,11 @@ The autosync loop (ADR-0023) needs to choose a granularity for the DOM patch it 
 
 ## Decision
 
-Pushes are per-root section, matching the swap unit ADR-0009 already establishes for the Rescan button and the marker handlers. Each `section` SSE event carries one OOB swap fragment with `hx-swap-oob="outerHTML:#root-N-section transition:true"`, which HTMX routes to the targeted `<section>` element. Roots whose rendered HTML did not change since the last broadcast produce no event.
+Pushes are per-root section, matching the swap unit ADR-0009 already establishes for the Rescan button and the marker handlers. Each `section` SSE event carries one OOB swap fragment with `hx-swap-oob="outerHTML:#root-N-section"`, which HTMX routes to the targeted `<section>` element. Roots whose rendered HTML did not change since the last broadcast produce no event.
 
-`transition:true` opts into the browser's view-transition API for the swap, so the section fades into its new content rather than blinking. Browsers without view-transition support fall back to a plain swap. No correctness risk.
+The attribute stays as `<style>:<id-selector>` with nothing after the selector. htmx 2.x's OOB parser (`He` in `htmx.min.js`) splits the attribute value on the *first* colon: everything before is the swap style, everything after is the CSS selector. Any `hx-swap` modifier with a colon ("transition:true", "swap:200ms", and friends) inside the OOB attribute lands in the selector portion and silently breaks routing. An earlier revision of this ADR appended `transition:true`; the section-event swaps never reached the DOM until that token was removed (see `.scratch/autosync-page-not-updating/issues/01-section-events-arrive-but-dom-does-not-update.md`). `src/web/render.rs::tests::single_oob_section_attribute_survives_htmx_first_colon_parse` now pins the shape.
+
+A section fade on swap is desirable but cannot live inside `hx-swap-oob`. The route to bring it back is `htmx.config.globalViewTransitions = true`, which applies to every swap on the page (Rescan and marker handlers included). That scope expansion is its own decision and belongs in a separate ADR.
 
 ## Consequences
 

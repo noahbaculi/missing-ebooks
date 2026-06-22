@@ -419,7 +419,7 @@ pub fn single_oob_section(
     mode: ViewMode,
 ) -> Markup {
     html! {
-        div hx-swap-oob=(format!("outerHTML:#root-{root}-section transition:true")) {
+        div hx-swap-oob=(format!("outerHTML:#root-{root}-section")) {
             (render_section(section, root, None, links, mode))
         }
     }
@@ -989,5 +989,55 @@ fn search_links(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// htmx 2.x parses `hx-swap-oob` by splitting on the *first* colon: the
+    /// part before is the swap style, the part after is the CSS selector
+    /// (`He` in `htmx.min.js`, confirmed against htmx 2.0.4 source). Any
+    /// `hx-swap` modifier with a colon ("transition:true", "swap:200ms", and
+    /// friends) inside the OOB attribute would land in the selector portion
+    /// and silently break OOB routing: htmx fires `htmx:oobErrorNoTarget` and
+    /// drops the swap. Section events would reach the browser but never
+    /// update the DOM. The earlier `transition:true` regression
+    /// (.scratch/autosync-page-not-updating/issues/01-section-events-arrive-but-dom-does-not-update.md)
+    /// was exactly this. Lock the attribute to `<style>:<#id>` with no
+    /// whitespace or extra colons so the next person to reach for an OOB
+    /// modifier fails this test instead of shipping silent breakage.
+    #[test]
+    fn single_oob_section_attribute_survives_htmx_first_colon_parse() {
+        let section = RootSection {
+            path: "/some/root".to_string(),
+            state: RootState::Clean,
+        };
+        let html = single_oob_section(&section, 3, &[], ViewMode::GapsOnly).into_string();
+
+        let oob_value = extract_attr_value(&html, "hx-swap-oob")
+            .expect("rendered fragment carries an hx-swap-oob attribute");
+
+        let (style, selector) = oob_value
+            .split_once(':')
+            .expect("OOB attribute uses the <style>:<selector> form");
+
+        assert_eq!(style, "outerHTML", "OOB swap style");
+        assert_eq!(
+            selector, "#root-3-section",
+            "OOB selector must be a plain id; htmx splits on the first colon, \
+             so any whitespace or extra colon corrupts the selector",
+        );
+    }
+
+    /// Pull the value of a double-quoted attribute out of a snippet of HTML.
+    /// Good enough for fragments produced by maud, which always emits attribute
+    /// values inside double quotes.
+    fn extract_attr_value<'a>(html: &'a str, name: &str) -> Option<&'a str> {
+        let needle = format!("{name}=\"");
+        let start = html.find(&needle)? + needle.len();
+        let end = html[start..].find('"')? + start;
+        Some(&html[start..end])
     }
 }
