@@ -726,11 +726,13 @@ pub fn render_section(
 
 /// A standalone error card for a root whose section could not be looked up (its
 /// index is out of range), carrying the same alert the in-fold error uses. Used by
-/// the failed-write path when the view has no section to render into.
+/// the failed-write path when the view has no section to render into. The zero
+/// `data-total-audiobooks` matches the invariant ADR-0025 documents (errored
+/// sections fold out of the JS sum without a special case).
 pub(crate) fn error_section(root: usize, message: &str) -> Markup {
     let section_id = format!("root-{root}-section");
     html! {
-        section.card.root id=(section_id) data-root=(root) {
+        section.card.root id=(section_id) data-root=(root) data-total-audiobooks="0" {
             div.alert.alert-error { (PreEscaped(ERROR_SVG)) span { (message) } }
         }
     }
