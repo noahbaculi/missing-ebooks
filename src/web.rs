@@ -67,7 +67,7 @@ async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery
     let mode = ViewMode::from_query(query.view.as_deref());
     let view = service::current_view(&state, mode).await;
     let render_started = Instant::now();
-    let html = render::page(&view, &state.config.search_links, mode).into_string();
+    let html = render::render_view(&view, &state.config.search_links, mode).into_string();
     tracing::debug!(
         op = "index",
         mode = mode.as_query(),

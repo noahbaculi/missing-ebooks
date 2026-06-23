@@ -20,7 +20,8 @@ use tokio::sync::mpsc;
 use crate::service::{FlaggedView, ViewMode, apply_mark_raw, render_view};
 use crate::state::RawView;
 use crate::web::assets::{app_css, htmx_script, htmx_sse_script};
-use crate::web::render::{oob_sections, page, render_section};
+use crate::web::render::render_view as render_view_html;
+use crate::web::render::{oob_sections, render_section};
 use crate::web::{MarkRequest, ViewQuery, events_response};
 
 use super::banner;
@@ -166,7 +167,7 @@ async fn index(
         return capacity_response();
     };
     let view = derive_view(&state.base_raw, &marks, mode);
-    let html = page(&view, &state.search_links, mode).into_string();
+    let html = render_view_html(&view, &state.search_links, mode).into_string();
     let mut response = Html(banner::inject(&html, mode)).into_response();
     if let Some(cookie) = set_cookie {
         response.headers_mut().append(header::SET_COOKIE, cookie);
