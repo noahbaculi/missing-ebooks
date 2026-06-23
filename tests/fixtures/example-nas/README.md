@@ -1,6 +1,6 @@
 # example-nas library snapshot
 
-A frozen, machine-readable listing of a real audiobook tree on a NAS, so the scanner can be developed and tested on a machine that has no access to the mount.
+A realistic NAS-layout snapshot of a real audiobook tree, kept here for ad-hoc developer benchmarking against `cargo run --release --example scan_bench`. **The automated test suite does not exercise this directory.** It lives under `tests/fixtures/` for historical reasons; the canonical hand-checkable test fixtures are in [`../curated/`](../curated/). The artifact is a frozen, machine-readable listing of one developer's NAS; the `rehydrate.sh` script replays it into a tree of empty files so the scanner can walk a real directory structure on a machine that has no access to the mount.
 
 ## What is here
 
@@ -20,6 +20,8 @@ For a limited-context reader: this README, with the counts under "Structure and 
 - Library root: `/mnt/example-nas/Entertainment/Audiobooks`.
 - Captured: 2026-06-04. 126 top-level entries, 900 directories, 7,902 files.
 
+The snapshot was captured once for the SMB scaling investigation (ADR-0019) and has been kept since as the canonical realistic-layout artifact for `scan_bench`. Numbers are useful for relative comparisons inside one machine; they are not a normative baseline.
+
 To regenerate from the NAS:
 
 ```bash
@@ -33,6 +35,16 @@ To rebuild a walkable tree from the snapshot:
 ./rehydrate.sh            # builds ./rehydrated
 ./rehydrate.sh /tmp/lib   # or a target dir of your choosing
 ```
+
+Once rehydrated, point the benchmark at the tree:
+
+```bash
+./rehydrate.sh /tmp/scanbench-fixture
+cargo run --release --example scan_bench --manifest-path ../../../Cargo.toml -- --root /tmp/scanbench-fixture --label fixture --concurrency 1,4,8,16
+rm -rf /tmp/scanbench-fixture
+```
+
+The `--manifest-path` resolves relative to this fixture directory; from the repo root, drop the flag.
 
 ## Structure and quirks
 
