@@ -118,7 +118,7 @@ pub async fn current_view(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> 
 /// scratch. Ignores the TTL. This is the explicit "fix any drift" path; the
 /// autosync loop keeps using warm scans (see ADR-0023).
 pub async fn rescan(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> {
-    state.clear_dir_index();
+    lock_index(&state.dir_index).clear();
     let raw = state
         .cache
         .rebuild(|| {
