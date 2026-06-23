@@ -4,7 +4,7 @@ Superseded in part by ADR-0018 (commit `236073e`): the implicit progressive-enha
 
 After a marker write succeeds, the page replaces only the affected root's `<section>`. The two buttons on each node row POST to `/mark` and target the closest `section.root`, swapping the server's response in as the new section (`hx-target="closest section.root"`, `hx-swap="outerHTML"`). The handler renders just that one section, which `service::mark` has already updated in memory, so the swap costs nothing past rendering a single root.
 
-The rescan button stays a full-page POST that redirects to `/` (Post/Redirect/Get). A rescan rebuilds every section anyway, so a partial swap would buy nothing there. A marker write is the opposite case: it changes one folder in one root and leaves the rest alone. Reloading the whole page would re-render every root and lose the open or closed state of the `<details>` elements the user has expanded. Swapping one section keeps that state and keeps the click responsive on a library with many roots.
+ADR-0018 later moved rescan onto the same htmx POST path as every other button (no full-page reload). A marker write is the case this ADR scopes: it changes one folder in one root and leaves the rest alone. Reloading the whole page would re-render every root and lose the open or closed state of the `<details>` elements the user has expanded. Swapping one section keeps that state and keeps the click responsive on a library with many roots.
 
 We drive the swap with htmx rather than a client framework. The server already renders HTML with Maud, and htmx lets that markup ask for updates through attributes, with no build step and no client-side model to keep in sync. The runtime is one small script.
 
