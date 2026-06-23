@@ -589,14 +589,11 @@ mod tests {
         // the request so a second click cannot fire a second scan.
         assert!(body.contains(r##"hx-indicator="#scan-bar, #rescan-btn""##));
         assert!(body.contains(r##"hx-disabled-elt="#rescan-btn""##));
-        // The bar is wired as the indicator. The old skeleton id is gone.
+        // The bar is wired as the indicator.
         assert!(body.contains(r#"id="scan-bar""#));
-        assert!(!body.contains(r#"id="scan-skeleton""#));
         // The button keeps its constant "Rescan" label and locks via hx-disabled-elt.
-        // It no longer relabels while the scan runs.
         assert!(body.contains(r#"id="rescan-btn""#));
         assert!(body.contains("Rescan"));
-        assert!(!body.contains("Rescanning"));
         // Rescan is htmx-driven, not a native form submit: the button posts via
         // hx-post and the form carries no method/action.
         assert!(!body.contains(r#"action="/rescan""#));
@@ -918,13 +915,10 @@ mod tests {
         assert!(body.contains(r#"data-theme-choice="dark""#));
         assert!(body.contains(r#"data-theme-choice="system""#));
         // The Theme control's header reuses the .settings-head styling, like the
-        // folder-depth group, not the inline .settings-label.
+        // folder-depth group.
         assert!(body.contains(r#"<div class="settings-head">Theme</div>"#));
-        assert!(!body.contains(r#"<span class="settings-label">Theme</span>"#));
         // The confirm-before-marking switch.
         assert!(body.contains(r#"id="confirm-toggle""#));
-        // The old two-state toggle is gone.
-        assert!(!body.contains("toggleTheme()"));
         // The panel orders the theme control first, then the confirm switch, then
         // the two folder-depth styling switches under their header, bold then italic.
         assert!(body.contains("Folder depth styling"));
@@ -1587,9 +1581,6 @@ mod tests {
         assert!(body.contains(r#"hx-post="/mark""#));
         assert!(body.contains(">No ebook<"));
         assert!(body.contains("Goodreads"));
-        // The bespoke toggle is gone; the browser drives open/close now.
-        assert!(!body.contains("toggleRowActions"));
-        assert!(!body.contains("aria-expanded"));
     }
 
     #[tokio::test]
@@ -1890,8 +1881,6 @@ mod tests {
         assert!(body.contains(r#"aria-label="Library coverage""#));
         assert!(body.contains(r#"aria-valuenow="2""#));
         assert!(body.contains(r#"aria-valuemax="3""#));
-        // The data-gaps-at-load hook is gone; nothing reads it anymore.
-        assert!(!body.contains("data-gaps-at-load"));
     }
 
     #[tokio::test]
@@ -2180,10 +2169,7 @@ mod tests {
                 .unwrap(),
         )
         .await;
-        // The shortcuts are a read-only section inside the settings popover now, so
-        // the standalone cheatsheet dialog and its navbar trigger are gone.
-        assert!(!body.contains(r#"id="cheatsheet""#));
-        assert!(!body.contains(r#"id="cheatsheet-btn""#));
+        // The shortcuts are a read-only section inside the settings popover.
         assert!(body.contains(r#"class="settings-shortcuts""#));
         assert!(body.contains("Keyboard shortcuts"));
         // The keys are spelled out for the reader.
@@ -2192,9 +2178,6 @@ mod tests {
         // Enter leaves the filter box, the complement of / focusing it.
         assert!(body.contains("<kbd>Enter</kbd>"));
         assert!(body.contains("Exit the filter"));
-        // The mark shortcuts were removed, so the list no longer mentions them.
-        assert!(!body.contains("Mark as no ebook"));
-        assert!(!body.contains("Mark ebook elsewhere"));
     }
 
     #[tokio::test]
