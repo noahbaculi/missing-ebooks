@@ -123,8 +123,13 @@ const PREPAINT_JS: &str = r#"(function () {
 /// indigo `%23605dff` on light tab strips and a lighter `%23c7c5ff` on dark ones
 /// via `prefers-color-scheme`. WARN: Chrome, Firefox, and Edge honor the media
 /// query inside a favicon, Safari ignores it and shows the light-mode indigo
-/// throughout. Source art lives at `assets/brand/favicon.svg`; keep it and
-/// `BRAND_SVG` in sync if the mark changes.
+/// throughout. Source art lives at `assets/brand/favicon.svg`; this constant is
+/// the percent-encoded data-URI form that goes into `<link rel="icon">`. Keep
+/// the two in sync if the mark changes; the navbar's inline copy reads
+/// `assets/svg/brand.svg`, which itself derives from `assets/brand/favicon.svg`.
+/// Spec B chose to keep the data URI hand-written rather than reconstruct it
+/// with `const_format::concatcp!`: the `%`-escapes are not byte-identical to a
+/// plain SVG file, so a build-time concat would not round-trip.
 const FAVICON_HREF: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round'%3E%3Cstyle%3Esvg{color:%23605dff}@media(prefers-color-scheme:dark){svg{color:%23c7c5ff}}%3C/style%3E%3Cpath d='M4.5 14v-2a7.5 7.5 0 0 1 15 0v2' stroke-width='2'/%3E%3Crect x='3' y='13' width='3.2' height='6' rx='1.6' fill='currentColor' stroke='none'/%3E%3Crect x='17.8' y='13' width='3.2' height='6' rx='1.6' fill='currentColor' stroke='none'/%3E%3Cpath d='M12 11.8c-1.2-.85-3-.85-4.2 0v4.8c1.2-.85 3-.85 4.2 0c1.2-.85 3-.85 4.2 0v-4.8c-1.2-.85-3-.85-4.2 0z' stroke-width='1.4'/%3E%3Cpath d='M12 11.8v4.8' stroke-width='1.2'/%3E%3C/svg%3E";
 
 /// The gaps-only / show-all view control for the navbar. The segment for the
