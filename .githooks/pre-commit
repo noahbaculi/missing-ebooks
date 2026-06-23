@@ -1,7 +1,8 @@
 #!/bin/sh
 # Pre-commit guard: run the same fmt, clippy, and type checks as the CI jobs in
 # .github/workflows/ci.yml, so those failures surface here instead of after a
-# push. Activate it once per clone with `mise run setup`.
+# push. mise.toml's `[hooks] enter` entry auto-activates this hook on the first
+# `cd` into the worktree (ADR-0026); `mise run setup` is the manual fallback.
 #
 # The checks read the working tree, not a staged-only snapshot. Building a
 # staged-only view means stashing unstaged changes, which is risky for little
