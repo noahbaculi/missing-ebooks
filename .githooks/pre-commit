@@ -15,6 +15,7 @@ staged=$(git diff --cached --name-only --diff-filter=ACMR)
 # so unrelated commits (docs, or the other language) stay fast.
 rust_changed=$(printf '%s\n' "$staged" | grep -Eq '(\.rs$|(^|/)Cargo\.(toml|lock)$|(^|/)(rust-toolchain|rustfmt|\.rustfmt|clippy)\.toml$)' && echo 1 || true)
 js_changed=$(printf '%s\n' "$staged" | grep -Eq '((^|/)assets/app\.js$|\.d\.ts$|(^|/)tsconfig\.json$)' && echo 1 || true)
+accent_changed=$(printf '%s\n' "$staged" | grep -Eq '((^|/)assets/app\.(css|js)$|(^|/)tests/accent/)' && echo 1 || true)
 
 if [ -n "$rust_changed" ]; then
   if ! cargo fmt --check; then
@@ -34,6 +35,13 @@ fi
 if [ -n "$js_changed" ]; then
   if ! mise run typecheck; then
     echo "pre-commit: 'mise run typecheck' failed. Fix the type errors above, then re-stage and commit." >&2
+    exit 1
+  fi
+fi
+
+if [ -n "$accent_changed" ]; then
+  if ! mise run test:accent; then
+    echo "pre-commit: 'mise run test:accent' failed. Fix the accent derivation above, then re-stage and commit." >&2
     exit 1
   fi
 fi

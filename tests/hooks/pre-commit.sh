@@ -120,6 +120,22 @@ expect_typecheck_skipped() { # label
     echo "ok: $1"
   fi
 }
+expect_accent_ran() { # label
+  if grep -qF "run test:accent" "$MISE_LOG"; then
+    echo "ok: $1"
+  else
+    echo "FAIL: $1 (mise run test:accent did not run)" >&2
+    fail=1
+  fi
+}
+expect_accent_skipped() { # label
+  if grep -qF "run test:accent" "$MISE_LOG"; then
+    echo "FAIL: $1 (mise run test:accent ran but should have been skipped)" >&2
+    fail=1
+  else
+    echo "ok: $1"
+  fi
+}
 
 # 1. Only a Markdown file staged: hook skips, cargo never runs.
 stage_case notes.md
@@ -128,6 +144,7 @@ expect_exit "skip: markdown-only exits 0" 0 "$(hook_exit)"
 expect_log_empty "skip: cargo not invoked"
 # 1b. Markdown-only also skips the type check.
 expect_typecheck_skipped "skip: typecheck not invoked"
+expect_accent_skipped "skip: accent not invoked"
 
 # 2. Clean Rust file: fmt, clippy, and doc all run and pass.
 stage_case src/main.rs
@@ -137,6 +154,7 @@ expect_log_has "clean: ran fmt" "fmt --check"
 expect_log_has "clean: ran clippy" "clippy"
 expect_log_has "clean: ran doc" "doc --no-deps"
 expect_log_has "clean: doc has -D warnings" "RUSTDOCFLAGS=-D warnings"
+expect_accent_skipped "clean: accent not invoked"
 
 # 3. fmt fails: hook blocks and never reaches clippy.
 stage_case src/main.rs
@@ -165,24 +183,49 @@ MISE_EXIT=0
 expect_exit "js: passing typecheck exits 0" 0 "$(hook_exit)"
 expect_typecheck_ran "js: ran typecheck"
 expect_log_empty "js: cargo not invoked"
+expect_accent_ran "js: ran accent"
 
 # 6. tsconfig change also triggers the type check.
 stage_case tsconfig.json
 MISE_EXIT=0
 expect_exit "tsconfig: passing typecheck exits 0" 0 "$(hook_exit)"
 expect_typecheck_ran "tsconfig: ran typecheck"
+expect_accent_skipped "tsconfig: accent not invoked"
 
 # 6b. A .d.ts change (the ambient stubs) also triggers the type check.
 stage_case types/htmx.d.ts
 MISE_EXIT=0
 expect_exit "dts: passing typecheck exits 0" 0 "$(hook_exit)"
 expect_typecheck_ran "dts: ran typecheck"
+expect_accent_skipped "dts: accent not invoked"
 
 # 7. Type check fails: hook blocks.
 stage_case assets/app.js
 MISE_EXIT=1
 expect_exit "js-fail: blocks commit" 1 "$(hook_exit)"
 expect_typecheck_ran "js-fail: ran typecheck"
+
+# 8. CSS change: typecheck stays out, accent runs.
+stage_case assets/app.css
+MISE_EXIT=0
+expect_exit "css: passing accent exits 0" 0 "$(hook_exit)"
+expect_typecheck_skipped "css: typecheck not invoked"
+expect_accent_ran "css: ran accent"
+expect_log_empty "css: cargo not invoked"
+
+# 9. Accent test change: only accent runs.
+stage_case tests/accent/derive.test.mjs
+MISE_EXIT=0
+expect_exit "accent-test: passing accent exits 0" 0 "$(hook_exit)"
+expect_typecheck_skipped "accent-test: typecheck not invoked"
+expect_accent_ran "accent-test: ran accent"
+expect_log_empty "accent-test: cargo not invoked"
+
+# 10. Accent fails: hook blocks.
+stage_case assets/app.css
+MISE_EXIT=1
+expect_exit "accent-fail: blocks commit" 1 "$(hook_exit)"
+expect_accent_ran "accent-fail: ran accent"
 
 if [ "$fail" -ne 0 ]; then
   echo "hook tests FAILED" >&2
