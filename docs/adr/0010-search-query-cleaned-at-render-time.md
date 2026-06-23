@@ -1,9 +1,9 @@
-# v1 search queries are cleaned from the folder name at render time
+# Search-link queries are cleaned from the folder name at render time
 
-A search link's `{query}` is the folder name, cleaned by a pure function and percent-encoded when the link template is filled. The cleaning runs at render time in its own module (`query::clean_query`), not at scan time, and the view stores no query.
+A search link's `{query}` placeholder is filled with the folder name, cleaned by a pure function (`query::clean_query`) and percent-encoded as the link template is built. The cleaning runs at render time and the cached scan view stores no query string.
 
-This fits how the rest of the read path works. The cache holds only the `FlaggedView` data, and every request re-renders from it in microseconds (see the web-server design). Cleaning a folder name is a cheap pure string transform, so running it per render costs nothing measurable and keeps `FlaggedView` free of a presentation concern. Storing a query on each node would bloat the cached view and tie the view model to one rendering detail.
+This fits the rest of the read path. The cache holds the raw scan output (ADR-0022) and every request renders from it in microseconds. Cleaning a folder name is a cheap string transform, so running it per render costs nothing measurable and keeps the cached data free of a presentation concern. Storing a query on each node would bloat the cache and tie the cached view model to one rendering detail.
 
-The deferred tag-based-query increment is the one that moves query building to scan time and stores the result on the view, because reading embedded audio tags is filesystem work that cannot run cheaply per render on a networked mount (see "Deferred: tag-based search queries" in the web-server design). That increment gets its own ADR; v1 does not pre-pay for it.
+If a future search experience needs the query to come from somewhere other than the folder name (embedded audio tags are the obvious candidate), that work belongs at scan time rather than at render time, because reading tags is filesystem work that cannot run cheaply per render on a networked mount. Building it would store the query on the cached node and skip `clean_query` for the populated case. That change is not load-bearing today and has not been written.
 
-The cleaning algorithm itself (drop bracketed segments, normalize `_` and `.` to spaces, collapse whitespace, trim a dangling `-`, fall back to the raw name) is specified in the search-links design and the web-server design's "Search-link queries" section, so it is not repeated here.
+The cleaning algorithm (drop bracketed segments, normalize `_` and `.` to spaces, collapse whitespace, trim a dangling separator, fall back to the raw name on an emptied result) lives in `src/query.rs` with its tests; treat that file as the spec.
