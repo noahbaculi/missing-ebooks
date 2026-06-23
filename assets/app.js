@@ -24,7 +24,7 @@
   var ITALIC_KEY = "italicNestedFolders";
   var darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
-  // ---- theme ----
+  // theme
 
   /**
    * The theme to paint for a stored choice. "system" and an absent value follow
@@ -84,7 +84,7 @@
     }
   });
 
-  // ---- accent color preference ----
+  // accent color preference
 
   var ACCENT_KEY = "accent";
   var ACCENT_DEFAULT = "#f5a524";
@@ -212,7 +212,7 @@
 
   /**
    * Derive a readable ink for the gap role from a base color, for one theme. The
-   * pill background is `mixColors(base, 16, surface)`; scan lightness at the base
+   * pill background is `mixColors(base, 16, surface)`. Scan lightness at the base
    * hue for the most vivid shade that clears AA against it, dark ink for light
    * and light ink for dark. Falls back to a clamped extreme if nothing reaches
    * AA. Keep this in sync with the duplicate in the pre-paint bootstrap
@@ -310,7 +310,7 @@
     applyAccent(base);
   }
 
-  // ---- confirm-before-marking preference ----
+  // confirm-before-marking preference
 
   /**
    * On by default: only the literal "off" disables it, so the key need not exist.
@@ -325,7 +325,7 @@
     localStorage.setItem(CONFIRM_KEY, on ? "on" : "off");
   }
 
-  // ---- folder-depth styling preferences ----
+  // folder-depth styling preferences
 
   /**
    * A depth styling preference is on by default: only the literal "off" disables
@@ -426,7 +426,7 @@
     }
   });
 
-  // ---- marker-write confirmation ----
+  // marker-write confirmation
 
   /** @type {HTMLDialogElement | null} */
   var dialog = null;
@@ -499,7 +499,7 @@
     dialog.showModal();
   });
 
-  // ---- mark: hold the row in place while saving, collapse only once confirmed ----
+  // mark: hold the row in place while saving, collapse only once confirmed
 
   /**
    * Collapse a row's <li> and fade it so the rows below glide up through normal
@@ -606,7 +606,7 @@
     collapseRow(btn.closest("li"));
   });
 
-  // ---- connection status: detection + banner ----
+  // connection status: detection + banner
 
   // htmx has no request timeout by default. A generous backstop frees a truly hung
   // request without aborting a legitimately slow big-library rescan.
@@ -691,7 +691,7 @@
     else hideBanner();
   });
 
-  // ---- connection failures: classify, roll back a mark, offer a retry ----
+  // connection failures: classify, roll back a mark, offer a retry
 
   var suppressConfirm = false;
 
@@ -743,7 +743,7 @@
    */
   function reissue(elt, op) {
     if (op === "mark") {
-      // elt is the mark button; its form holds the hidden fields and the hx-swap.
+      // elt is the mark button. Its form holds the hidden fields and the hx-swap.
       var form = /** @type {HTMLElement | null} */ (elt.closest("form.mark"));
       // Bail before arming suppressConfirm if the form is gone, so a stray failure
       // on a detached button can't leave the flag stuck and mute the next confirm.
@@ -857,7 +857,7 @@
   }
 
   /**
-   * Retry a transient failure a bounded number of times with backoff; once exhausted
+   * Retry a transient failure a bounded number of times with backoff. Once exhausted
    * (or for a non-retryable failure) fall through to the terminal handler.
    * @param {HTMLElement} elt
    * @param {string} op
@@ -898,7 +898,7 @@
     var op = opOf(evt.detail.elt);
     if (!op) return;
     retryState.delete(evt.detail.elt);
-    // The rescan retry-highlight only clears when a rescan itself succeeds; an
+    // The rescan retry-highlight only clears when a rescan itself succeeds. An
     // unrelated successful mark must not strip the "still needs rescanning" cue.
     if (op === "rescan") {
       rescanRetryHold(false);
@@ -907,7 +907,7 @@
     }
     if (bannerShowsProblem()) flashReconnected();
   });
-  // ---- bounded auto-retry for both idempotent endpoints ----
+  // bounded auto-retry for both idempotent endpoints
 
   var MAX_RETRIES = 3;
   var BACKOFFS = [500, 1500, 3000];
@@ -923,7 +923,7 @@
     var sk = document.getElementById("scan-bar");
     var btn = /** @type {HTMLButtonElement | null} */ (document.getElementById("rescan-btn"));
     if (sk) sk.classList.toggle("is-retrying", on);
-    // Holding it disabled carries the dim across the gaps; :disabled is its busy hook.
+    // Holding it disabled carries the dim across the gaps. :disabled is its busy hook.
     if (btn) btn.disabled = on;
   }
 
@@ -950,9 +950,9 @@
     else rescanTerminalFailure();
   }
 
-  // ---- success toast stack (undo offers) ----
+  // success toast stack (undo offers)
 
-  // Up to three toasts coexist; a fourth evicts the oldest. Each one offers an undo
+  // Up to three toasts coexist. A fourth evicts the oldest. Each one offers an undo
   // and clears after SUCCESS_MS. Write failures are shown inline by the row instead.
   /** @type {HTMLElement | null} */
   var stack = null;
@@ -1210,7 +1210,7 @@
   });
 
   // htmx dispatches `marked` from the HX-Trigger header on a successful /mark
-  // response; it bubbles to the body. Write failures are shown inline by the row.
+  // response, which bubbles to the body. Write failures are shown inline by the row.
   document.body.addEventListener("marked", function (evt) {
     showSuccessToast(evt.detail);
   });
@@ -1218,7 +1218,7 @@
     if (evt.key === "Escape") clearToasts();
   });
 
-  // ---- search / filter ----
+  // search / filter
 
   // The whole tree filters client-side over the DOM already present. A node stays
   // visible when its own name matches the query or any descendant matches, so the
@@ -1391,7 +1391,7 @@
     }
   });
 
-  // ---- gap summary recompute ----
+  // gap summary recompute
 
   // The summary always reflects the whole library, not the active filter, so the
   // recompute counts flagged rows regardless of visibility, excluding only rows
@@ -1494,7 +1494,7 @@
     }
 
     // The all-clear line carries the trailing "· 100% covered (T of T audiobooks)"
-    // when the library has audiobooks but no gaps; for a truly empty library the
+    // when the library has audiobooks but no gaps. For a truly empty library the
     // line stays bare so it does not read "0 of 0". Only the two numeric spans
     // get rewritten so the surrounding wording lives in the server template
     // (`render::gap_summary`) and never drifts between Rust and JS.
@@ -1528,7 +1528,7 @@
     if (searchInput && searchInput.value.trim() !== "") applyFilter();
   });
 
-  // ---- keyboard shortcuts ----
+  // keyboard shortcuts
 
   // Additive to the existing behavior. j/k move a single highlight through the
   // visible gap rows; r rescans; / focuses the filter and Enter leaves it; ? opens
