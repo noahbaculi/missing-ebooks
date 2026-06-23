@@ -1,6 +1,6 @@
-# Audiobookshelf file parsing reference
+# Audiobookshelf classification lists we mirror
 
-How Audiobookshelf (ABS, [advplyr/audiobookshelf](https://github.com/advplyr/audiobookshelf)) detects and classifies audiobook and ebook files.
+How Audiobookshelf (ABS, [advplyr/audiobookshelf](https://github.com/advplyr/audiobookshelf)) classifies audio and ebook files by extension. We mirror these lists in `src/config.rs`.
 
 > [!NOTE]
 > Sourced from the `master` branch as of 2026-06-05. The lists below have been stable, but a tagged release a user runs could differ. Treat `server/utils/globals.js` in source as the authoritative list rather than the docs site, which doesn't publish a complete extension table.
@@ -88,53 +88,10 @@ const includeAnywhereIgnore = ["@eaDir"];
 
 `@eaDir` is a Synology thumbnail directory. It doesn't start with a dot, so the dotpath rule misses it, and ABS names it explicitly. No other vendor name (`#recycle`, `Thumbs.db`) is hard-coded; anything starting with a dot is already covered.
 
-## Enrichment vs classification
-
-ABS separates two stages, and only the first decides file type:
-
-1. Classification, by extension, as covered above.
-2. Enrichment, which fills in book metadata fields from several sources.
-
-Enrichment reads embedded audio tags through ffprobe (it checks the first audio file for tags), folder and file names, and sidecar files such as `desc.txt`, `reader.txt`, `.opf`, `.nfo`, `metadata.json`, and `metadata.abs`. The order is governed by a configurable library metadata priority. The default precedence in `server/models/Library.js` is:
-
-```
-folderStructure < audioMetatags < nfoFile < txtFiles < opfFile < absMetadata
-```
-
-Lower-priority sources fill fields that a higher-priority source left empty, so `metadata.json` (absMetadata) wins where it has a value and folder structure is the fallback. None of this changes the audio-versus-ebook decision, which stays extension-only.
-
-Ebook grouping is part of classification's output: files in one folder become one library item, and a single item can be both an ebook and an audiobook by keeping them in the same folder. In a library that isn't audiobook-only, ABS picks one primary ebook with priority given to `epub` and marks the rest as supplementary (`server/scanner/BookScanner.js`). Two common but wrong assumptions: ABS doesn't ignore in-folder ebooks in an audiobook-only library, and it doesn't automatically demote an in-folder ebook to supplementary.
-
-## Series and sequence from embedded tags
-
-Enrichment reads series name and series sequence directly from embedded audio tags, not only from folder names. `server/utils/prober.js` runs ffprobe against the first audio file and matches a list of candidate tag keys, taking the first non-empty value (verified on `master`, 2026-06-06):
-
-```javascript
-file_tag_series: tryGrabTags(format, "series", "show", "mvnm");
-file_tag_seriespart: tryGrabTags(
-  format,
-  "series-part",
-  "episode_id",
-  "mvin",
-  "part",
-);
-file_tag_grouping: tryGrabTags(format, "grouping", "grp1");
-```
-
-`tryGrabTags` compares on the lowercased key name (`t.toLowerCase() === tags[i].toLowerCase()`), so one candidate list serves every container. `server/scanner/AudioFileScanner.js` maps the result onto the series record with `{ tag: 'tagSeries', altTag: 'tagGrouping', key: 'series' }`, then builds `series = [{ name, sequence: tagSeriesPart || null }]`. Sequence is `null` when no part tag is present.
-
-> `mvnm` and `mvin` are the ID3v2 iTunes movement-name and movement-number frames (MP3 and AIFF), not MP4 atoms. The MP4/M4B movement-name atom is `©mvn`. ABS matches the string key regardless of container, so the label only matters when reasoning about where a tag can actually live. The ABS docs themselves call these "MP4" tags, which names the wrong container.
-
-The candidate list is format-agnostic, but what ffprobe surfaces is not. ffprobe exposes arbitrary ID3 tags from MP3, while for MP4/M4B it returns only a small fixed set, so `series` and `series-part` read reliably from MP3 yet often not from M4B unless embedded a specific way. ABS owner advplyr describes the gap on issue [#3547](https://github.com/advplyr/audiobookshelf/issues/3547): "for mp4 containers unless they are embedded in that way ffprobe won't pull a `series` and `series-part` tag ... Ffprobe only supports a small number of tags for mp4 containers." Since the switch from the `tone` tool to ffmpeg for embedding (PR #3111, v2.11.0, July 2024), ABS writes series into the cross-container `grouping` tag, and an October 2024 fix stores series and sequence there as a semicolon-delimited list to handle multiple series.
-
 ## Source of truth and version notes
 
 - Authoritative lists: `server/utils/globals.js` on the branch or tag you run
-- MIME mapping: `server/utils/constants.js` (`AudioMimeType`, 19 keys, no `wav`)
 - Classification getters: `server/objects/files/LibraryFile.js`, `server/scanner/LibraryItemScanData.js`
-- Ebook primary/supplementary logic: `server/scanner/BookScanner.js`
-- Metadata precedence default: `server/models/Library.js`
-- Embedded series/sequence tags: `server/utils/prober.js`, `server/scanner/AudioFileScanner.js`
 - Docs: [book scanner](https://www.audiobookshelf.org/guides/book-scanner/), [ebooks](https://www.audiobookshelf.org/guides/ebooks/), [server FAQ](https://www.audiobookshelf.org/faq/server/)
 
 The docs page lists ebook formats as "epub, pdf, cbr, cbz" in passing and mentions a few audio extensions, but doesn't enumerate the full audio set. Use the source files when syncing extension lists.
