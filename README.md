@@ -130,7 +130,7 @@ Reading more folders at once with `scan_concurrency` overlaps their round trips.
 
 `ttl_seconds` keeps a scanned view cached so repeat page loads do not rescan, and this matters more over SMB than locally. The client's own attribute cache ages out within a second, faster than a multi-second walk finishes, so a second walk re-queries the server and runs no faster than the first; the in-process cache is what spares the repeat cost. Raise `ttl_seconds` on a slow mount and treat the rescan button as the deliberate refresh.
 
-`autosync_interval_seconds` (default 10) governs the background sync loop. While at least one browser tab is open to the server, the loop runs a warm scan every N seconds (idle gap: the timer measures from completion to next start) and pushes any changed root sections back to the tab over SSE. Warm scans reuse a per-directory mtime index built up by previous scans; on the README's ~900-folder reference library a steady-state warm scan finishes in low single-digit milliseconds over SMB. Set the value to `0` to disable the loop; the SSE endpoint still serves the initial snapshot but emits no further section events. The Rescan button takes a different path: it clears the dir index and walks every directory (a cold scan), the explicit "fix any drift" action, which on the same library is about 1.9 s over SMB. The previous `incremental_scan` boolean and `MISSING_EBOOKS_INCREMENTAL_SCAN` env var are gone: warm scans are the default for every scan path, and `/rescan` is now the explicit cold-scan recovery for any drift. A config file or env that still names `incremental_scan` will be rejected at startup because `deny_unknown_fields` is on.
+`autosync_interval_seconds` (default 10) governs the background sync loop. While at least one browser tab is open to the server, the loop runs a warm scan every N seconds (idle gap: the timer measures from completion to next start) and pushes any changed root sections back to the tab over SSE. Warm scans reuse a per-directory mtime index built up by previous scans; on the README's ~900-folder reference library a steady-state warm scan finishes in low single-digit milliseconds over SMB. Set the value to `0` to disable the loop; the SSE endpoint still serves the initial snapshot but emits no further section events. The Rescan button takes a different path: it clears the dir index and walks every directory (a cold scan), the explicit "fix any drift" action, which on the same library is about 1.9 s over SMB.
 
 ## Markers
 
@@ -188,10 +188,3 @@ For a live-reload loop while iterating on the UI, run `bacon explore` instead. I
 After cloning, run `mise install` to provision the pinned tools. With mise's shell integration active, the next time you cd into the repo `core.hooksPath` is set to `.githooks` automatically, so the committed pre-commit hook runs without further setup. Contributors who do not use mise shell integration can run `mise run setup` once per clone (and once per worktree) to point git at the same hooks.
 
 With the hook active, any commit that touches Rust or build-config files runs `cargo fmt`, `cargo clippy`, and `cargo doc -D warnings` first, and any commit that touches `assets/app.{css,js}` or `tests/accent/` runs `mise run test:accent`. These are the same checks CI enforces, run locally so the failures surface before push. Run them yourself any time with `mise run lint` (fmt and clippy) or by hand. Commits that touch only docs skip every check.
-
-## Future work
-
-- [x] Repeatable UI test harness with the same possible seeded states to test multiple scenarios
-- [x] Prettier UI
-- [ ] Tag-based search query built from path structure, not just the leaf folder name
-- [ ] Runtime button to append an exclude name and persist it to config
