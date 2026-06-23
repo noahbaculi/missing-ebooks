@@ -1,6 +1,6 @@
 // Guards the accent ink derivation, the load-bearing accessibility logic behind
 // the accent picker. It lives in two copies that no bundler can share: the typed
-// source in assets/app.js and the hand-minified pre-paint copy in src/web/render.rs.
+// source in assets/app.js and the hand-minified pre-paint copy in `assets/prepaint.js`.
 // The ACCENT-DERIVE markers fence the shared block in each. This slices both,
 // runs them, and asserts (1) the two copies agree and (2) the derived ink clears
 // WCAG AA against the rendered pill, for the presets plus adversarial picks.
@@ -62,9 +62,9 @@ function load(block, label) {
 }
 
 const appSrc = readFileSync(join(root, "assets", "app.js"), "utf8");
-const bootSrc = readFileSync(join(root, "src", "web", "render.rs"), "utf8");
+const bootSrc = readFileSync(join(root, "assets", "prepaint.js"), "utf8");
 const app = load(sliceBlock(appSrc, "app.js"), "app.js");
-const boot = load(sliceBlock(bootSrc, "render.rs"), "render.rs");
+const boot = load(sliceBlock(bootSrc, "prepaint.js"), "prepaint.js");
 
 const failures = [];
 for (const [name, base] of Object.entries(BASES)) {
