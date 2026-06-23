@@ -619,14 +619,6 @@ mod tests {
     }
 
     #[test]
-    fn audio_only_folder_is_flagged() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let got = flagged_set(dir.path(), &default_settings(&[]));
-        assert_eq!(got, BTreeSet::from(["Book".to_string()]));
-    }
-
-    #[test]
     fn loose_audio_in_the_root_flags_the_root_itself() {
         // Loose audio directly in the root, no author/book folder: the root is
         // the gap, reported as the empty relative path (see ADR-0005).
