@@ -8,4 +8,4 @@ Audiobookshelf, the dominant tool in this domain, sets the precedent we followed
 
 The cost is a small model change: `build` gains the root-name parameter, and the root node uses the relative path `.` (which doubles as the marker-write target for the root later). Flagging never stops the descent, so a flagged root is still walked for deeper gaps; coverage is the only thing that prunes, so an ebook or marker sitting in the root still covers everything beneath it, unchanged.
 
-The curated fixture keeps its root clean, so this behavior is pinned by scanner and tree unit tests rather than the curated contract. `validate_expected.py` still skips the root (`rel == "."`) and stays as-is. Pulling root-level audio into the curated contract later would mean removing that skip and listing `.` in `flagged`.
+The curated fixture keeps its root clean, so this behavior is pinned by scanner and tree unit tests rather than the curated contract. Pulling root-level audio into the curated contract later would mean listing `.` in `flagged`.
