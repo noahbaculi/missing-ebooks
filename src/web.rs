@@ -174,11 +174,7 @@ async fn rescan(State(state): State<Arc<AppState>>, Form(query): Form<ViewQuery>
     // Swap the fresh sections into #roots and push the mode path, so the address bar
     // tracks the view without ever showing the /rescan POST URL.
     let markup = render::roots(&view, &state.config.search_links, mode);
-    let resp = (
-        [("HX-Push-Url", mode_path(mode))],
-        Html(markup.into_string()),
-    )
-        .into_response();
+    let resp = ([("HX-Push-Url", mode.path())], Html(markup.into_string())).into_response();
     tracing::debug!(
         op = "rescan",
         mode = mode.as_query(),
@@ -186,14 +182,6 @@ async fn rescan(State(state): State<Arc<AppState>>, Form(query): Form<ViewQuery>
         "handled request"
     );
     resp
-}
-
-/// The path that renders a given mode, for the pushed URL and links.
-fn mode_path(mode: ViewMode) -> &'static str {
-    match mode {
-        ViewMode::GapsOnly => "/",
-        ViewMode::All => "/?view=all",
-    }
 }
 
 /// Wrap an SSE receiver into an axum `Response` with the `X-Accel-Buffering: no`

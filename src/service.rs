@@ -47,6 +47,16 @@ impl ViewMode {
             ViewMode::All => "all",
         }
     }
+
+    /// The URL path that renders this mode. Used for `HX-Push-Url` headers
+    /// and Post/Redirect/Get destinations.
+    #[must_use]
+    pub fn path(self) -> &'static str {
+        match self {
+            ViewMode::GapsOnly => "/",
+            ViewMode::All => "/?view=all",
+        }
+    }
 }
 
 /// The whole read view: one section per configured library root, in config order.
@@ -1124,6 +1134,12 @@ mod tests {
         for mode in [ViewMode::GapsOnly, ViewMode::All] {
             assert_eq!(ViewMode::from_query(Some(mode.as_query())), mode);
         }
+    }
+
+    #[test]
+    fn view_mode_path_returns_canonical_url_per_mode() {
+        assert_eq!(ViewMode::GapsOnly.path(), "/");
+        assert_eq!(ViewMode::All.path(), "/?view=all");
     }
 
     #[tokio::test]

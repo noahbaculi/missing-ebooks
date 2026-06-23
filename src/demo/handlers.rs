@@ -220,10 +220,7 @@ async fn mark(
 /// GET instead of re-firing the action (Post/Redirect/Get). `Redirect::to` emits
 /// 303 See Other.
 fn redirect_to_view(mode: ViewMode) -> Redirect {
-    match mode {
-        ViewMode::GapsOnly => Redirect::to("/"),
-        ViewMode::All => Redirect::to("/?view=all"),
-    }
+    Redirect::to(mode.path())
 }
 
 async fn reset(
