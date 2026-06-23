@@ -24,6 +24,7 @@ use crate::service::{self, ViewMode};
 use crate::state::AppState;
 
 pub(crate) mod assets;
+mod page;
 pub mod render;
 
 /// The `view` parameter shared by the index query string and the rescan form. A
