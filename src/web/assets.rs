@@ -196,7 +196,8 @@ mod tests {
         // independently; the default leaves both attributes absent.
         assert!(APP_CSS_BYTES.contains(r#"html:not([data-bold-top="off"]) .container-top .name"#));
         assert!(
-            APP_CSS_BYTES.contains(r#"html:not([data-italic-nested="off"]) .container-nested .name"#)
+            APP_CSS_BYTES
+                .contains(r#"html:not([data-italic-nested="off"]) .container-nested .name"#)
         );
         assert!(APP_CSS_BYTES.contains("font-style: italic"));
     }

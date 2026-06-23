@@ -458,9 +458,7 @@ mod tests {
     async fn first_subscribe_spawns_loop_last_unsub_lets_it_exit() {
         let state = test_state_with_interval(1);
         let (tx, rx) = mpsc::channel(8);
-        state
-            .autosync
-            .subscribe(&state, ViewMode::GapsOnly, tx);
+        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx);
         assert_eq!(state.autosync.subscriber_count(), 1);
         // Drop the receiver: the next loop tick's fan-out prunes the sender.
         drop(rx);
@@ -477,9 +475,7 @@ mod tests {
     async fn zero_interval_never_spawns_the_loop() {
         let state = test_state_with_interval(0);
         let (tx, _rx) = mpsc::channel(8);
-        state
-            .autosync
-            .subscribe(&state, ViewMode::GapsOnly, tx);
+        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx);
         // No loop task means the subscriber count stays put even after a
         // generous wait; pruning only happens inside the loop.
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -490,9 +486,7 @@ mod tests {
     async fn aborted_loop_respawns_on_next_subscribe() {
         let state = test_state_with_interval(60);
         let (tx1, _rx1) = mpsc::channel(8);
-        state
-            .autosync
-            .subscribe(&state, ViewMode::GapsOnly, tx1);
+        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx1);
 
         // Simulate a panic by aborting the loop task directly.
         state.autosync.abort_loop_for_test();
@@ -500,9 +494,7 @@ mod tests {
 
         // The next subscribe sees a finished JoinHandle (None after abort) and respawns.
         let (tx2, _rx2) = mpsc::channel(8);
-        state
-            .autosync
-            .subscribe(&state, ViewMode::GapsOnly, tx2);
+        state.autosync.subscribe(&state, ViewMode::GapsOnly, tx2);
         let guard = state.autosync.inner.lock().unwrap();
         let handle = guard
             .loop_task
@@ -519,12 +511,9 @@ mod tests {
 
         let (tx1, _rx1) = mpsc::channel(8);
         let initial_hashes = vec![111u64, 222, 333];
-        state.autosync.subscribe_and_seed(
-            &state,
-            ViewMode::GapsOnly,
-            tx1,
-            initial_hashes.clone(),
-        );
+        state
+            .autosync
+            .subscribe_and_seed(&state, ViewMode::GapsOnly, tx1, initial_hashes.clone());
         let before = state.autosync.inner.lock().unwrap().last_hash[ViewMode::GapsOnly].clone();
         assert_eq!(
             before,

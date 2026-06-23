@@ -553,7 +553,8 @@ mod tests {
     }
 
     fn flagged_set(root: &Path, settings: &ScanSettings) -> BTreeSet<String> {
-        scan_cold(root, settings).0
+        scan_cold(root, settings)
+            .0
             .iter()
             .filter(|f| f.directly_holds_audio && f.missing_ebook)
             .map(|f| f.rel_path.to_string_lossy().replace('\\', "/"))
@@ -764,7 +765,8 @@ mod tests {
     }
 
     fn scanned(root: &Path, settings: &ScanSettings) -> BTreeMap<String, (bool, bool)> {
-        scan_cold(root, settings).0
+        scan_cold(root, settings)
+            .0
             .into_iter()
             .map(|f| {
                 let rel = f.rel_path.to_string_lossy().replace('\\', "/");
@@ -905,7 +907,8 @@ mod tests {
     }
 
     fn cover_files_of(root: &Path, settings: &ScanSettings) -> BTreeMap<String, Vec<String>> {
-        scan_cold(root, settings).0
+        scan_cold(root, settings)
+            .0
             .into_iter()
             .map(|f| {
                 let rel = f.rel_path.to_string_lossy().replace('\\', "/");

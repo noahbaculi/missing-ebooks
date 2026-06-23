@@ -26,10 +26,7 @@ use common::{body_to_string, next_event};
 /// Build the production router over the given roots and autosync interval.
 /// `ttl_seconds` is fixed at 600 because every pre-merge binary used 600;
 /// no other `Config` field is overridden, matching every pre-merge build.
-fn setup(
-    library_roots: Vec<PathBuf>,
-    autosync_interval_seconds: u64,
-) -> (Router, Arc<AppState>) {
+fn setup(library_roots: Vec<PathBuf>, autosync_interval_seconds: u64) -> (Router, Arc<AppState>) {
     let config = Config {
         library_roots,
         ttl_seconds: 600,
