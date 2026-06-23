@@ -40,11 +40,6 @@ pub struct DemoState {
 }
 
 impl DemoState {
-    /// The shared raw view, built once at startup.
-    pub(crate) fn base_raw(&self) -> &Arc<RawView> {
-        &self.base_raw
-    }
-
     /// How many library roots the base view carries. Bounds the root index a
     /// mark may name.
     pub(crate) fn num_roots(&self) -> usize {

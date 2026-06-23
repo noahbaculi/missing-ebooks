@@ -165,7 +165,7 @@ async fn index(
     let Some((set_cookie, marks)) = resolved else {
         return capacity_response();
     };
-    let view = derive_view(state.base_raw(), &marks, mode);
+    let view = derive_view(&state.base_raw, &marks, mode);
     let html = page(&view, &state.search_links, mode).into_string();
     let mut response = Html(banner::inject(&html, mode)).into_response();
     if let Some(cookie) = set_cookie {
@@ -207,7 +207,7 @@ async fn mark(
     let Some((set_cookie, marks)) = resolved else {
         return capacity_response();
     };
-    let view = derive_view(state.base_raw(), &marks, mode);
+    let view = derive_view(&state.base_raw, &marks, mode);
     let markup = render_section(&view[req.root], req.root, None, &state.search_links, mode);
     let mut response = Html(markup.into_string()).into_response();
     if let Some(cookie) = set_cookie {
@@ -283,7 +283,7 @@ async fn events(
             .map(|(sid, _set_cookie)| store.marks(&sid).to_vec())
             .unwrap_or_default()
     };
-    let view = derive_view(state.base_raw(), &marks, mode);
+    let view = derive_view(&state.base_raw, &marks, mode);
     let snapshot = oob_sections(&view, &state.search_links, mode).into_string();
 
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(4);
@@ -632,8 +632,8 @@ mod tests {
         touch(&dir.path().join("Book/01.mp3"));
         let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
 
-        let plain = render_view(state.base_raw(), ViewMode::GapsOnly);
-        let derived = derive_view(state.base_raw(), &[], ViewMode::GapsOnly);
+        let plain = render_view(&state.base_raw, ViewMode::GapsOnly);
+        let derived = derive_view(&state.base_raw, &[], ViewMode::GapsOnly);
         assert_eq!(
             serde_json::to_value(&plain).unwrap(),
             serde_json::to_value(&derived).unwrap(),
@@ -645,7 +645,7 @@ mod tests {
             rel: "Book".to_string(),
             kind: Marker::NoEbook,
         }];
-        let after = derive_view(state.base_raw(), &marks, ViewMode::GapsOnly);
+        let after = derive_view(&state.base_raw, &marks, ViewMode::GapsOnly);
         let after_json = serde_json::to_value(&after).unwrap();
         let plain_json = serde_json::to_value(&plain).unwrap();
         assert_ne!(
