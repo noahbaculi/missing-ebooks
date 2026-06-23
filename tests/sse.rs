@@ -260,7 +260,17 @@ async fn two_modes_isolated() {
     // coverage denominator shifts in both. A pure show-all-only change is one
     // that touches state the show-all tree displays (cover/ebook filenames)
     // without altering audiobook count or gap flagging.
-    touch(&dir.path().join("Author/Book1/Book1.companion.epub"));
+    let book_dir = dir.path().join("Author/Book1");
+    touch(&book_dir.join("Book1.companion.epub"));
+    // Push the folder mtime forward so the autosync walk re-lists Book1 and
+    // sees the new ebook regardless of the filesystem's mtime resolution; a
+    // same-tick touch would otherwise reuse the cached pre-companion listing
+    // and the show-all view would not change.
+    filetime::set_file_mtime(
+        &book_dir,
+        filetime::FileTime::from_unix_time(4_000_000_000, 0),
+    )
+    .unwrap();
 
     // Show-all subscriber must receive a section event within the deadline.
     let mut got_all_section = false;

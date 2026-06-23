@@ -766,14 +766,21 @@ mod tests {
 
     #[tokio::test]
     async fn ttl_zero_rescans_every_call() {
+        use filetime::{FileTime, set_file_mtime};
         let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
+        let book = dir.path().join("Book");
+        touch(&book.join("01.mp3"));
         let state = state_for(dir.path(), 0);
 
         let first = current_view(&state, ViewMode::GapsOnly).await;
         assert!(matches!(first[0].state, RootState::Forest(_)));
 
-        touch(&dir.path().join("Book/Book.epub"));
+        // Cover the gap, then push the folder mtime forward so the rescan sees
+        // the change regardless of the filesystem's mtime resolution. The dir
+        // index keys off mtime equality; back-to-back touches inside one tick
+        // would otherwise reuse the pre-cover listing and hide the new ebook.
+        touch(&book.join("Book.epub"));
+        set_file_mtime(&book, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
         let second = current_view(&state, ViewMode::GapsOnly).await;
         assert!(
             matches!(second[0].state, RootState::Clean),
