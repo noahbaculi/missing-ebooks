@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use missing_ebooks::config::{Config, ConfigError, print_config_template};
+use missing_ebooks::config::{CONFIG_TEMPLATE, Config, ConfigError};
 use missing_ebooks::scanner::ScanSettings;
 use missing_ebooks::state::AppState;
 use missing_ebooks::web;
@@ -17,7 +17,7 @@ async fn main() -> ExitCode {
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--print-config") {
-        print!("{}", print_config_template());
+        print!("{CONFIG_TEMPLATE}");
         return ExitCode::SUCCESS;
     }
 

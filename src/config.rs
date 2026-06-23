@@ -186,11 +186,6 @@ fn apply_env_overrides(cfg: &mut Config, getenv: &dyn Fn(&str) -> Option<String>
     }
 }
 
-/// Return the commented `config.toml` template that `--print-config` emits.
-pub fn print_config_template() -> &'static str {
-    CONFIG_TEMPLATE
-}
-
 /// The commented template. It must stay parseable into `Config`;
 /// `print_config_template_round_trips` guards against drift.
 pub const CONFIG_TEMPLATE: &str = r##"# One or more library roots. Each is scanned and rendered as its own tree.
