@@ -433,6 +433,13 @@ mod tests {
         )
         .await;
         assert!(body.contains("3 files"));
+        // The trailing space pins this to the singular row text. A bare
+        // "3 file" would also match the plural "3 files", so we anchor on
+        // the space that follows on a row that says e.g. "3 file ▸".
+        assert!(
+            !body.contains("3 file "),
+            "rendered singular instead of plural"
+        );
     }
 
     #[tokio::test]
