@@ -127,35 +127,6 @@ const PREPAINT_JS: &str = r#"(function () {
 /// `BRAND_SVG` in sync if the mark changes.
 const FAVICON_HREF: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round'%3E%3Cstyle%3Esvg{color:%23605dff}@media(prefers-color-scheme:dark){svg{color:%23c7c5ff}}%3C/style%3E%3Cpath d='M4.5 14v-2a7.5 7.5 0 0 1 15 0v2' stroke-width='2'/%3E%3Crect x='3' y='13' width='3.2' height='6' rx='1.6' fill='currentColor' stroke='none'/%3E%3Crect x='17.8' y='13' width='3.2' height='6' rx='1.6' fill='currentColor' stroke='none'/%3E%3Cpath d='M12 11.8c-1.2-.85-3-.85-4.2 0v4.8c1.2-.85 3-.85 4.2 0c1.2-.85 3-.85 4.2 0v-4.8c-1.2-.85-3-.85-4.2 0z' stroke-width='1.4'/%3E%3Cpath d='M12 11.8v4.8' stroke-width='1.2'/%3E%3C/svg%3E";
 
-/// The brand mark drawn inline at the head of the navbar, the same "book wearing
-/// headphones" glyph as the favicon. It draws in `currentColor`, which the navbar
-/// binds to the primary indigo so the mark follows the theme, and is `aria-hidden`
-/// since the `<h1>` already names the app. Same art as `FAVICON_HREF` and
-/// `assets/brand/favicon.svg`. Keep the three in sync if the mark changes.
-const BRAND_SVG: &str = r##"<svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 14v-2a7.5 7.5 0 0 1 15 0v2" stroke-width="2"/><rect x="3" y="13" width="3.2" height="6" rx="1.6" fill="currentColor" stroke="none"/><rect x="17.8" y="13" width="3.2" height="6" rx="1.6" fill="currentColor" stroke="none"/><path d="M12 11.8c-1.2-.85-3-.85-4.2 0v4.8c1.2-.85 3-.85 4.2 0c1.2-.85 3-.85 4.2 0v-4.8c-1.2-.85-3-.85-4.2 0z" stroke-width="1.4"/><path d="M12 11.8v4.8" stroke-width="1.2"/></svg>"##;
-
-/// Gear glyph for the settings menu trigger. Inherits `currentColor`.
-const COG_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>"##;
-
-/// Magnifying glass for the search-links dropdown trigger. Inherits `currentColor`.
-const SEARCH_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>"##;
-
-/// Check mark for the "no gaps in this root" state. Inherits `currentColor`.
-const CHECK_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>"##;
-
-/// A thin × for the filter's clear button: two diagonal strokes, no circle, in
-/// `currentColor` so it follows the button's muted-to-base hover color.
-const CLEAR_SVG: &str = r##"<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>"##;
-
-/// A "no entry" sign (circle with a horizontal bar) for the sheet's "No ebook"
-/// row. Shown only inside the mobile sheet. Inherits `currentColor`.
-const NO_ENTRY_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg>"##;
-
-/// A book with a small check, marking that this audiobook's ebook is accounted
-/// for somewhere else rather than missing. Shown on the sheet's "Ebook
-/// elsewhere" button. Inherits `currentColor`.
-const EBOOK_ELSEWHERE_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg>"##;
-
 /// The gaps-only / show-all view control for the navbar. The segment for the
 /// current view is inert and marked `aria-current`, the other is a GET link to its
 /// view. Switching reshapes every root, so it is a full-page navigation, and the
@@ -190,7 +161,7 @@ pub(super) fn settings_menu() -> Markup {
             aria-label="Settings"
             title="Settings"
             aria-haspopup="menu"
-            popovertarget="settings-panel" { (PreEscaped(COG_SVG)) }
+            popovertarget="settings-panel" { (PreEscaped(include_str!("../../assets/svg/cog.svg"))) }
         div.settings-panel id="settings-panel" popover="auto" aria-label="Settings" {
             div.settings-head { "Theme" }
             div.settings-row.settings-row-theme {
@@ -269,13 +240,13 @@ pub(super) fn settings_menu() -> Markup {
 pub(super) fn search_box() -> Markup {
     html! {
         div.search id="search" {
-            (PreEscaped(SEARCH_SVG))
+            (PreEscaped(include_str!("../../assets/svg/search.svg")))
             input.search-input id="search-input" type="search"
                 placeholder="Filter folders" aria-label="Filter folders"
                 autocomplete="off" disabled;
             button.search-clear id="search-clear" type="button"
                 aria-label="Clear filter" hidden {
-                (PreEscaped(CLEAR_SVG))
+                (PreEscaped(include_str!("../../assets/svg/clear.svg")))
             }
         }
     }
@@ -314,8 +285,8 @@ pub(super) fn confirm_dialog() -> Markup {
             div.confirm-actions {
                 button.btn.btn-outline id="confirm-cancel" type="button" { "Cancel" }
                 button.btn.btn-primary id="confirm-accept" type="button" {
-                    span.confirm-icon data-confirm-icon=".no_ebook" { (PreEscaped(NO_ENTRY_SVG)) }
-                    span.confirm-icon data-confirm-icon=".ebook_elsewhere" hidden { (PreEscaped(EBOOK_ELSEWHERE_SVG)) }
+                    span.confirm-icon data-confirm-icon=".no_ebook" { (PreEscaped(include_str!("../../assets/svg/no-entry.svg"))) }
+                    span.confirm-icon data-confirm-icon=".ebook_elsewhere" hidden { (PreEscaped(include_str!("../../assets/svg/ebook-elsewhere.svg"))) }
                     span id="confirm-accept-label" { "Confirm" }
                 }
             }
@@ -361,7 +332,7 @@ pub(super) fn toast() -> Markup {
         div.toast-stack id="toast-stack" {}
         template id="toast-template" {
             div.toast {
-                span.toast-icon.toast-icon-success { (PreEscaped(CHECK_SVG)) }
+                span.toast-icon.toast-icon-success { (PreEscaped(include_str!("../../assets/svg/check.svg"))) }
                 div.toast-msg {}
                 button.btn.btn-outline.btn-xs.toast-undo type="button" { "Undo" }
                 button.toast-close type="button" aria-label="Dismiss" { "\u{00D7}" }
@@ -405,7 +376,7 @@ pub(crate) fn page(mode: ViewMode, body: Markup) -> Markup {
                     // The title is a home link: a plain GET to "/" that survives the
                     // htmx swaps, landing on the default gaps-only view with no filter,
                     // the conventional reset for a wordmark.
-                    h1 { a href="/" { (PreEscaped(BRAND_SVG)) "Missing Ebooks" } }
+                    h1 { a href="/" { (PreEscaped(include_str!("../../assets/svg/brand.svg"))) "Missing Ebooks" } }
                     // The spacer sits right after the title so the title alone pins
                     // left and everything else groups on the right. Mobile reorders
                     // every control by flex `order`, so this DOM move is desktop-only.

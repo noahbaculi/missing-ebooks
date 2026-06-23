@@ -9,46 +9,14 @@ use crate::query::clean_query;
 use crate::service::{FlaggedView, RootSection, RootState, ViewMode};
 use crate::tree::Node;
 
-/// Caret that rotates open when its folder is expanded. Inherits `currentColor`.
-const CHEVRON_SVG: &str = r##"<svg class="chev" aria-hidden="true" focusable="false" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>"##;
-
-/// Magnifying glass for the search-links dropdown trigger. Inherits `currentColor`.
-const SEARCH_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>"##;
-
-/// Folder glyph shown on every node row. Inherits `currentColor`.
-const FOLDER_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>"##;
-
-/// A music note shown on each audio-file row, so a file reads differently from the
-/// folder rows around it. Inherits `currentColor`.
-const MUSIC_SVG: &str = r##"<svg class="file-glyph" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>"##;
-
-/// Check mark for the "no gaps in this root" state. Inherits `currentColor`.
-const CHECK_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>"##;
-
-/// Circled exclamation for a scan or write error. Inherits `currentColor`.
-const ERROR_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>"##;
-
-/// Vertical three-dot "more actions" glyph for the mobile per-row menu trigger.
-/// Inherits `currentColor`.
-const KEBAB_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>"##;
-
-/// A "no entry" sign (circle with a horizontal bar) for the sheet's "No ebook"
-/// row. Shown only inside the mobile sheet. Inherits `currentColor`.
-const NO_ENTRY_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M7 12h10"/></svg>"##;
-
-/// A book with a small check, marking that this audiobook's ebook is accounted
-/// for somewhere else rather than missing. Shown on the sheet's "Ebook
-/// elsewhere" button. Inherits `currentColor`.
-const EBOOK_ELSEWHERE_SVG: &str = r##"<svg class="icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5 2 2 4-4"/></svg>"##;
-
 /// The rotating folder caret used on collapsible rows.
 fn chevron() -> Markup {
-    html! { (PreEscaped(CHEVRON_SVG)) }
+    html! { (PreEscaped(include_str!("../../assets/svg/chevron.svg"))) }
 }
 
 /// The folder glyph used on every node row (every node is a folder).
 fn folder_icon() -> Markup {
-    html! { (PreEscaped(FOLDER_SVG)) }
+    html! { (PreEscaped(include_str!("../../assets/svg/folder.svg"))) }
 }
 
 /// The root sections in order. Shared by the full page and the htmx rescan
@@ -171,7 +139,7 @@ fn gap_summary(view: &FlaggedView) -> Markup {
             // recompute, so the surrounding "· 100% covered (… of … audiobooks)"
             // wording lives in one place (this template).
             p.gap-summary-clear id="gap-summary-clear" hidden[total_gaps != 0] {
-                (PreEscaped(CHECK_SVG))
+                (PreEscaped(include_str!("../../assets/svg/check.svg")))
                 span { "All clear. No gaps in your library." }
                 span.coverage-clear id="coverage-clear" hidden[!clear_tail_visible] {
                     " · 100% covered ("
@@ -307,7 +275,7 @@ pub fn render_section(
                     (root_badge(&section.state))
                 }
                 @if let Some(message) = error {
-                    div.alert.alert-error { (PreEscaped(ERROR_SVG)) span { (message) } }
+                    div.alert.alert-error { (PreEscaped(include_str!("../../assets/svg/error.svg"))) span { (message) } }
                 }
                 @match &section.state {
                     RootState::Forest(nodes) => {
@@ -325,11 +293,11 @@ pub fn render_section(
                         }
                     }
                     RootState::Clean => {
-                        div.empty { (PreEscaped(CHECK_SVG)) span { "No missing ebooks in this root" } }
+                        div.empty { (PreEscaped(include_str!("../../assets/svg/check.svg"))) span { "No missing ebooks in this root" } }
                     }
                     RootState::Error(message) => {
                         div.alert.alert-error {
-                            (PreEscaped(ERROR_SVG)) span { "Could not scan this root: " (message) }
+                            (PreEscaped(include_str!("../../assets/svg/error.svg"))) span { "Could not scan this root: " (message) }
                         }
                     }
                 }
@@ -347,7 +315,7 @@ pub(crate) fn error_section(root: usize, message: &str) -> Markup {
     let section_id = format!("root-{root}-section");
     html! {
         section.card.root id=(section_id) data-root=(root) data-total-audiobooks="0" {
-            div.alert.alert-error { (PreEscaped(ERROR_SVG)) span { (message) } }
+            div.alert.alert-error { (PreEscaped(include_str!("../../assets/svg/error.svg"))) span { (message) } }
         }
     }
 }
@@ -358,7 +326,7 @@ pub(crate) fn error_section(root: usize, message: &str) -> Markup {
 fn status_icon(node: &Node) -> Markup {
     html! {
         @if !node.missing_ebook {
-            span.status title="covered" { (PreEscaped(CHECK_SVG)) }
+            span.status title="covered" { (PreEscaped(include_str!("../../assets/svg/check.svg"))) }
         }
     }
 }
@@ -412,7 +380,7 @@ fn file_rows(node: &Node) -> Markup {
         @if node.needs_ebook() {
             @for name in &node.audio_files {
                 li.file-row {
-                    (PreEscaped(MUSIC_SVG))
+                    (PreEscaped(include_str!("../../assets/svg/music.svg")))
                     span.file-name { (name) }
                 }
             }
@@ -522,7 +490,7 @@ fn row_actions(
             aria-label="Actions"
             aria-haspopup="menu"
             popovertarget=(group_id)
-            onclick="event.stopPropagation()" { (PreEscaped(KEBAB_SVG)) }
+            onclick="event.stopPropagation()" { (PreEscaped(include_str!("../../assets/svg/kebab.svg"))) }
         div.actions-group id=(group_id) popover="auto" aria-label=(name) {
             div.sheet-header {
                 span.sheet-grip aria-hidden="true" {}
@@ -557,7 +525,7 @@ fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup 
                 data-confirm-folder=(name)
                 title="No ebook exists or can be sourced. Covers this folder and everything beneath it."
                 onclick="event.stopPropagation()" {
-                    span.sheet-icon { (PreEscaped(NO_ENTRY_SVG)) }
+                    span.sheet-icon { (PreEscaped(include_str!("../../assets/svg/no-entry.svg"))) }
                     span.label-long { "No ebook" }
                     span.label-short { "No ebook" }
                 }
@@ -570,7 +538,7 @@ fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup 
                 data-confirm-folder=(name)
                 title="The ebook is in another folder. Covers this folder and everything beneath it."
                 onclick="event.stopPropagation()" {
-                    span.sheet-icon { (PreEscaped(EBOOK_ELSEWHERE_SVG)) }
+                    span.sheet-icon { (PreEscaped(include_str!("../../assets/svg/ebook-elsewhere.svg"))) }
                     span.label-long { "Ebook elsewhere" }
                     span.label-short { "Elsewhere" }
                 }
@@ -604,12 +572,12 @@ fn search_links(
                     popovertarget=(id)
                     aria-label="Search for this book"
                     title="Search links"
-                    onclick="event.stopPropagation()" { (PreEscaped(SEARCH_SVG)) }
+                    onclick="event.stopPropagation()" { (PreEscaped(include_str!("../../assets/svg/search.svg"))) }
                 div.links-menu popover="auto" id=(id) onclick="event.stopPropagation()" {
                     @for link in links {
                         a href=(link.url.replace("{query}", &query))
                             target="_blank" rel="noopener noreferrer" {
-                                span.sheet-icon { (PreEscaped(SEARCH_SVG)) }
+                                span.sheet-icon { (PreEscaped(include_str!("../../assets/svg/search.svg"))) }
                                 (link.label)
                             }
                     }
