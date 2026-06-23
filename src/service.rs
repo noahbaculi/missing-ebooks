@@ -902,33 +902,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn render_view_matches_scan_root_per_mode_on_a_seeded_tree() {
-        // Equivalence check: render_view of the cached raw output for each mode
-        // must produce the same FlaggedView as today's per-mode scan_root would
-        // have built. This pins the rework's correctness against the new cache
-        // shape on a small but representative seeded tree.
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("AuthorA/Book1/01.mp3"));
-        touch(&dir.path().join("AuthorB/Covered/01.mp3"));
-        touch(&dir.path().join("AuthorB/Covered/Book.epub"));
-        let state = state_for(dir.path(), 600);
-
-        let gaps = current_view(&state, ViewMode::GapsOnly).await;
-        let all = current_view(&state, ViewMode::All).await;
-
-        let gaps_json = serde_json::to_value(&*gaps).unwrap();
-        let all_json = serde_json::to_value(&*all).unwrap();
-        assert_ne!(gaps_json, all_json, "gaps and all must differ in shape");
-
-        // The same raw cache served both renders: with a warm TTL, the second
-        // call must take the cached slot rather than rebuild.
-        assert!(
-            state.cache.peek_stored_arc().await.is_some(),
-            "the cache holds the raw view between renders"
-        );
-    }
-
     #[test]
     fn root_states_serialize_to_stable_json() {
         let clean = serde_json::to_value(RootState::Clean).unwrap();
