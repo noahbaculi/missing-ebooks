@@ -9,7 +9,7 @@ A top-level directory that is scanned and rendered as its own tree. There can be
 _Avoid_: library, collection.
 
 **Node**:
-Any folder shown in a rendered tree, whether a flagged folder or a container. Every node is actionable: in v1 that means writing a marker and following the search links. A UI exclude action is deferred to a later increment.
+Any folder shown in a rendered tree, whether a flagged folder or a container. Every node is actionable: that means writing a marker and following the search links. A UI exclude action is deferred to a later increment.
 
 **Flagged folder**:
 A folder that directly contains at least one audio file and is not covered by an ebook or marker. These are the gaps the tool exists to surface. A library root counts as such a folder: loose, uncovered audio sitting directly in a root flags the root itself.
@@ -37,11 +37,11 @@ A just-written marker can be reversed from the undo toast that appears after a m
 _Avoid_: flag file, exception file, sentinel.
 
 **Search link**:
-A configured template whose `{query}` placeholder is filled with the folder name, cleaned and percent-encoded, shown on every node row. Following one opens a prefilled book search in a new tab, so the operator can go find the missing ebook without losing the page. The cleaning drops bracketed segments and normalizes separators. v1 builds the query from the folder name only, with a tag-based query deferred.
+A configured template whose `{query}` placeholder is filled with the folder name, cleaned and percent-encoded, shown on every node row. Following one opens a prefilled book search in a new tab, so the operator can go find the missing ebook without losing the page. The cleaning drops bracketed segments and normalizes separators. The query is built from the folder name only, with a tag-based query deferred.
 _Avoid_: lookup, external link.
 
 **Exclude name**:
-An exact directory name (case-insensitive) that drops any matching folder and its descendants from results, anywhere in the tree. In v1 it is hand-edited in config and applied at load, like an exclude glob; the two differ only in match criterion (exact name vs glob on the relative path). A UI button to append names at runtime is deferred.
+An exact directory name (case-insensitive) that drops any matching folder and its descendants from results, anywhere in the tree. It is hand-edited in config and applied at load, like an exclude glob; the two differ only in match criterion (exact name vs glob on the relative path). A UI button to append names at runtime is deferred.
 _Avoid_: ignore, blocklist entry.
 
 **Exclude glob**:
