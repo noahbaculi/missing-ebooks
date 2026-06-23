@@ -19,9 +19,13 @@ mkdir -p "$STUB"
 cat > "$STUB/cargo" <<'STUB_EOF'
 #!/bin/sh
 echo "$*" >> "$CARGO_LOG"
+if [ "$1" = "doc" ]; then
+  echo "RUSTDOCFLAGS=${RUSTDOCFLAGS:-}" >> "$CARGO_LOG"
+fi
 case "$1" in
   fmt) exit "${CARGO_FMT_EXIT:-0}" ;;
   clippy) exit "${CARGO_CLIPPY_EXIT:-0}" ;;
+  doc) exit "${CARGO_DOC_EXIT:-0}" ;;
 esac
 exit 0
 STUB_EOF
@@ -42,6 +46,7 @@ export MISE_EXIT=0
 export CARGO_LOG="$WORK/cargo.log"
 export CARGO_FMT_EXIT=0
 export CARGO_CLIPPY_EXIT=0
+export CARGO_DOC_EXIT=0
 fail=0
 
 # Build a fresh repo and stage the named (empty) files. Usage: stage_case f1 [f2...]
@@ -124,12 +129,14 @@ expect_log_empty "skip: cargo not invoked"
 # 1b. Markdown-only also skips the type check.
 expect_typecheck_skipped "skip: typecheck not invoked"
 
-# 2. Clean Rust file: both checks run and pass.
+# 2. Clean Rust file: fmt, clippy, and doc all run and pass.
 stage_case src/main.rs
-CARGO_FMT_EXIT=0; CARGO_CLIPPY_EXIT=0
+CARGO_FMT_EXIT=0; CARGO_CLIPPY_EXIT=0; CARGO_DOC_EXIT=0
 expect_exit "clean: passing checks exit 0" 0 "$(hook_exit)"
 expect_log_has "clean: ran fmt" "fmt --check"
 expect_log_has "clean: ran clippy" "clippy"
+expect_log_has "clean: ran doc" "doc --no-deps"
+expect_log_has "clean: doc has -D warnings" "RUSTDOCFLAGS=-D warnings"
 
 # 3. fmt fails: hook blocks and never reaches clippy.
 stage_case src/main.rs
@@ -143,6 +150,14 @@ stage_case src/main.rs
 CARGO_FMT_EXIT=0; CARGO_CLIPPY_EXIT=1
 expect_exit "clippy-fail: blocks commit" 1 "$(hook_exit)"
 expect_log_has "clippy-fail: ran clippy" "clippy"
+
+# 4b. doc fails: hook blocks after fmt and clippy pass.
+stage_case src/main.rs
+CARGO_FMT_EXIT=0; CARGO_CLIPPY_EXIT=0; CARGO_DOC_EXIT=1
+expect_exit "doc-fail: blocks commit" 1 "$(hook_exit)"
+expect_log_has "doc-fail: ran doc" "doc --no-deps"
+# Reset so later cases run with a passing doc again.
+CARGO_DOC_EXIT=0
 
 # 5. JS change: type check runs, cargo stays out.
 stage_case assets/app.js

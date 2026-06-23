@@ -25,6 +25,10 @@ if [ -n "$rust_changed" ]; then
     echo "pre-commit: 'cargo clippy' failed. Fix the warnings above, then re-stage and commit." >&2
     exit 1
   fi
+  if ! RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --quiet; then
+    echo "pre-commit: 'cargo doc -D warnings' failed. Fix the rustdoc warnings above, then re-stage and commit." >&2
+    exit 1
+  fi
 fi
 
 if [ -n "$js_changed" ]; then
