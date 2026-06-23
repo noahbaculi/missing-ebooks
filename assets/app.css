@@ -383,9 +383,6 @@ details[open] > summary .chev {
 .links a:hover {
   text-decoration: underline;
 }
-.links .sep {
-  color: var(--color-muted);
-}
 
 /* search-links dropdown: a magnifying-glass button opens a popover menu */
 .links-toggle .icon {
