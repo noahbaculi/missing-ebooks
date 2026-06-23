@@ -1011,7 +1011,7 @@ mod tests {
     /// Run the full walk twice against one index. The first call lists everything
     /// and fills the index; the second reuses it with no filesystem change.
     #[test]
-    fn incremental_rescan_reuses_unchanged_dirs_and_matches_the_full_walk() {
+    fn warm_scan_reuses_unchanged_dirs_and_matches_the_cold_walk() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("AuthorA/Book1/01.mp3"));
         touch(&dir.path().join("AuthorB/Covered/01.mp3"));
@@ -1022,10 +1022,7 @@ mod tests {
 
         let mut index = DirIndex::new();
         let (first, first_stats) = scan_warm(dir.path(), &settings, &mut index);
-        assert_eq!(
-            first, baseline,
-            "the first incremental walk equals the full walk"
-        );
+        assert_eq!(first, baseline, "the first warm walk equals the cold walk");
         assert_eq!(
             first_stats.dirs_reused, 0,
             "nothing to reuse on the first walk"
@@ -1045,7 +1042,7 @@ mod tests {
 
     /// A directory whose mtime moved is re-listed and its new contents take effect.
     #[test]
-    fn incremental_rescan_relists_a_changed_dir_and_flips_the_gap() {
+    fn warm_scan_relists_a_changed_dir_and_flips_the_gap() {
         use filetime::{FileTime, set_file_mtime};
         let dir = tempfile::tempdir().unwrap();
         let book = dir.path().join("Author/Book");
@@ -1083,7 +1080,7 @@ mod tests {
     /// moves: it re-lists, its cached subdirs gains the child, and the new folder is
     /// walked and flagged.
     #[test]
-    fn incremental_rescan_picks_up_a_new_subdir() {
+    fn warm_scan_picks_up_a_new_subdir() {
         use filetime::{FileTime, set_file_mtime};
         let dir = tempfile::tempdir().unwrap();
         let author = dir.path().join("Author");
@@ -1127,7 +1124,7 @@ mod tests {
     /// moves: it re-lists, its cached subdirs loses the child, and the gone folder is
     /// no longer reported even though its stale index entry lingers.
     #[test]
-    fn incremental_rescan_drops_a_removed_subdir() {
+    fn warm_scan_drops_a_removed_subdir() {
         use filetime::{FileTime, set_file_mtime};
         let dir = tempfile::tempdir().unwrap();
         let author = dir.path().join("Author");
