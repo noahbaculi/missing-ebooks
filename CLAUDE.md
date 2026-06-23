@@ -33,3 +33,7 @@ When the user explicitly asks for a fresh reset, that restraint is off: sweep ev
 Work lands on `main` by rebase and fast-forward only, so each commit sits inline on a linear history with no merge commit above it to carry context. Keep commits granular and don't squash (this is pre-release); each one has to read on its own.
 
 Commits follow Conventional Commits (`type(scope): subject`). A `feat` or `fix` carries a body explaining the why and the effect, with a scope caveat where one applies (`No behavior change.`, `Prose only: ...`). A trivial change (a one-line doc edit, an ADR record) can be subject-only.
+
+## Pre-commit hook
+
+The committed `.githooks/pre-commit` runs fmt, clippy, `cargo doc -D warnings`, and (for asset/accent-test changes) `mise run test:accent`. `mise.toml` auto-activates it via its `[hooks] enter` entry the first time you cd in, so fresh worktrees do not need a manual `mise run setup`. The activation guard is idempotent. Never bypass with `--no-verify`.

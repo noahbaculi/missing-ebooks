@@ -185,9 +185,9 @@ For a live-reload loop while iterating on the UI, run `bacon explore` instead. I
 
 ## Development
 
-After cloning, run `mise install` to provision the pinned tools, then `mise run setup` once to point git at the committed hooks in `.githooks`.
+After cloning, run `mise install` to provision the pinned tools. With mise's shell integration active, the next time you cd into the repo `core.hooksPath` is set to `.githooks` automatically, so the committed pre-commit hook runs without further setup. Contributors who do not use mise shell integration can run `mise run setup` once per clone (and once per worktree) to point git at the same hooks.
 
-With the hook installed, any commit that touches Rust or build-config files runs `cargo fmt --check` and `cargo clippy` first, the same checks CI enforces, and blocks the commit if either fails. Run them yourself any time with `mise run lint`. Commits that touch only docs skip the build.
+With the hook active, any commit that touches Rust or build-config files runs `cargo fmt`, `cargo clippy`, and `cargo doc -D warnings` first, and any commit that touches `assets/app.{css,js}` or `tests/accent/` runs `mise run test:accent`. These are the same checks CI enforces, run locally so the failures surface before push. Run them yourself any time with `mise run lint` (fmt and clippy) or by hand. Commits that touch only docs skip every check.
 
 ## Future work
 
