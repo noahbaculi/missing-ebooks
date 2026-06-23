@@ -64,7 +64,7 @@ fn per_dir_ms(median_ms: f64, dirs: usize) -> Option<f64> {
     (dirs > 0).then(|| round3(median_ms / dirs as f64))
 }
 
-/// Per-iteration walk counts for the incremental mode, one row per measured
+/// Per-iteration walk counts for the warm mode, one row per measured
 /// iteration in `iterations_ms` order. A row whose `dirs_reused` or `entries_seen`
 /// drifts mid-run flags an external write to the supposedly unchanged tree.
 #[derive(Debug, Serialize, Clone, Copy)]
@@ -83,7 +83,7 @@ struct PhaseReport {
     /// Each measured iteration's wall-clock, in milliseconds, in run order.
     iterations_ms: Vec<f64>,
     /// Per-iteration walk counts, one row per `iterations_ms` sample. Recorded
-    /// for the incremental mode. Empty for the listing walks.
+    /// for the warm mode. Empty for the listing walks.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     iteration_counts: Vec<IterCounts>,
     median_ms: f64,
@@ -94,7 +94,7 @@ struct PhaseReport {
 }
 
 /// Summarize one phase's samples. `dirs` is the directory count for the median's
-/// per-directory figure. `counts` is the per-iteration counts for the incremental
+/// per-directory figure. `counts` is the per-iteration counts for the warm
 /// mode, empty for listing walks.
 fn phase_report(samples: &[f64], dirs: usize, counts: Vec<IterCounts>) -> PhaseReport {
     let median_ms = median(samples);
@@ -109,13 +109,13 @@ fn phase_report(samples: &[f64], dirs: usize, counts: Vec<IterCounts>) -> PhaseR
 }
 
 /// Which walk to time. `Gaps` reduces the full walk to flagged folders, `Full`
-/// records every directory, and `Incremental` reuses unchanged directories via the
+/// records every directory, and `Warm` reuses unchanged directories via the
 /// mtime index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Gaps,
     Full,
-    Incremental,
+    Warm,
 }
 
 impl Mode {
@@ -124,12 +124,12 @@ impl Mode {
         match self {
             Mode::Gaps => "gaps",
             Mode::Full => "full",
-            Mode::Incremental => "incremental",
+            Mode::Warm => "warm",
         }
     }
 }
 
-/// Map `--mode`: one keyword or a comma-separated list, e.g. `full,incremental`.
+/// Map `--mode`: one keyword or a comma-separated list, e.g. `full,warm`.
 /// `every` expands to all modes, the comprehensive default. Duplicates collapse,
 /// first occurrence wins, so the listed order is the report order. `all` is not a
 /// keyword: older reports key the full walk as `all`, so it stays a report value
@@ -140,11 +140,11 @@ fn parse_modes(value: &str) -> Result<Vec<Mode>, String> {
         let expanded = match part.trim() {
             "gaps" => vec![Mode::Gaps],
             "full" => vec![Mode::Full],
-            "incremental" => vec![Mode::Incremental],
-            "every" => vec![Mode::Full, Mode::Gaps, Mode::Incremental],
+            "warm" => vec![Mode::Warm],
+            "every" => vec![Mode::Full, Mode::Gaps, Mode::Warm],
             other => {
                 return Err(format!(
-                    "--mode: {other:?} must be full, gaps, incremental, or every"
+                    "--mode: {other:?} must be full, gaps, warm, or every"
                 ));
             }
         };
@@ -221,7 +221,7 @@ fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
     let mut config = None;
     let mut roots = Vec::new();
     let mut iterations = 5usize;
-    let mut modes = vec![Mode::Full, Mode::Gaps, Mode::Incremental];
+    let mut modes = vec![Mode::Full, Mode::Gaps, Mode::Warm];
     let mut drop_caches = false;
     let mut label = None;
     let mut out = None;
@@ -310,7 +310,7 @@ fn mount_for_path(mounts: &str, path: &Path) -> Option<(String, String)> {
 /// and entry totals from the walk itself. `gaps` and `audio_files` are derived
 /// from the result after the clock stops. `tree_build_ms` is the wall time of the
 /// per-mode render (`reduce_to_flagged` then `tree::build` for gaps, direct
-/// `tree::build` for full, incremental matches its underlying mode), timed
+/// `tree::build` for full, warm matches its underlying mode), timed
 /// after the walk so it does not inflate the walk number.
 struct WalkCounts {
     stats: WalkStats,
@@ -320,10 +320,11 @@ struct WalkCounts {
 }
 
 /// The report schema version, bumped when the JSON shape changes so a directory of
-/// mixed-vintage reports stays parseable. Schema 3 adds the `incremental` mode: a
+/// mixed-vintage reports stays parseable. Schema 3 adds the `incremental` mode (renamed
+/// to `warm` in a later schema bump): a
 /// single-level entry carrying `dirs_reused`, absent on the `full` and `gaps` modes.
 /// Schema 4 adds `tree_build_ms` on every level. Schema 5 adds `iteration_counts`
-/// on the incremental phases.
+/// on the warm phases.
 const SCHEMA_VERSION: u32 = 5;
 
 /// The whole run: environment context plus one entry per root.
@@ -342,7 +343,7 @@ struct Report {
 }
 
 /// One library root: where it is, what filesystem it sits on, and its per-mode
-/// timings keyed by mode label (`full`, `gaps`, `incremental`) for a stable order.
+/// timings keyed by mode label (`full`, `gaps`, `warm`) for a stable order.
 #[derive(Debug, Serialize)]
 struct RootReport {
     path: String,
@@ -359,7 +360,7 @@ struct ModeReport {
 }
 
 /// One concurrency level's counts and timings for a mode. `cold` is `None` when
-/// `--drop-caches` was off. `dirs_reused` is `Some` only for the incremental mode,
+/// `--drop-caches` was off. `dirs_reused` is `Some` only for the warm mode,
 /// where it counts the directories served from the index without a listing. The
 /// `full` and `gaps` walks always list, so they omit it.
 #[derive(Debug, Serialize)]
@@ -458,7 +459,7 @@ flags:
   --config PATH     load the real config.toml (extensions, exclusions, roots)
   --root PATH       benchmark this exact path; repeatable; replaces config roots
   --iterations N    measured runs per phase (default 5)
-  --mode LIST       comma-separated: full, gaps, incremental, or every (default every);
+  --mode LIST       comma-separated: full, gaps, warm, or every (default every);
                     every runs all modes, so a bare run saves a comprehensive report
   --concurrency LIST   thread counts to sweep, comma-separated, e.g. 1,4,8,16 (default 16)
   --drop-caches     Linux: sudo-flush the page cache before each cold run
@@ -473,15 +474,15 @@ time only. For a syscall-level cross-check, run once under
     )
 }
 
-/// Measure incremental reuse and fold it into the JSON report as a single-level
-/// `incremental` mode. Build the index with one full listing walk (discarded), then
+/// Measure warm-scan reuse and fold it into the JSON report as a single-level
+/// `warm` mode. Build the index with one full listing walk (discarded), then
 /// time reuse walks against it. `--drop-caches` adds a cold phase that drops the
 /// client cache before each walk, so every directory stat is a real round trip, the
 /// honest figure over a network mount. The warm phase shows the cache-hot case.
 /// Concurrency is inert over SMB for the reuse walk, so this runs at one `threads`
 /// rather than sweeping it, recording that as the level's concurrency. The reused-vs-
 /// listed split and the per-phase timings also print live as the run proceeds.
-fn run_incremental(
+fn run_warm(
     root: &Path,
     settings: &ScanSettings,
     iterations: usize,
@@ -525,7 +526,7 @@ fn run_incremental(
     let warm = phase_report(&samples, last.stats.dirs_visited, iter_counts);
 
     println!(
-        "  mode=incremental  concurrency={threads}  dirs_visited={}  dirs_reused={}  \
+        "  mode=warm  concurrency={threads}  dirs_visited={}  dirs_reused={}  \
          entries_seen={}  tree_build_ms={}  (index {} dirs)",
         last.stats.dirs_visited,
         last.stats.dirs_reused,
@@ -563,21 +564,21 @@ fn iter_counts_from(c: &WalkCounts) -> IterCounts {
 }
 
 /// Format the one-line PASS/FAIL on the SMB validation gate. Returns `None` unless
-/// the run measured both `full` and `incremental`, since the speedup half needs
+/// the run measured both `full` and `warm`, since the speedup half needs
 /// both. Prefers cold medians and falls back to warm so a run without
 /// `--drop-caches` still prints a verdict.
 fn gate_verdict(modes: &BTreeMap<String, ModeReport>) -> Option<String> {
-    let incremental = modes.get("incremental")?.levels.first()?;
+    let warm_level = modes.get("warm")?.levels.first()?;
     let full = modes.get("full")?.levels.first()?;
 
     let reuse_fired =
-        incremental.dirs_reused == Some(incremental.dirs_visited) && incremental.entries_seen == 0;
+        warm_level.dirs_reused == Some(warm_level.dirs_visited) && warm_level.entries_seen == 0;
 
     // The warm reuse walk finishes inside the CIFS attribute cache window, so cold
     // is the honest figure when both are present.
-    let (phase, full_med, inc_med) = match (full.cold.as_ref(), incremental.cold.as_ref()) {
+    let (phase, full_med, inc_med) = match (full.cold.as_ref(), warm_level.cold.as_ref()) {
         (Some(f), Some(i)) => ("cold", f.median_ms, i.median_ms),
-        _ => ("warm", full.warm.median_ms, incremental.warm.median_ms),
+        _ => ("warm", full.warm.median_ms, warm_level.warm.median_ms),
     };
     let speedup_ok = inc_med > 0.0 && inc_med < full_med;
     let ratio = if inc_med > 0.0 {
@@ -593,10 +594,10 @@ fn gate_verdict(modes: &BTreeMap<String, ModeReport>) -> Option<String> {
     };
     Some(format!(
         "gate: {status}  reuse {}/{} dirs, entries_seen={}  |  \
-         {phase} median incremental {} ms vs full {} ms ({}x)",
-        incremental.dirs_reused.unwrap_or(0),
-        incremental.dirs_visited,
-        incremental.entries_seen,
+         {phase} median warm {} ms vs full {} ms ({}x)",
+        warm_level.dirs_reused.unwrap_or(0),
+        warm_level.dirs_visited,
+        warm_level.entries_seen,
         inc_med,
         full_med,
         ratio,
@@ -684,8 +685,8 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
                 },
             )
         }
-        // Incremental is routed to run_incremental before any phase calls this.
-        Mode::Incremental => unreachable!("incremental mode does not use time_walk"),
+        // Warm is routed to run_warm before any phase calls this.
+        Mode::Warm => unreachable!("warm mode does not use time_walk"),
     }
 }
 
@@ -823,9 +824,9 @@ fn main() -> ExitCode {
     if args.drop_caches {
         println!("  note: cold means client-side cold; the SMB server may still cache the tree");
     }
-    if args.modes.contains(&Mode::Incremental) {
+    if args.modes.contains(&Mode::Warm) {
         println!(
-            "  note: incremental mode assumes nothing else writes to the tree between walks; \
+            "  note: warm mode assumes nothing else writes to the tree between walks; \
              pause backups, indexers, and beets"
         );
     }
@@ -859,12 +860,12 @@ fn main() -> ExitCode {
 
         let mut modes = BTreeMap::new();
         for &mode in &args.modes {
-            // Incremental is a focused reuse measurement, outside the concurrency
+            // Warm is a focused reuse measurement, outside the concurrency
             // sweep: it runs once at the top swept thread count (16 by default),
             // since concurrency is inert over SMB for the reuse walk.
-            if mode == Mode::Incremental {
+            if mode == Mode::Warm {
                 let threads = args.concurrency.iter().copied().max().unwrap_or(16);
-                match run_incremental(
+                match run_warm(
                     &canonical,
                     &settings,
                     args.iterations,
@@ -875,7 +876,7 @@ fn main() -> ExitCode {
                         modes.insert(mode.label().to_string(), report);
                     }
                     Err(message) => {
-                        eprintln!("error during incremental run: {message}");
+                        eprintln!("error during warm run: {message}");
                         return ExitCode::FAILURE;
                     }
                 }
@@ -1088,11 +1089,11 @@ mod tests {
     fn parse_modes_maps_each_keyword() {
         assert_eq!(parse_modes("gaps"), Ok(vec![Mode::Gaps]));
         assert_eq!(parse_modes("full"), Ok(vec![Mode::Full]));
-        assert_eq!(parse_modes("incremental"), Ok(vec![Mode::Incremental]));
+        assert_eq!(parse_modes("warm"), Ok(vec![Mode::Warm]));
         // `every` expands to all modes, in report order.
         assert_eq!(
             parse_modes("every"),
-            Ok(vec![Mode::Full, Mode::Gaps, Mode::Incremental])
+            Ok(vec![Mode::Full, Mode::Gaps, Mode::Warm])
         );
         assert!(parse_modes("nope").is_err());
         // `both` was dropped when a third mode arrived; the comma list replaces it.
@@ -1103,14 +1104,11 @@ mod tests {
 
     #[test]
     fn parse_modes_reads_a_comma_list_in_order_without_duplicates() {
-        assert_eq!(
-            parse_modes("full,incremental"),
-            Ok(vec![Mode::Full, Mode::Incremental])
-        );
+        assert_eq!(parse_modes("full,warm"), Ok(vec![Mode::Full, Mode::Warm]));
         // Whitespace is trimmed, and `full` overlapping `every`'s expansion collapses.
         assert_eq!(
             parse_modes("full, every "),
-            Ok(vec![Mode::Full, Mode::Gaps, Mode::Incremental])
+            Ok(vec![Mode::Full, Mode::Gaps, Mode::Warm])
         );
         // One bad token in the list fails the whole parse.
         assert!(parse_modes("full,nope").is_err());
@@ -1143,7 +1141,7 @@ mod tests {
                 config: None,
                 roots: vec![],
                 iterations: 5,
-                modes: vec![Mode::Full, Mode::Gaps, Mode::Incremental],
+                modes: vec![Mode::Full, Mode::Gaps, Mode::Warm],
                 drop_caches: false,
                 label: None,
                 out: None,
@@ -1353,7 +1351,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             cold: None,
             warm: phase_report(&[10.0, 20.0], 3, Vec::new()),
         }];
-        let incremental_levels = vec![LevelReport {
+        let warm_levels = vec![LevelReport {
             concurrency: 16,
             dirs_visited: 3,
             entries_seen: 0,
@@ -1387,9 +1385,9 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             },
         );
         modes.insert(
-            "incremental".to_string(),
+            "warm".to_string(),
             ModeReport {
-                levels: incremental_levels,
+                levels: warm_levels,
             },
         );
         let report = Report {
@@ -1417,13 +1415,15 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         assert!(json.contains("\"dirs_visited\":3"));
         assert!(json.contains("\"ms_per_dir\":5.0"));
         assert!(json.contains("\"cold\":null"));
-        // The incremental level carries dirs_reused. The full and gaps modes omit it.
+        // The warm level carries dirs_reused. The full and gaps modes omit it.
         assert!(json.contains("\"dirs_reused\":3"));
-        let full_block = json.split("\"incremental\"").next().unwrap();
+        // Anchor on the mode-map key (`"warm":{"levels"`) rather than the bare
+        // string, since `warm` is also a per-level phase name in PhaseReport.
+        let full_block = json.split("\"warm\":{\"levels\"").next().unwrap();
         assert!(!full_block.contains("dirs_reused"));
-        // iteration_counts is present on the incremental phase only.
-        let incremental_block = json.split("\"incremental\"").nth(1).unwrap();
-        assert!(incremental_block.contains("\"iteration_counts\""));
+        // iteration_counts is present on the warm phase only.
+        let warm_block = json.split("\"warm\":{\"levels\"").nth(1).unwrap();
+        assert!(warm_block.contains("\"iteration_counts\""));
         assert!(!full_block.contains("iteration_counts"));
     }
 
@@ -1484,7 +1484,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             mode_level(901, None, 8802, 1800.0, Some(1800.0)),
         );
         modes.insert(
-            "incremental".to_string(),
+            "warm".to_string(),
             mode_level(901, Some(901), 0, 100.0, Some(420.0)),
         );
         let line = gate_verdict(&modes).unwrap();
@@ -1506,7 +1506,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         );
         // One dir was listed (entries_seen > 0), so the reuse half of the gate fails.
         modes.insert(
-            "incremental".to_string(),
+            "warm".to_string(),
             mode_level(901, Some(900), 12, 110.0, Some(430.0)),
         );
         let line = gate_verdict(&modes).unwrap();
@@ -1515,7 +1515,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
     }
 
     #[test]
-    fn gate_verdict_fails_when_incremental_is_not_faster() {
+    fn gate_verdict_fails_when_warm_is_not_faster() {
         let mut modes = BTreeMap::new();
         modes.insert(
             "full".to_string(),
@@ -1523,7 +1523,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         );
         // Reuse fires, but the cold reuse median did not beat the cold full median.
         modes.insert(
-            "incremental".to_string(),
+            "warm".to_string(),
             mode_level(901, Some(901), 0, 100.0, Some(1900.0)),
         );
         let line = gate_verdict(&modes).unwrap();
@@ -1540,7 +1540,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
             mode_level(901, None, 8802, 1700.0, None),
         );
         modes.insert(
-            "incremental".to_string(),
+            "warm".to_string(),
             mode_level(901, Some(901), 0, 100.0, None),
         );
         let line = gate_verdict(&modes).unwrap();
@@ -1553,7 +1553,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
     fn gate_verdict_returns_none_without_both_modes() {
         let mut modes = BTreeMap::new();
         modes.insert(
-            "incremental".to_string(),
+            "warm".to_string(),
             mode_level(901, Some(901), 0, 100.0, Some(420.0)),
         );
         assert!(gate_verdict(&modes).is_none());
