@@ -36,3 +36,11 @@ run = "sh tests/docker/entrypoint.sh"
 [tasks."test:accent"]
 description = "Check the accent ink derivation clears AA and its two copies agree"
 run = "node tests/accent/derive.test.mjs"
+
+[hooks]
+# Point this clone's git at .githooks the first time mise's shell integration
+# fires the enter hook here, so the committed pre-commit script runs without
+# anyone remembering `mise run setup`. The guard short-circuits when the value
+# is already correct, so re-entering the directory does not churn .git/config.
+# Each worktree has its own .git/config, so this fires per worktree.
+enter = "[ \"$(git config core.hooksPath)\" = .githooks ] || git config core.hooksPath .githooks"
