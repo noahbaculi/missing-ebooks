@@ -29,7 +29,6 @@ test = true
 anyhow = "1.0.102"
 axum = "0.8.9"
 enum-map = "2.7"
-futures-util = { version = "0.3", default-features = false }
 getrandom = "0.2"
 globset = "0.4.18"
 lexical-sort = "0.3.1"
@@ -47,10 +46,10 @@ urlencoding = "2.1.3"
 
 [dev-dependencies]
 filetime = "0.2"
+futures-util = { version = "0.3", default-features = false }
 http-body-util = "0.1.3"
 proptest = "1.11.0"
 tempfile = "3.27.0"
-tokio = { version = "1.52.3", features = ["signal"] }
 tower = { version = "0.5.3", features = ["util"] }
 
 [lints.clippy]
