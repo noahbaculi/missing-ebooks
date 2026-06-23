@@ -8,6 +8,10 @@ tests
 .playwright-mcp
 .superpowers
 .githooks
+.serena
+.claude
+.scratch
+.worktrees
 *.md
 bacon.toml
 deny.toml
