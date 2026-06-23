@@ -11,8 +11,7 @@ use thiserror::Error;
 use crate::scanner::ScanInputs;
 
 /// A search-link template. `{query}` is replaced with the cleaned, encoded
-/// folder name when a row renders. v1 builds the query from the folder name
-/// only; a tag-based query is deferred (see ADR 0010).
+/// folder name when a row renders (see ADR 0010).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SearchLink {
     /// Text shown on the link button.

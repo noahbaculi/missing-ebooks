@@ -415,7 +415,7 @@ pub(crate) fn render_section_from_raw(
 
 /// Render one section per mode. The root name for `tree::build`'s `.` node
 /// comes from the section's canonical path (last component, or "." when absent),
-/// the same rule `scan_root` used to derive it before the rework.
+/// matching how `scan_root` derives it.
 pub(crate) fn render_root_state(
     path: &str,
     state: &state::RawRootState,

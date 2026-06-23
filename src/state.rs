@@ -222,8 +222,8 @@ impl AppState {
     /// Drop every cached directory entry so the next scan walks every
     /// directory from scratch. Reuses `service::lock_index`'s poisoned-lock
     /// recovery: a stale entry is re-listed on its next mtime check, so
-    /// wedging future scans is worse than recovering a poisoned lock (commit
-    /// `bdcb027`, per ADR-0020).
+    /// wedging future scans is worse than recovering a poisoned lock
+    /// (per ADR-0020).
     pub fn clear_dir_index(&self) {
         let mut guard = crate::service::lock_index(&self.dir_index);
         guard.clear();
