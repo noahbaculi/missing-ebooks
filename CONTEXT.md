@@ -61,7 +61,7 @@ A scan that reuses entries from a populated dir index, checking each directory's
 _Avoid_: incremental scan (the implementation detail), cached scan.
 
 **Cold scan**:
-A scan that does not reuse any dir index entries, either because the index is empty (process just started) or because the path explicitly clears it (`/rescan` click). Walks every directory.
+A scan that does not reuse any dir index entries, either because the index is empty (process just started) or because the path explicitly clears it (`/rescan` click). Walks every directory. A cold scan is a `scan_warm` call against a fresh `DirIndex`; there is no separate `scan_cold` function.
 _Avoid_: full scan, rescan (the verb for the user action, not the scan type).
 
 **Library coverage**:

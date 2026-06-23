@@ -480,13 +480,13 @@ mod tests {
     use std::collections::BTreeSet;
 
     use crate::config::Config;
-    use crate::scanner::{self, ScanSettings};
+    use crate::scanner::{self, DirIndex, ScanSettings};
 
     /// The set of flagged folders the production scanner reports for a seeded
     /// root, as `/`-joined relative paths.
     fn flagged(root: &Path) -> BTreeSet<String> {
         let settings = ScanSettings::compile(Config::default().scan_inputs()).unwrap();
-        scanner::scan_cold(root, &settings)
+        scanner::scan_warm(root, &settings, &mut DirIndex::new())
             .0
             .iter()
             .filter(|f| f.directly_holds_audio && f.missing_ebook)
