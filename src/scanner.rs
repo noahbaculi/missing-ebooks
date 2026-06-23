@@ -206,14 +206,9 @@ impl DirIndex {
 
     /// Number of cached directories.
     #[must_use]
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.entries.len()
-    }
-
-    /// Whether the index is empty.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
     }
 }
 
