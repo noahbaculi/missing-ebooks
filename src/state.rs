@@ -2,7 +2,7 @@
 //! plus a TTL-memoized scan cache behind one mutex. The cache stores the raw
 //! per-root walk output and the response renders per `ViewMode` on each read
 //! (see ADR-0022); a marker write updates the stored raw view in place rather
-//! than rewalking (see docs/adr/0002-v1-runtime-write-model.md).
+//! than rewalking (see docs/adr/0002-marker-writes-edit-cache-in-place.md).
 
 use std::future::Future;
 use std::sync::{Arc, Mutex as StdMutex};

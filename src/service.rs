@@ -144,7 +144,7 @@ pub struct MarkOutcome {
 }
 
 /// Write a marker into a folder and update the cached view in place, without a
-/// rescan (see docs/adr/0002-v1-runtime-write-model.md). The guard and write run
+/// rescan (see docs/adr/0002-marker-writes-edit-cache-in-place.md). The guard and write run
 /// off the cache lock, which is held only for the in-memory mutation.
 pub async fn mark(
     state: &AppState,
@@ -193,7 +193,7 @@ pub async fn mark(
 }
 
 /// Delete a marker file and refresh the cached view by rescanning the one
-/// affected root (see docs/adr/0002-v1-runtime-write-model.md). The guard and
+/// affected root (see docs/adr/0002-marker-writes-edit-cache-in-place.md). The guard and
 /// delete run off the cache lock, which is held only for the per-root rebuild.
 pub async fn unmark(
     state: &AppState,
