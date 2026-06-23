@@ -6,7 +6,7 @@
 
 mod common;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,7 +21,7 @@ use missing_ebooks::state::AppState;
 use missing_ebooks::web::router;
 use tower::ServiceExt;
 
-use common::{body_to_string, next_event};
+use common::{body_to_string, next_event, touch};
 
 /// Build the production router over the given roots and autosync interval.
 /// `ttl_seconds` is fixed at 600 because every pre-merge binary used 600;
@@ -37,13 +37,6 @@ fn setup(library_roots: Vec<PathBuf>, autosync_interval_seconds: u64) -> (Router
     let state = Arc::new(AppState::new(config, settings));
     let app = router(Arc::clone(&state));
     (app, state)
-}
-
-fn touch(path: &Path) {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).unwrap();
-    }
-    std::fs::write(path, b"").unwrap();
 }
 
 #[tokio::test]

@@ -315,13 +315,7 @@ mod tests {
     use crate::demo::state::build_state;
     use crate::marker::Marker;
     use crate::scanner::ScanSettings;
-
-    fn touch(path: &Path) {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
-        std::fs::write(path, b"").unwrap();
-    }
+    use crate::scenarios::touch;
 
     /// Build demo state over a single seeded root with the given cap and idle.
     async fn build(root: &Path, max_sessions: usize, idle: Duration) -> Arc<DemoState> {

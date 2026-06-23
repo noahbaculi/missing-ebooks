@@ -6,7 +6,6 @@
 
 mod common;
 
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,14 +18,7 @@ use missing_ebooks::demo::state::{DemoConfig, build_state};
 use missing_ebooks::scanner::ScanSettings;
 use tower::ServiceExt;
 
-use common::next_event;
-
-fn touch(path: &Path) {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).unwrap();
-    }
-    std::fs::write(path, b"").unwrap();
-}
+use common::{next_event, touch};
 
 #[tokio::test]
 async fn demo_events_emits_one_snapshot_then_stays_silent() {

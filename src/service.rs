@@ -581,12 +581,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    fn touch(path: &Path) {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(path, b"").unwrap();
-    }
+    use crate::scenarios::touch;
 
     fn test_config(roots: Vec<PathBuf>, ttl_seconds: u64) -> Config {
         Config {

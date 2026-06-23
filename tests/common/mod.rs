@@ -9,11 +9,22 @@
 
 #![allow(dead_code)]
 
+use std::path::Path;
 use std::time::Duration;
 
 use axum::body::Body;
 use futures_util::StreamExt;
 use http_body_util::{BodyExt, BodyStream};
+
+/// Create an empty file at `path`, creating its parents first. Mirror of
+/// `crate::scenarios::touch` for integration tests that can't reach the
+/// in-crate helper.
+pub fn touch(path: &Path) {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    std::fs::write(path, b"").unwrap();
+}
 
 /// Drain a body into a single String for substring assertions.
 pub async fn body_to_string(body: Body) -> String {

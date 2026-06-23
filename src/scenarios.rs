@@ -66,7 +66,7 @@ fn mkdirs(dir: &Path) {
 }
 
 /// Create an empty file at `path`, creating its parents first.
-fn touch(path: &Path) {
+pub(crate) fn touch(path: &Path) {
     if let Some(parent) = path.parent() {
         mkdirs(parent);
     }

@@ -525,6 +525,8 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
+    use crate::scenarios::touch;
+
     // The defaults the scanner is normally run with.
     fn default_settings(exclude_globs: &[&str]) -> ScanSettings {
         let audio: Vec<String> = [".mp3", ".m4a", ".m4b", ".flac"]
@@ -543,13 +545,6 @@ mod tests {
             exclude_globs: &globs,
         })
         .unwrap()
-    }
-
-    fn touch(path: &Path) {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(path, b"").unwrap();
     }
 
     fn flagged_set(root: &Path, settings: &ScanSettings) -> BTreeSet<String> {

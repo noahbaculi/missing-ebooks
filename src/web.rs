@@ -315,7 +315,6 @@ fn marked_trigger(req: &MarkRequest, name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use std::path::Path;
 
     use axum::body::Body;
@@ -325,13 +324,7 @@ mod tests {
 
     use crate::config::{Config, SearchLink};
     use crate::scanner::ScanSettings;
-
-    fn touch(path: &Path) {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(path, b"").unwrap();
-    }
+    use crate::scenarios::touch;
 
     fn app_for(root: &Path) -> Router {
         app_for_with_links(root, Config::default().search_links)
