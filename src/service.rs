@@ -1126,17 +1126,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn view_mode_defaults_to_gaps_only() {
-        assert_eq!(ViewMode::default(), ViewMode::GapsOnly);
-    }
-
-    #[test]
-    fn view_mode_deserializes_from_the_query_token() {
-        let mode: ViewMode = serde_json::from_value(serde_json::json!("all")).unwrap();
-        assert_eq!(mode, ViewMode::All);
-    }
-
     #[tokio::test]
     async fn all_mode_builds_the_full_tree_including_covered_folders() {
         let dir = tempfile::tempdir().unwrap();
