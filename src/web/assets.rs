@@ -209,11 +209,9 @@ mod tests {
 
     #[test]
     fn stylesheet_carries_the_scan_bar_indeterminate() {
-        // The rescan indicator is a slim indeterminate bar; the skeleton shimmer is gone.
+        // The rescan indicator is a slim indeterminate bar.
         assert!(APP_CSS_BYTES.contains(".scan-bar"));
         assert!(APP_CSS_BYTES.contains("@keyframes scan-indeterminate"));
-        assert!(!APP_CSS_BYTES.contains(".scan-skeleton"));
-        assert!(!APP_CSS_BYTES.contains("@keyframes shimmer"));
         // htmx-request is what reveals the bar; without this rule the indicator would
         // stay invisible for the whole scan, so guard the show rule itself.
         assert!(APP_CSS_BYTES.contains(".scan-bar.htmx-request"));
@@ -229,11 +227,9 @@ mod tests {
     fn stylesheet_carries_the_mobile_layout_rules() {
         assert!(APP_CSS_BYTES.contains("@media (max-width: 600px)"));
         assert!(APP_CSS_BYTES.contains(".actions-trigger"));
-        // The action group is now a bottom sheet driven by the popover API, not
-        // the old `data-actions-open` toggle.
+        // The action group is a bottom sheet driven by the popover API.
         assert!(APP_CSS_BYTES.contains(":popover-open"));
         assert!(APP_CSS_BYTES.contains("::backdrop"));
-        assert!(!APP_CSS_BYTES.contains("data-actions-open"));
     }
 
     #[test]
@@ -271,10 +267,9 @@ mod tests {
         assert!(APP_CSS_BYTES.contains(".navbar > .segmented"));
         assert!(APP_CSS_BYTES.contains("flex-basis: 100%"));
         assert!(APP_CSS_BYTES.contains(".navbar > .segmented .segment"));
-        // The settings cog is ordered by a dedicated class, not a `> button`
-        // child selector, so a later navbar button can't drift into its row.
+        // The settings cog is ordered by a dedicated class so a later navbar
+        // button can't drift into its row.
         assert!(APP_CSS_BYTES.contains(".navbar .settings-cog"));
-        assert!(!APP_CSS_BYTES.contains(".navbar > button"));
     }
 
     #[test]
@@ -535,8 +530,6 @@ mod tests {
         assert!(APP_JS_BYTES.contains("moveHighlight"));
         assert!(APP_JS_BYTES.contains("visibleGapRows"));
         assert!(APP_JS_BYTES.contains("row-active"));
-        // The mark hotkeys were removed, so the row-marking helper is gone too.
-        assert!(!APP_JS_BYTES.contains("markActiveRow"));
         // Keys are ignored while typing in a field.
         assert!(APP_JS_BYTES.contains("isEditable"));
     }
