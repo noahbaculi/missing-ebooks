@@ -144,8 +144,8 @@ pub struct WalkStats {
     /// Directory entries iterated across every visited directory, i.e. the number of
     /// `file_type()` calls. Includes files that are neither audio nor ebook.
     pub entries_seen: usize,
-    /// Directories served from the index without a listing (incremental rescans).
-    /// Zero for a non-incremental walk. `dirs_visited - dirs_reused` is the number
+    /// Directories served from the index without a listing (warm rescans).
+    /// Zero for a cold walk. `dirs_visited - dirs_reused` is the number
     /// of directories actually read.
     pub dirs_reused: usize,
 }
@@ -272,10 +272,10 @@ pub fn scan_warm(
     walk_all(root, settings, Some(index))
 }
 
-/// The level-synchronous breadth-first walk shared by the incremental and
-/// non-incremental full scans. Each level is read in parallel with the index
-/// borrowed shared; the index is then updated sequentially before descending, so
-/// no concurrent mutation is needed (see ADR-0019 for the walk shape).
+/// The level-synchronous breadth-first walk shared by warm and cold scans.
+/// Each level is read in parallel with the index borrowed shared; the index is
+/// then updated sequentially before descending, so no concurrent mutation is
+/// needed (see ADR-0019 for the walk shape).
 fn walk_all(
     root: &Path,
     settings: &ScanSettings,
