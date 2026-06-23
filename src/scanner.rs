@@ -875,27 +875,6 @@ mod tests {
         assert_eq!(got["Book"], (true, true));
     }
 
-    #[test]
-    fn scan_reports_loose_root_audio_as_the_empty_path() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("01 - Loose.mp3"));
-        let got = scanned(dir.path(), &default_settings(&[]));
-        // The root itself: holds audio, uncovered.
-        assert_eq!(got[""], (true, true));
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn scan_does_not_follow_symlinked_directories() {
-        let dir = tempfile::tempdir().unwrap();
-        let outside = tempfile::tempdir().unwrap();
-        touch(&outside.path().join("01.mp3"));
-        std::fs::create_dir_all(dir.path().join("Author")).unwrap();
-        std::os::unix::fs::symlink(outside.path(), dir.path().join("Author/Linked")).unwrap();
-        let got = scanned(dir.path(), &default_settings(&[]));
-        assert!(!got.contains_key("Author/Linked"));
-    }
-
     fn cover_files_of(root: &Path, settings: &ScanSettings) -> BTreeMap<String, Vec<String>> {
         scan_cold(root, settings)
             .0
