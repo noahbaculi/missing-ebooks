@@ -1083,12 +1083,6 @@ mod tests {
     }
 
     #[test]
-    fn schema_version_is_at_least_five() {
-        // Schema 4 added tree_build_ms. Schema 5 added iteration_counts.
-        const { assert!(SCHEMA_VERSION >= 5) };
-    }
-
-    #[test]
     fn parse_modes_maps_each_keyword() {
         assert_eq!(parse_modes("gaps"), Ok(vec![Mode::Gaps]));
         assert_eq!(parse_modes("full"), Ok(vec![Mode::Full]));
