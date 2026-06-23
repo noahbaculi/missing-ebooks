@@ -79,7 +79,7 @@ pub struct RootSection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RootState {
-    /// Flagged gaps were found; the forest is non-empty.
+    /// Flagged gaps were found. The forest is non-empty.
     Forest(Vec<Node>),
     /// The root resolved and scanned with no gaps.
     Clean,
@@ -259,7 +259,7 @@ pub async fn unmark(
 }
 
 /// Guard the target and create the marker file, on a blocking task. The root base
-/// comes from config, so only `rel` is request-controlled; it is re-validated by
+/// comes from config, so only `rel` is request-controlled. It is re-validated by
 /// canonicalizing the join and confirming it stays inside the root. The open is
 /// create-only: `Ok(true)` when this call made the file, `Ok(false)` when it was
 /// already there, which keeps a re-mark a no-op and lets undo delete only files it
@@ -396,9 +396,9 @@ pub(crate) fn count_audiobooks(state: &state::RawRootState) -> usize {
 }
 
 /// Render the cached raw view into the requested `ViewMode`'s `FlaggedView`. The
-/// gaps path filters with `reduce_to_flagged` and builds the forest; show-all
+/// gaps path filters with `reduce_to_flagged` and builds the forest. Show-all
 /// builds directly from the raw folders. Both run on the request thread (the
-/// per-folder cost is bounded; see ADR-0022). The render allocates a fresh
+/// per-folder cost is bounded, see ADR-0022). The render allocates a fresh
 /// `FlaggedView` per response and drops it after the response writes.
 pub(crate) fn render_view(raw: &state::RawView, mode: ViewMode) -> FlaggedView {
     raw.iter()
@@ -558,7 +558,7 @@ fn scan_root(
     }
 
     // Always reuse the dir index. The /rescan handler clears it for an explicit
-    // cold scan; otherwise the index persists across page loads and autosync
+    // cold scan. Otherwise the index persists across page loads and autosync
     // ticks (see ADR-0023).
     let (folders, stats) = {
         let mut guard = lock_index(index);

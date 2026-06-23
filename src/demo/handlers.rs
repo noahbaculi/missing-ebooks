@@ -128,8 +128,8 @@ fn resolve_in_store(
 /// Derive one session's rendered view for a mode: clone the shared raw view,
 /// replay every session mark via `apply_mark_raw`, then render. With no marks
 /// the clone-and-render still runs because per-request rendering is the new
-/// baseline; the per-request cost is bounded (see ADR-0022). A mark naming an
-/// out-of-range root is skipped defensively; an unmatched `rel` is a no-op
+/// baseline. The per-request cost is bounded (see ADR-0022). A mark naming an
+/// out-of-range root is skipped defensively. An unmatched `rel` is a no-op
 /// inside `apply_mark_raw`.
 fn derive_view(base: &RawView, marks: &[Mark], mode: ViewMode) -> FlaggedView {
     if marks.is_empty() {
@@ -274,7 +274,7 @@ async fn events(
     let existing = read_cookie(&headers, &state.config.cookie_name);
     let marks = {
         let mut store = state.sessions.lock().expect("session lock");
-        // resolve_in_store may fail under capacity; the SSE channel just sends
+        // resolve_in_store may fail under capacity. The SSE channel just sends
         // an empty snapshot in that case, since the page's other GET would
         // already have shown the capacity response.
         resolve_in_store(&mut store, &state.config, existing, now)

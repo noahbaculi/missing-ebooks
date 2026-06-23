@@ -15,9 +15,9 @@ use crate::service::ViewMode;
 /// indigo `%23605dff` on light tab strips and a lighter `%23c7c5ff` on dark ones
 /// via `prefers-color-scheme`. WARN: Chrome, Firefox, and Edge honor the media
 /// query inside a favicon, Safari ignores it and shows the light-mode indigo
-/// throughout. Source art lives at `assets/brand/favicon.svg`; this constant is
+/// throughout. Source art lives at `assets/brand/favicon.svg`. This constant is
 /// the percent-encoded data-URI form that goes into `<link rel="icon">`. Keep
-/// the two in sync if the mark changes; the navbar's inline copy reads
+/// the two in sync if the mark changes. The navbar's inline copy reads
 /// `assets/svg/brand.svg`, which itself derives from `assets/brand/favicon.svg`.
 /// Spec B chose to keep the data URI hand-written rather than reconstruct it
 /// with `const_format::concatcp!`: the `%`-escapes are not byte-identical to a
@@ -47,7 +47,7 @@ pub(super) fn view_toggle(mode: ViewMode) -> Markup {
 
 /// The navbar settings control: a cog opening a popover with the theme choice, the
 /// confirm-before-marking toggle, the folder-depth switches, and a read-only
-/// keyboard shortcuts reference. The native popover API drives open/close; behavior
+/// keyboard shortcuts reference. The native popover API drives open/close. Behavior
 /// lives in `app.js`, which also opens the panel on `?`. Segments and switches
 /// render in their default state (System, all on), reconciled against localStorage
 /// once `app.js` runs. The shortcuts section hides on mobile, where there is no
@@ -129,7 +129,7 @@ pub(super) fn settings_menu() -> Markup {
 }
 
 /// The navbar filter input. The box renders visible from first paint so it holds
-/// its navbar slot and never reflows in. The input renders `disabled`; `app.js`
+/// its navbar slot and never reflows in. The input renders `disabled`. `app.js`
 /// clears that on `DOMContentLoaded` once the tree and handler are wired, so during
 /// load the box reads greyed-but-present, not a dead box accepting input before the
 /// filter works. The `/` key focuses it and Escape clears it, both in `app.js`. A
@@ -162,7 +162,7 @@ pub(super) fn search_empty() -> Markup {
 
 /// The marker-write confirmation, rendered once at the page level so it survives
 /// the htmx section swaps. `app.js` fills the title, folder, file chip, confirm
-/// label, and matching glyph from the firing button, then opens it; a marker write
+/// label, and matching glyph from the firing button, then opens it. A marker write
 /// fires only through it.
 pub(super) fn confirm_dialog() -> Markup {
     html! {
@@ -204,7 +204,7 @@ pub(super) fn scan_bar() -> Markup {
 
 /// The connection-status banner: a polite live region pinned to the top of the
 /// page, hidden until `app.js` reveals it and sets a state class. State copy lives
-/// in data attributes so it is defined and tested here in one place; the client
+/// in data attributes so it is defined and tested here in one place. The client
 /// only chooses which message to show.
 pub(super) fn conn_banner() -> Markup {
     html! {

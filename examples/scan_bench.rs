@@ -130,7 +130,7 @@ impl Mode {
 }
 
 /// Map `--mode`: one keyword or a comma-separated list, e.g. `full,warm`.
-/// `every` expands to all modes, the comprehensive default. Duplicates collapse,
+/// `every` expands to all modes, the default. Duplicates collapse,
 /// first occurrence wins, so the listed order is the report order. `all` is not a
 /// keyword: older reports key the full walk as `all`, so it stays a report value
 /// only, never a live selector.
@@ -284,7 +284,7 @@ fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
 
 /// Return the `(fstype, options)` of the mount whose mount point is the longest
 /// prefix of `path`, given the text of `/proc/self/mounts`. Columns are device,
-/// mount point, fstype, options; a shorter line is skipped. Names the filesystem
+/// mount point, fstype, options. A shorter line is skipped. Names the filesystem
 /// under a root well enough, but does not decode the octal escapes `/proc` uses for
 /// spaces in mount points.
 fn mount_for_path(mounts: &str, path: &Path) -> Option<(String, String)> {
@@ -635,7 +635,7 @@ fn time_reuse_walk(
 }
 
 /// Time one read-only walk and the per-mode render that follows it. Only the walk
-/// sits inside the first `Instant`; the render is timed separately, so the walk
+/// sits inside the first `Instant`. The render is timed separately, so the walk
 /// number stays comparable across schema versions. The `gaps` and `audio_files`
 /// tallies are derived after both clocks stop.
 fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCounts) {

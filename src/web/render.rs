@@ -113,7 +113,7 @@ fn gap_word(n: usize) -> &'static str {
 /// total on the left, a library coverage readout with its bar on the right,
 /// and optional per-root chips for a multi-root setup. `app.js` keeps every
 /// number current as marks land, rescans complete, and autosync section pushes
-/// arrive; this render is the first paint.
+/// arrive. This render is the first paint.
 fn gap_summary(view: &FlaggedView) -> Markup {
     let total_gaps = total_gaps(view);
     let total_audiobooks: usize = view.iter().map(|s| s.total_audiobooks).sum();

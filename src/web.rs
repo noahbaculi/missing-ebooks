@@ -151,7 +151,7 @@ async fn unmark(
 
 /// Re-render the affected root's section with an inline alert naming the folder,
 /// so a failed write stays by the row rather than in a toast. The view is
-/// re-fetched (a cache hit) since the failed call returned no view; an out-of-range
+/// re-fetched (a cache hit) since the failed call returned no view. An out-of-range
 /// root falls back to a standalone error card.
 async fn failed_write_response(
     state: &AppState,
@@ -543,7 +543,7 @@ mod tests {
         )
         .await;
         assert!(gaps.contains(r#"hx-swap="outerHTML swap:250ms""#));
-        // Show-all: the row flips to covered in place, so the swap is immediate; the
+        // Show-all: the row flips to covered in place, so the swap is immediate. The
         // reserved row height keeps the flip from shifting the rows below.
         let all = body_string(
             app.oneshot(
@@ -721,7 +721,7 @@ mod tests {
             .unwrap();
         let body = body_string(response).await;
         // No links means no `span.links` is emitted, and no search popover menu.
-        // The kebab still carries `popovertarget`; it is the sheet trigger now.
+        // The kebab still carries `popovertarget` and is the sheet trigger now.
         assert!(!body.contains(r#"class="links""#));
         assert!(!body.contains(r#"class="links-menu""#));
         assert!(!body.contains(r#"title="Search links""#));
@@ -946,7 +946,7 @@ mod tests {
         assert!(body.contains(r#"type="color""#));
         assert!(body.contains(r##"value="#f5a524""##));
         // The three preset quick-pick dots. Amber is the default, so it is not a
-        // preset; the dots offer the alternatives.
+        // preset, so the dots offer the alternatives.
         assert!(body.contains(r##"data-accent="#06b6d4""##));
         assert!(body.contains(r##"data-accent="#c2410c""##));
         assert!(body.contains(r##"data-accent="#a21caf""##));

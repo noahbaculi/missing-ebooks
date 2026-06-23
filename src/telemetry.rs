@@ -5,7 +5,7 @@
 //! be logged). `RUST_LOG` wins outright for developers who want full filter
 //! syntax. Otherwise `MISSING_EBOOKS_LOG=<level>` sets verbosity: `debug` and
 //! `trace` raise only this crate over an `info` baseline, so dependency internals
-//! stay quiet; `warn` and `error` apply everywhere, so dependencies are never
+//! stay quiet. `warn` and `error` apply everywhere, so dependencies are never
 //! louder than the app. An unknown level falls back to `info`, the default.
 
 use tracing_subscriber::EnvFilter;

@@ -2,7 +2,7 @@
 //!
 //! Seeds a synthetic library into a temp directory, scans it into shared base
 //! views, and serves the production UI with a demo banner. Each visitor is pinned
-//! to an in-memory session by a cookie; their marks are replayed on top of the
+//! to an in-memory session by a cookie. Their marks are replayed on top of the
 //! base view per request and never touch disk.
 
 use std::sync::Arc;
@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Seed the scenario into a stable directory under /tmp. The data is synthetic
     // and the container is ephemeral, so it is never cleaned up explicitly. /tmp
-    // matches the explore harness and keeps the root path short; it is a no-op in
+    // matches the explore harness and keeps the root path short. It is a no-op in
     // the Linux container, where the platform temp dir is already /tmp.
     let seed_dir = std::path::Path::new("/tmp").join("missing-ebooks-demo");
     std::fs::create_dir_all(&seed_dir)?;

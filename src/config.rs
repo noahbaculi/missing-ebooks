@@ -34,7 +34,7 @@ pub struct Config {
     pub ttl_seconds: u64,
     /// Directories read at once during a scan. Sizes the scan thread pool. On a
     /// network mount each directory is a round trip, so reading several at once
-    /// overlaps the waits; size it by the mount speed, not the CPU count. One
+    /// overlaps the waits. Size it by the mount speed, not the CPU count. One
     /// pool serves the whole process, so concurrent scans share it rather than
     /// each getting this many readers.
     pub scan_concurrency: usize,

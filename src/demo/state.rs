@@ -1,6 +1,6 @@
 //! The shared state behind the demo handlers: the shared raw walked view
 //! built once at startup, the in-memory session table, the demo config, and
-//! the render search links. The raw view is scanned once at startup; each
+//! the render search links. The raw view is scanned once at startup. Each
 //! request clones it before replaying the session's marks and renders per
 //! mode (see ADR-0022).
 

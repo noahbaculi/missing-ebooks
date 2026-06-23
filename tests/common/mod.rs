@@ -34,7 +34,7 @@ pub async fn body_to_string(body: Body) -> String {
 
 /// Parse one complete SSE event from a buffer. Returns `(event_name, data,
 /// rest)` or `None` when the buffer does not hold a complete event yet (events
-/// are separated by a blank line; each event has one or more `event:` /
+/// are separated by a blank line. Each event has one or more `event:` /
 /// `data:` lines). Multiple `data:` lines join with `\n` per the SSE spec.
 pub fn parse_event(buf: &str) -> Option<((String, String), &str)> {
     let end = buf.find("\n\n")?;

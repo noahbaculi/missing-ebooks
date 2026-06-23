@@ -35,7 +35,7 @@ struct Session {
 pub struct AtCapacity;
 
 /// The session table and its global ceiling. One process holds one of these
-/// behind a mutex; every operation runs under that single lock.
+/// behind a mutex. Every operation runs under that single lock.
 pub struct SessionStore {
     sessions: HashMap<SessionId, Session>,
     max_sessions: usize,

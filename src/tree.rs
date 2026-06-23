@@ -1,8 +1,8 @@
 //! Build the forest of nodes for one root from the flat `Vec<ScannedFolder>`
-//! the scanner produces. Each folder carries its own facts; intermediate
+//! the scanner produces. Each folder carries its own facts. Intermediate
 //! containers absent from the input get a safe-neutral placeholder
 //! (`directly_holds_audio = false, missing_ebook = true`). For a gaps-filtered
-//! input the placeholder reproduces a bare container above a flagged leaf; for
+//! input the placeholder reproduces a bare container above a flagged leaf. For
 //! a show-all input every folder appears, so each node's own entry overwrites
 //! the placeholder. Siblings are ordered by case-insensitive natural sort, so
 //! `Book 2` precedes `Book 10`. The empty relative path is the library root
@@ -56,7 +56,7 @@ impl Node {
 
 /// Build the forest of top-level nodes for one root from the flat
 /// `Vec<ScannedFolder>` the scanner produces. Every folder carries its own two
-/// facts; intermediate containers absent from the input get a placeholder
+/// facts. Intermediate containers absent from the input get a placeholder
 /// (`directly_holds_audio = false, missing_ebook = true`), the safe neutral. For
 /// a gaps-filtered input (`reduce_to_flagged` output) the placeholder reproduces
 /// today's pruned-walk behavior for the bare container above a flagged leaf. For
@@ -88,8 +88,8 @@ pub fn build(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> Vec<
         && entry.directly_holds_audio
     {
         // The root directly holds audio: surface it as a node, pinned ahead of
-        // the author forest (ADR-0005). In show-all it shows even when covered;
-        // in gaps the filter only keeps it when `missing_ebook` is also true, so
+        // the author forest (ADR-0005). In show-all it shows even when covered.
+        // In gaps the filter only keeps it when `missing_ebook` is also true, so
         // it appears exactly when it is a gap.
         roots.insert(
             0,

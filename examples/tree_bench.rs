@@ -22,7 +22,7 @@ fn round3(x: f64) -> f64 {
 }
 
 /// Median of the samples in milliseconds. Empty input is reported as zero, which
-/// only arises in degenerate cases; every shape runs at least one iteration.
+/// only arises in degenerate cases. Every shape runs at least one iteration.
 fn median(samples: &[f64]) -> f64 {
     if samples.is_empty() {
         return 0.0;

@@ -68,7 +68,7 @@ async fn snapshot() {
         )
         .await
         .unwrap();
-    // nginx buffers proxy responses by default; without X-Accel-Buffering: no
+    // nginx buffers proxy responses by default. Without X-Accel-Buffering: no
     // the autosync ticks accumulate at the proxy and arrive in bursts. axum's
     // Sse does not set this for us.
     assert_eq!(
@@ -133,7 +133,7 @@ async fn change_pushes() {
 
     // Within interval + slop, a `section` event should arrive carrying the
     // mutated root's OOB target. The `ping` keep-alive is suppressed by axum
-    // when other events flow; we filter just in case.
+    // when other events flow, but filter just in case.
     let mut got_section = false;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     while tokio::time::Instant::now() < deadline {
@@ -244,7 +244,7 @@ async fn two_modes_isolated() {
     // Mutate disk: add a second ebook file to the covered audiobook. This
     // extends `cover_files` (visible in the show-all tree) without changing
     // `directly_holds_audio`, `missing_ebook`, or the audiobook count. Gaps
-    // view still Clean with total_audiobooks=1; show-all view's section
+    // view still Clean with total_audiobooks=1. Show-all view's section
     // re-renders with the extra ebook listed.
     //
     // Adding or removing a whole audiobook is not a show-all-only change

@@ -3,7 +3,7 @@
 //!
 //! A folder is *flagged* when it directly holds audio but is not *covered*.
 //! Coverage is an ebook or marker file in the folder or any ancestor up to the
-//! root; a covered folder stops the descent, mirroring the reference script's
+//! root. A covered folder stops the descent, mirroring the reference script's
 //! os.walk-with-prune. An excluded directory name or an exclude-glob match also
 //! prunes the whole subtree (see docs/adr/0001-exclude-globs-prune-subtrees.md).
 //! The walk does not follow symlinks: only real directories are descended, and
@@ -263,7 +263,7 @@ pub fn scan_warm(
 }
 
 /// The level-synchronous breadth-first walk shared by warm and cold scans.
-/// Each level is read in parallel with the index borrowed shared; the index is
+/// Each level is read in parallel with the index borrowed shared. The index is
 /// then updated sequentially before descending, so no concurrent mutation is
 /// needed (see ADR-0019 for the walk shape).
 fn walk_all(

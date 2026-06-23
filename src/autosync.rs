@@ -57,7 +57,7 @@ where
 }
 
 /// A fixed seed-less hash of the rendered HTML. `DefaultHasher` is fine because
-/// the comparison is equal/not-equal within one process; the hash never crosses
+/// the comparison is equal/not-equal within one process. The hash never crosses
 /// a process boundary and never seeds a security-sensitive table.
 fn stable_hash(s: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -102,7 +102,7 @@ pub(crate) fn snapshot_and_seed(
 }
 
 /// One subscriber's outbound channel. The loop fans out to every sender in
-/// `subs[mode]`; a `try_send` failure prunes the sender.
+/// `subs[mode]`. A `try_send` failure prunes the sender.
 pub(crate) type SseSender = mpsc::Sender<Result<Event, Infallible>>;
 
 /// The shared autosync state for one process. Construct one per `AppState`.
@@ -111,7 +111,7 @@ pub(crate) type SseSender = mpsc::Sender<Result<Event, Infallible>>;
 /// values point at it.
 pub struct Autosync {
     inner: Arc<StdMutex<AutosyncInner>>,
-    /// The configured idle gap. `0` disables the loop entirely; subscribing
+    /// The configured idle gap. `0` disables the loop entirely. Subscribing
     /// still works (the snapshot is sent), but no loop task is ever spawned.
     interval: Duration,
 }
@@ -222,8 +222,8 @@ impl Autosync {
         }
     }
 
-    /// Number of active subscribers across both modes. Tests reach in;
-    /// production code does not.
+    /// Number of active subscribers across both modes. Tests reach in.
+    /// Production code does not.
     #[cfg(test)]
     pub(crate) fn subscriber_count(&self) -> usize {
         let guard = self.inner.lock().expect("autosync mutex poisoned");
@@ -256,7 +256,7 @@ fn try_exit_loop(inner: &StdMutex<AutosyncInner>) -> bool {
 }
 
 /// The loop body. Holds a `Weak<AppState>` so the application can drop without
-/// leaking the loop; a failed upgrade per tick means the process is shutting
+/// leaking the loop. A failed upgrade per tick means the process is shutting
 /// down or the test scope ended, and the loop exits.
 async fn run_loop(
     weak_state: Weak<crate::state::AppState>,
@@ -328,7 +328,7 @@ async fn run_loop(
 }
 
 /// Build the SSE `section` event for one root's OOB swap fragment. The event
-/// name lines up with the client's `sse-swap="section"` attribute; the OOB
+/// name lines up with the client's `sse-swap="section"` attribute. The OOB
 /// target ID is carried inside the HTML body itself via `hx-swap-oob`.
 fn section_event(html: String) -> Event {
     Event::default().event("section").data(html)

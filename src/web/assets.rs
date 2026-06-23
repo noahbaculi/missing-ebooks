@@ -51,7 +51,7 @@ impl Asset {
 
 /// The embedded stylesheet and script bytes, named so the colocated
 /// `mod tests` can substring-check them without going through the handler.
-/// The `STYLES` and `SCRIPT` `Asset` fields below borrow them; the bytes
+/// The `STYLES` and `SCRIPT` `Asset` fields below borrow them. The bytes
 /// still embed once. No visibility modifier: the `mod tests` child sees
 /// private items of its parent module, and nothing outside `assets` needs
 /// the const.
@@ -59,7 +59,7 @@ const APP_CSS_BYTES: &str = include_str!("../../assets/app.css");
 const APP_JS_BYTES: &str = include_str!("../../assets/app.js");
 
 /// Cache lifetimes. htmx is vendored and changes only on a version bump, so a
-/// week; the stylesheet and script change often, so an hour. None carry
+/// week. The stylesheet and script change often, so an hour. None carry
 /// `immutable`: the URLs are not fingerprinted, so the ETag must stay free to
 /// revalidate once the window passes.
 static HTMX: Asset = Asset {
