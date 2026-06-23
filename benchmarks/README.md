@@ -2,6 +2,10 @@
 
 `scan_bench` times the real scanner against the configured library roots, cold and warm, and writes a JSON report. The reports here compare a local mergerfs root on jane-core against the same library reached over an SMB (CIFS) mount on jane-2. The harness is `examples/scan_bench.rs`; the analysis is [ADR-0019](../docs/adr/0019-scan-walk-parallel-sized-by-concurrency.md).
 
+## Retention
+
+All historical benchmark runs in this directory are retained as a record of how the implementation evolved across schema versions. Newer runs do not supersede older ones; each one documents the state of the scanner at the moment it was produced. The `cifs-*` text files back the rejected `actimeo` and multichannel experiments and stay for the same reason.
+
 ## The reports
 
 | File | Host | Backend | Schema | Notes |
@@ -21,7 +25,7 @@
 | `scan-bench-local-jane-core-1782056191_1.json` | jane-core | fuse.mergerfs | 5 | `iteration_counts` canary clean, gate PASS at 14.4x cold |
 | `scan-bench-smb-jane-2-1782056306.json` | jane-2 | cifs | 5 | `iteration_counts` canary clean, gate PASS at 9.8x cold |
 
-Schema 1 reports a single concurrency inline; schema 2 adds the per-concurrency `levels` array; schema 3 adds the `incremental` mode, a single-level entry carrying a `dirs_reused` count that the `full` and `gaps` modes omit. Schema 3 also renames the full-listing walk's mode key from `all` to `full`, so the schema-1 and schema-2 reports above key it as `all`. Schema 4 adds the `tree_build_ms` column on every level. Schema 5 adds `iteration_counts` on the `incremental` phases, one row per iteration so an iteration whose `dirs_reused`/`entries_seen` drifts mid-run flags an external write to the supposedly unchanged tree. The trailing number is the unix time, so the files sort by run.
+Schema 1 reports a single concurrency inline; schema 2 adds the per-concurrency `levels` array; schema 3 added the `incremental` mode, a single-level entry carrying a `dirs_reused` count that the `full` and `gaps` modes omit. A later commit renamed the `incremental` mode key to `warm` to match `CONTEXT.md`; reports in this directory keep their original `"mode": "incremental"` payload because the rename did not bump the schema. New runs go out as `"mode": "warm"`. Schema 3 also renames the full-listing walk's mode key from `all` to `full`, so the schema-1 and schema-2 reports above key it as `all`. Schema 4 adds the `tree_build_ms` column on every level. Schema 5 adds `iteration_counts` on the `incremental` phases, one row per iteration so an iteration whose `dirs_reused`/`entries_seen` drifts mid-run flags an external write to the supposedly unchanged tree. The trailing number is the unix time, so the files sort by run.
 
 ## What they show
 
@@ -31,7 +35,7 @@ The reports also time both walk modes, and on this library the gaps-only walk is
 
 ## Regenerating
 
-Build with `--release` so the timings reflect the shipped binary. `--drop-caches` flushes the page cache before each cold run; the harness escalates that one step with its own `sudo`, so cache your credentials with `sudo -v` first and run cargo as the normal user. Point it at the real mounts with `--root PATH` (repeatable), `--config config.toml`, or `MISSING_EBOOKS_LIBRARY_ROOTS`. The default `--mode every` times the full, gaps, and incremental walks in one run; pass a subset like `--mode full` to narrow it.
+Build with `--release` so the timings reflect the shipped binary. `--drop-caches` flushes the page cache before each cold run; the harness escalates that one step with its own `sudo`, so cache your credentials with `sudo -v` first and run cargo as the normal user. Point it at the real mounts with `--root PATH` (repeatable), `--config config.toml`, or `MISSING_EBOOKS_LIBRARY_ROOTS`. The default `--mode every` times the full, gaps, and warm walks in one run; pass a subset like `--mode full` to narrow it.
 
 On the host that holds the library:
 
@@ -46,6 +50,18 @@ On a client that mounts the library over SMB:
 sudo -v
 cargo run --release --example scan_bench -- --root /mnt/jane-nas/Entertainment/Audiobooks --label smb --drop-caches --concurrency 1,4,8,16,32
 ```
+
+## Realistic-layout fixture for ad-hoc developer perf work
+
+`tests/fixtures/example-nas/` is the canonical realistic-layout artifact for ad-hoc benchmarking. The directory holds an `audiobooks.snapshot` (one line per entry, names and extensions only) plus a `rehydrate.sh` script that replays the snapshot into a tree of empty files. Point the bench at the rehydrated tree:
+
+```shell
+./tests/fixtures/example-nas/rehydrate.sh /tmp/scanbench-fixture
+cargo run --release --example scan_bench -- --root /tmp/scanbench-fixture --label fixture --concurrency 1,4,8,16
+rm -rf /tmp/scanbench-fixture
+```
+
+The snapshot is a frozen capture from one developer's NAS (about 900 directories, 7,900 files; see the fixture's README for the structural counts). It is not a normative baseline: numbers from it are useful for relative comparisons within one machine, not for comparison against the reports above, which came from real mounts on jane-core and jane-2.
 
 ## SMB deployment experiments
 
@@ -90,9 +106,9 @@ sudo -v
 cargo run --release --example scan_bench -- --root /mnt/jane-nas/Entertainment/Audiobooks --iterations 5 --drop-caches --label smb
 ```
 
-A bare run uses the default `every` mode, which times the full-listing walk, the gaps walk, and the reuse walk in one pass and saves them to a single JSON report, so the go/no-go ratio is computable from one file with no hand-transcription. The `incremental` mode is a single-level entry: it runs once at the top concurrency rather than sweeping, since concurrency is inert over SMB for the reuse walk.
+A bare run uses the default `every` mode, which times the full-listing walk, the gaps walk, and the reuse walk in one pass and saves them to a single JSON report, so the go/no-go ratio is computable from one file with no hand-transcription. The `warm` mode (named `incremental` in the historical reports linked above) is a single-level entry: it runs once at the top concurrency rather than sweeping, since concurrency is inert over SMB for the reuse walk.
 
-Confirmed if the incremental level reports `dirs_reused` equal to `dirs_visited` and `entries_seen=0`, and its cold median sits well below the `full` mode's cold median (the ~1.8 s full listing walk in the same file), matching the projected drop from about six or seven SMB2 ops per directory to about two or three. The warm median is the cache-hot best case, not the figure to judge against. The harness prints a one-line `gate: PASS/FAIL` per root that wraps both checks; treat it as the headline and inspect the JSON for the supporting numbers. The unchanged-tree assumption is also auditable in the report: each incremental phase records `iteration_counts`, one row per iteration, and an iteration whose `dirs_reused` or `entries_seen` drifts mid-run is the canary that something external (backup, indexer, beets) wrote to the tree between walks. Then confirm directory mtime actually moves over the mount: add an ebook into one folder on the server, re-run, and check that exactly that folder re-lists (`dirs_reused` falls by one and `entries_seen` rises); diffing the two saved reports shows it. If the cold reuse walk is not meaningfully cheaper, or mtime does not move on an add, shelve the warm path the way multichannel was shelved and leave it documented but unrecommended.
+Confirmed if the warm level (`incremental` in the historical reports) reports `dirs_reused` equal to `dirs_visited` and `entries_seen=0`, and its cold median sits well below the `full` mode's cold median (the ~1.8 s full listing walk in the same file), matching the projected drop from about six or seven SMB2 ops per directory to about two or three. The warm median is the cache-hot best case, not the figure to judge against. The harness prints a one-line `gate: PASS/FAIL` per root that wraps both checks; treat it as the headline and inspect the JSON for the supporting numbers. The unchanged-tree assumption is also auditable in the report: each warm phase records `iteration_counts`, one row per iteration, and an iteration whose `dirs_reused` or `entries_seen` drifts mid-run is the canary that something external (backup, indexer, beets) wrote to the tree between walks. Then confirm directory mtime actually moves over the mount: add an ebook into one folder on the server, re-run, and check that exactly that folder re-lists (`dirs_reused` falls by one and `entries_seen` rises); diffing the two saved reports shows it. If the cold reuse walk is not meaningfully cheaper, or mtime does not move on an add, shelve the warm path the way multichannel was shelved and leave it documented but unrecommended.
 
 Record the result here and, if it pays off, add a note to the README "Network shares" section.
 
