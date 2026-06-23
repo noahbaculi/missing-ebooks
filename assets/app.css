@@ -1,9 +1,7 @@
-/* ============================================================
-   missing-ebooks stylesheet. Hand-rolled, daisyUI-flavored.
-   Layers: 1) tokens  2) themes  3) base  4) components
-   ============================================================ */
+/* missing-ebooks stylesheet. Hand-rolled, daisyUI-flavored.
+   Layers: 1) tokens 2) themes 3) base 4) components */
 
-/* ---- 1 + 2: tokens, assigned per theme ---- */
+/* tokens, assigned per theme */
 :root,
 [data-theme="light"] {
   --color-base-100: #ffffff;
@@ -53,7 +51,7 @@
   --color-border: #333b46;
 }
 
-/* ---- 3: base ---- */
+/* base */
 *,
 *::before,
 *::after {
@@ -76,7 +74,7 @@ details > summary::-webkit-details-marker {
   display: none;
 }
 
-/* ---- 4: components ---- */
+/* components */
 
 /* navbar */
 .navbar {
@@ -405,7 +403,7 @@ details[open] > summary .chev {
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
 }
 /* where CSS anchor positioning is available, re-anchor the popover under its
-   button; elsewhere the popover keeps the usable centered top-layer default. */
+   button. Elsewhere the popover keeps the usable centered top-layer default. */
 @supports (position-area: bottom span-left) {
   .links-menu {
     position: absolute;
@@ -517,7 +515,7 @@ details[open] > summary .chev {
    so their weight is left alone. These sit after the covered rules so the top
    weight wins on a covered top container (equal specificity, source order
    decides). Each rule carries its own html:not([data-…="off"]) guard so the
-   two settings switches toggle independently; an absent attribute matches the
+   two settings switches toggle independently. An absent attribute matches the
    default and no-JS path. */
 html:not([data-bold-top="off"]) .container-top .name {
   font-weight: 700;
@@ -599,7 +597,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   color: var(--color-muted);
 }
 /* sections after the first open with a wider gap above the header than below it,
-   so whitespace alone marks the grouping; the panel carries no divider rules. */
+   so whitespace alone marks the grouping. The panel carries no divider rules. */
 .settings-head:not(:first-child) {
   margin-top: 0.8rem;
 }
@@ -725,9 +723,9 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 }
 
 /* accent control: a quick-pick dot row plus the native color picker, in the
-   Theme section. The dots are data-accent quick picks; the swatch is the OS
-   picker. The default (#f5a524) writes no override, so the tokens above apply;
-   a custom pick is set inline on <html> by app.js. */
+   Theme section. The dots are data-accent quick picks. The swatch is the OS
+   picker. The default (#f5a524) writes no override, so the tokens above apply.
+   A custom pick is set inline on <html> by app.js. */
 .accent-ctl {
   display: inline-flex;
   align-items: center;
@@ -839,7 +837,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   color: currentColor;
 }
 
-/* ---- mobile: first-class phone layout ---- */
+/* mobile: first-class phone layout */
 /* See docs/superpowers/specs/2026-06-07-mobile-ui-improvements-design.md */
 @media (max-width: 600px) {
   body {
@@ -1151,7 +1149,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   }
 }
 
-/* ---- mark: collapse the leaving row ---- */
+/* mark: collapse the leaving row */
 /* A folder marked in gaps-only leaves the list. app.js pins the row's height then
    drops it to zero next frame, and this rule transitions the collapse and fade.
    The marker form delays its section swap (hx-swap "swap:") so this finishes
@@ -1169,7 +1167,7 @@ li.leaving {
   }
 }
 
-/* ---- rescan button ---- */
+/* rescan button */
 /* The button keeps its "Rescan" label throughout. hx-disabled-elt disables it for
    the request so a second click cannot double-scan. The JS retry hold keeps it
    disabled across backoff gaps, so :disabled is the single hook for the busy
@@ -1183,7 +1181,7 @@ li.leaving {
   cursor: not-allowed;
 }
 
-/* ---- rescan progress bar ---- */
+/* rescan progress bar */
 /* The bar is the hx-indicator: htmx adds htmx-request to it for the request's
    duration. Rather than replace the tree, we keep #roots on screen, dim it, and slide
    a slim bar above it, so a rescan reads as a refresh, not a collapse. The wrapper is
@@ -1257,7 +1255,7 @@ li.leaving {
   }
 }
 
-/* ---- connection-status banner ---- */
+/* connection-status banner */
 /* Pinned to the top, full-bleed past the body's 1.5rem padding, in normal flow so
    it pushes the app down while visible. Hidden via the `hidden` attribute until the
    connection JS reveals it and sets a state class. */
@@ -1321,7 +1319,7 @@ li.leaving {
   }
 }
 
-/* ---- no-JS notice ---- */
+/* no-JS notice */
 /* The UI needs JavaScript. <noscript> renders this strip only when scripting is
    off, so it never shows on a normal visit. Edge-to-edge like the connection
    banner, in the warning palette. */
@@ -1336,7 +1334,7 @@ li.leaving {
   border-bottom: var(--border) solid color-mix(in srgb, var(--color-warning) 35%, transparent);
 }
 
-/* ---- retry-held states ---- */
+/* retry-held states */
 /* While a rescan auto-retry runs across backoff gaps, the connection JS holds the
    bar with .is-retrying, independent of htmx's per-attempt htmx-request
    toggling, so it does not flicker between tries. The button stays disabled across
@@ -1358,7 +1356,7 @@ li.leaving {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 28%, transparent);
 }
 
-/* ---- mark failure: the row springs back with an inline error and a retry ---- */
+/* mark failure: the row springs back with an inline error and a retry */
 /* The strip attaches to the folder's own row (it is inserted as the row's next
    sibling), so it reads as part of that folder. The row above it gets a faint error
    wash and the strip a matching left rule, tying the two together as one unit. */
@@ -1397,7 +1395,7 @@ li.leaving {
   color: var(--color-error-text);
 }
 
-/* ---- saving: a gaps-only row waits in place until the write is confirmed ---- */
+/* saving: a gaps-only row waits in place until the write is confirmed */
 /* The row stays visible while its mark is in flight, so a folder never looks handled
    before the write lands. It collapses (li.leaving) only on a confirmed save, when
    the section swap reconciles. */
@@ -1603,7 +1601,7 @@ li.leaving {
   }
 }
 
-/* ---- gap summary strip ---- */
+/* gap summary strip */
 /* Rendered between the navbar and the roots, computed server-side and kept current
    by app.js as marks land. The session bar is a client-side meter of this sitting,
    not a stored statistic. */
@@ -1717,7 +1715,7 @@ li.leaving {
   font-weight: 600;
 }
 
-/* ---- library coverage bar ---- */
+/* library coverage bar */
 .gap-bar {
   margin-top: 0;
   height: 0.5rem;
@@ -1739,7 +1737,7 @@ li.leaving {
   }
 }
 
-/* ---- navbar filter ---- */
+/* navbar filter */
 /* The box renders visible from first paint so it holds its navbar slot and never
    reflows in. app.js renders the input disabled and clears that on
    DOMContentLoaded. until then the whole control dims so it reads as
@@ -1839,7 +1837,7 @@ li.leaving {
   border-radius: var(--radius-box);
 }
 
-/* ---- keyboard highlight ---- */
+/* keyboard highlight */
 /* The j/k highlight is a real focus target (tabindex -1), so it carries a visible
    focus ring and a tinted band. */
 .row.row-active {
