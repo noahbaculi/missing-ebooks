@@ -20,8 +20,9 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::config::SearchLink;
 use crate::marker::Marker;
-use crate::service::{self, ViewMode};
+use crate::service;
 use crate::state::AppState;
+use crate::tree::ViewMode;
 
 pub(crate) mod assets;
 mod page;

@@ -6,8 +6,9 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::config::SearchLink;
 use crate::query::clean_query;
-use crate::service::{FlaggedView, RootSection, RootState, ViewMode};
+use crate::service::{FlaggedView, RootSection};
 use crate::tree::Node;
+use crate::tree::{RootState, ViewMode};
 
 /// The rotating folder caret used on collapsible rows.
 fn chevron() -> Markup {

@@ -15,8 +15,8 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
-use crate::service::ViewMode;
 use crate::state;
+use crate::tree::ViewMode;
 
 /// Diff each rendered section against `last_hash` and return the list of pushes
 /// to fan out, mutating `last_hash` in place to reflect what is about to be

@@ -7,7 +7,7 @@
 
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 
-use crate::service::ViewMode;
+use crate::tree::ViewMode;
 
 /// The favicon as an inline SVG data URI, so the tab gets an identity and the
 /// browser stops requesting `/favicon.ico`. The "book wearing headphones" glyph,

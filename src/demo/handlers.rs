@@ -17,8 +17,9 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use tokio::sync::mpsc;
 
-use crate::service::{FlaggedView, ViewMode, render_view};
+use crate::service::{FlaggedView, render_view};
 use crate::state::{RawView, apply_mark_raw};
+use crate::tree::ViewMode;
 use crate::web::assets::{app_css, htmx_script, htmx_sse_script};
 use crate::web::render::render_view as render_view_html;
 use crate::web::render::{oob_sections, render_section};

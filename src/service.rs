@@ -6,58 +6,13 @@ use std::sync::Arc;
 #[cfg(test)]
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use thiserror::Error;
 
 use crate::marker::Marker;
 use crate::scanner;
 use crate::state::{self, AppState};
-use crate::tree::{self, Node};
-
-/// Which view a read or write targets: gaps-only forest or full show-all tree.
-/// Selects the render applied to the cached raw scan output (see ADR-0022).
-/// Deserializes from the `view` form field; `from_query` is the lenient
-/// URL-query path that falls back to gaps-only.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, enum_map::Enum)]
-pub enum ViewMode {
-    /// Today's view: only gaps and the containers above them.
-    #[default]
-    #[serde(rename = "gaps")]
-    GapsOnly,
-    /// The full directory tree, covered folders included.
-    #[serde(rename = "all")]
-    All,
-}
-
-impl ViewMode {
-    /// Parse the URL `view` query parameter. Absent or unrecognized is gaps-only.
-    #[must_use]
-    pub fn from_query(value: Option<&str>) -> ViewMode {
-        match value {
-            Some("all") => ViewMode::All,
-            _ => ViewMode::GapsOnly,
-        }
-    }
-
-    /// The query token for this mode: `gaps` or `all`.
-    #[must_use]
-    pub fn as_query(self) -> &'static str {
-        match self {
-            ViewMode::GapsOnly => "gaps",
-            ViewMode::All => "all",
-        }
-    }
-
-    /// The URL path that renders this mode. Used for `HX-Push-Url` headers
-    /// and Post/Redirect/Get destinations.
-    #[must_use]
-    pub fn path(self) -> &'static str {
-        match self {
-            ViewMode::GapsOnly => "/",
-            ViewMode::All => "/?view=all",
-        }
-    }
-}
+use crate::tree::{self, RootState, ViewMode};
 
 /// The whole read view: one section per configured library root, in config order.
 pub type FlaggedView = Vec<RootSection>;
@@ -73,18 +28,6 @@ pub struct RootSection {
     /// `Error`. The web layer surfaces it as `data-total-audiobooks` on the
     /// section so the strip's library coverage stays current across swaps.
     pub total_audiobooks: usize,
-}
-
-/// The result of scanning one root.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RootState {
-    /// Flagged gaps were found. The forest is non-empty.
-    Forest(Vec<Node>),
-    /// The root resolved and scanned with no gaps.
-    Clean,
-    /// The root could not be scanned (missing, not a directory, or unreadable).
-    Error(String),
 }
 
 /// A failure performing a write action. The HTML surface renders it inline. A

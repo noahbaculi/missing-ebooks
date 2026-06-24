@@ -90,7 +90,7 @@ async fn main() -> ExitCode {
         async move {
             let _ = missing_ebooks::service::current_view(
                 &state,
-                missing_ebooks::service::ViewMode::GapsOnly,
+                missing_ebooks::tree::ViewMode::GapsOnly,
             )
             .await;
             tracing::debug!("startup cache warm complete");

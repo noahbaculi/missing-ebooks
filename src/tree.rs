@@ -12,7 +12,7 @@
 
 use std::path::Component;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// One folder in a rendered tree. Two orthogonal facts describe it: whether it
 /// directly holds audio, and whether it is missing an ebook (uncovered). The gap
@@ -52,6 +52,63 @@ impl Node {
     pub fn has_gap_within(&self) -> bool {
         self.needs_ebook() || self.children.iter().any(Node::has_gap_within)
     }
+}
+
+/// Which view a read or write targets: gaps-only forest or full show-all tree.
+/// Selects the render applied to the cached raw scan output (see ADR-0022).
+/// Deserializes from the `view` form field; `from_query` is the lenient
+/// URL-query path that falls back to gaps-only.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, enum_map::Enum)]
+pub enum ViewMode {
+    /// Today's view: only gaps and the containers above them.
+    #[default]
+    #[serde(rename = "gaps")]
+    GapsOnly,
+    /// The full directory tree, covered folders included.
+    #[serde(rename = "all")]
+    All,
+}
+
+impl ViewMode {
+    /// Parse the URL `view` query parameter. Absent or unrecognized is gaps-only.
+    #[must_use]
+    pub fn from_query(value: Option<&str>) -> ViewMode {
+        match value {
+            Some("all") => ViewMode::All,
+            _ => ViewMode::GapsOnly,
+        }
+    }
+
+    /// The query token for this mode: `gaps` or `all`.
+    #[must_use]
+    pub fn as_query(self) -> &'static str {
+        match self {
+            ViewMode::GapsOnly => "gaps",
+            ViewMode::All => "all",
+        }
+    }
+
+    /// The URL path that renders this mode. Used for `HX-Push-Url` headers
+    /// and Post/Redirect/Get destinations.
+    #[must_use]
+    pub fn path(self) -> &'static str {
+        match self {
+            ViewMode::GapsOnly => "/",
+            ViewMode::All => "/?view=all",
+        }
+    }
+}
+
+/// The result of scanning one root.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RootState {
+    /// Flagged gaps were found. The forest is non-empty.
+    Forest(Vec<Node>),
+    /// The root resolved and scanned with no gaps.
+    Clean,
+    /// The root could not be scanned (missing, not a directory, or unreadable).
+    Error(String),
 }
 
 /// Build the forest of top-level nodes for one root from the flat

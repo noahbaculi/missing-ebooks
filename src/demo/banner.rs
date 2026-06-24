@@ -4,7 +4,7 @@
 //! already carries the banner marker is returned unchanged. The `/mark` partial
 //! is a body-less fragment, so it is returned untouched.
 
-use crate::service::ViewMode;
+use crate::tree::ViewMode;
 
 /// A marker class used both to style the banner and to detect a page that has
 /// already been injected.

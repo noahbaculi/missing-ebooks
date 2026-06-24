@@ -9,8 +9,9 @@ use missing_ebooks::config::Config;
 use missing_ebooks::marker::Marker;
 use missing_ebooks::scanner::ScanSettings;
 use missing_ebooks::scenarios;
-use missing_ebooks::service::{ViewMode, current_view, mark, unmark};
+use missing_ebooks::service::{current_view, mark, unmark};
 use missing_ebooks::state::AppState;
+use missing_ebooks::tree::ViewMode;
 use missing_ebooks::web::render::{oob_sections, render_section};
 
 #[tokio::test]
@@ -87,8 +88,8 @@ async fn render_is_byte_equal_across_hits_and_a_mark_undo_round_trip() {
 /// test depends only on the rendered shape, so it survives any future change
 /// to the seeded fixture so long as at least one gap remains.
 fn first_flagged(view: &missing_ebooks::service::FlaggedView) -> Option<(usize, String)> {
-    use missing_ebooks::service::RootState;
     use missing_ebooks::tree::Node;
+    use missing_ebooks::tree::RootState;
     fn first_leaf(node: &Node) -> Option<String> {
         if node.directly_holds_audio && node.missing_ebook {
             return Some(node.rel_path.clone());
