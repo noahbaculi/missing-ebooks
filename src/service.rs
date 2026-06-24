@@ -476,30 +476,34 @@ pub(crate) async fn build_view(
     sections
 }
 
-/// Scan one root off the async runtime and fold the result into a raw section.
+/// Scans one root off the async runtime and folds the result into a raw section.
 async fn build_section(
     root: std::path::PathBuf,
     settings: Arc<ScanSettings>,
     index: Arc<std::sync::Mutex<scanner::DirIndex>>,
 ) -> state::RawRootSection {
     let started = Instant::now();
-    let section =
-        match tokio::task::spawn_blocking(move || scan_root(&root, &settings, &index)).await {
-            Ok(section) => section,
-            Err(join_err) => {
-                tracing::error!(error = %join_err, "scan task panicked");
-                state::RawRootSection {
-                    path: "<unknown>".to_string(),
-                    state: state::RawRootState::Error("scan task failed".to_string()),
-                }
+    let scan = match tokio::task::spawn_blocking(move || {
+        let mut guard = lock_index(&index);
+        scanner::scan_root(&root, &settings, &mut guard)
+    })
+    .await
+    {
+        Ok(scan) => scan,
+        Err(join_err) => {
+            tracing::error!(error = %join_err, "scan task panicked");
+            scanner::RootScan::Failed {
+                path: std::path::PathBuf::from("<unknown>"),
+                message: "scan task failed".to_string(),
             }
-        };
+        }
+    };
     tracing::debug!(
-        root = %section.path,
+        root = %scan.display_path(),
         elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
         "scanned root"
     );
-    section
+    scan.into()
 }
 
 /// Lock the shared index, recovering the guard when a previous walk panicked while
@@ -528,61 +532,6 @@ fn invalidate_index(state: &AppState, canonical_root: &Path, rel: &str) {
         canonical_root.join(rel)
     };
     lock_index(&state.dir_index).invalidate(&target);
-}
-
-/// The synchronous per-root work: canonicalize and scan into a raw section.
-/// Runs on a blocking thread. A canonicalize failure or a non-directory becomes
-/// an `Error` section so one bad root never sinks the page. Rendering happens
-/// at request time from this raw output (see ADR-0022).
-fn scan_root(
-    root: &Path,
-    settings: &ScanSettings,
-    index: &std::sync::Mutex<scanner::DirIndex>,
-) -> state::RawRootSection {
-    let canonical = match std::fs::canonicalize(root) {
-        Ok(path) => path,
-        Err(err) => {
-            tracing::warn!(root = %root.display(), error = %err, "skipping unreadable library root");
-            return state::RawRootSection {
-                path: root.display().to_string(),
-                state: state::RawRootState::Error(err.to_string()),
-            };
-        }
-    };
-    if !canonical.is_dir() {
-        tracing::warn!(root = %canonical.display(), "library root is not a directory");
-        return state::RawRootSection {
-            path: canonical.display().to_string(),
-            state: state::RawRootState::Error("not a directory".to_string()),
-        };
-    }
-
-    // Always reuse the dir index. The /rescan handler clears it for an explicit
-    // cold scan. Otherwise the index persists across page loads and autosync
-    // ticks (see ADR-0023).
-    let (folders, stats) = {
-        let mut guard = lock_index(index);
-        scanner::scan_warm(&canonical, settings, &mut guard)
-    };
-    tracing::debug!(
-        root = %canonical.display(),
-        dirs_visited = stats.dirs_visited,
-        dirs_reused = stats.dirs_reused,
-        entries_seen = stats.entries_seen,
-        "walked root"
-    );
-
-    let raw_state = if folders.is_empty() {
-        // No directory at or below the root contributed an entry: nothing to
-        // render in either mode. Render-time can shortcut a Clean section.
-        state::RawRootState::Clean
-    } else {
-        state::RawRootState::Walked(folders)
-    };
-    state::RawRootSection {
-        path: canonical.display().to_string(),
-        state: raw_state,
-    }
 }
 
 #[cfg(test)]
