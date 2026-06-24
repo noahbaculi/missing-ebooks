@@ -321,38 +321,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn index_renders_a_flagged_folder() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = body_string(response).await;
-        assert!(body.contains("Book"));
-    }
-
-    #[tokio::test]
-    async fn index_tags_container_rows_by_depth() {
-        let dir = tempfile::tempdir().unwrap();
-        // Author (top container) -> Series (nested container) -> Book (flagged leaf).
-        touch(&dir.path().join("Author/Series/Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The top container is tagged for bold, the nested one for italic.
-        assert!(body.contains(r#"class="row container-top""#));
-        assert!(body.contains(r#"class="row container-nested""#));
-        // The flagged leaf keeps exactly its existing class, with no depth tag.
-        assert!(body.contains(r#"class="row flagged""#));
-    }
-
-    #[tokio::test]
     async fn index_marks_loose_and_mixed_flagged_folders() {
         let dir = tempfile::tempdir().unwrap();
         // A loose gap: a book folder at the very top, with no author folder around it.
@@ -438,50 +406,6 @@ mod tests {
         assert!(body.contains("01 - The Colour of Magic.mp3"));
         assert!(body.contains(r#"class="file-row""#));
         assert!(body.contains("Going Postal"));
-    }
-
-    #[tokio::test]
-    async fn index_leaves_a_deep_gap_unmarked() {
-        let dir = tempfile::tempdir().unwrap();
-        // A properly filed gap two levels down carries no smell.
-        touch(&dir.path().join("Author/Series/Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        assert!(!body.contains("loose at top"));
-        assert!(!body.contains("holds audio + subfolders"));
-    }
-
-    #[tokio::test]
-    async fn show_all_keeps_depth_tags_on_covered_containers() {
-        let dir = tempfile::tempdir().unwrap();
-        // Audio under a series, plus an ebook at the author level so the whole
-        // branch is covered in show-all.
-        touch(&dir.path().join("Author/Series/Book/01.mp3"));
-        touch(&dir.path().join("Author/Author.epub"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(
-                    Request::builder()
-                        .uri("/?view=all")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The covered top and nested containers still carry their depth tags, so the
-        // depth cue survives the view switch and composes with the covered class.
-        assert!(body.contains(r#"class="row covered container-top""#));
-        assert!(body.contains(r#"class="row covered container-nested""#));
-        // The covered leaf book carries the bare covered class with no depth tag
-        // (the trailing quote rules out a `covered container-*` prefix match).
-        assert!(body.contains(r#"class="row covered""#));
     }
 
     #[tokio::test]
@@ -1211,19 +1135,6 @@ mod tests {
         // The book stays in the tree (covered), not removed.
         assert!(body.contains("Book"));
         assert!(dir.path().join("Author/Book/.no_ebook").exists());
-    }
-
-    #[tokio::test]
-    async fn section_carries_a_data_root_hook() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // The toast's Undo targets the section by index, so each section names it.
-        assert!(body.contains(r#"data-root="0""#));
     }
 
     #[tokio::test]

@@ -710,4 +710,100 @@ mod tests {
     fn errored(path: &str, message: &str) -> RootSection {
         section(path, RootState::Error(message.into()), 0)
     }
+
+    #[test]
+    fn index_renders_a_flagged_folder() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        assert!(html.contains("Book"));
+    }
+
+    #[test]
+    fn index_tags_container_rows_by_depth() {
+        // Author (top container) -> Series (nested container) -> Book (flagged leaf).
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![container(
+                    "Series",
+                    "Author/Series",
+                    vec![flagged_leaf("Book", "Author/Series/Book", &["01.mp3"])],
+                )],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The top container is tagged for bold, the nested one for italic.
+        assert!(html.contains(r#"class="row container-top""#));
+        assert!(html.contains(r#"class="row container-nested""#));
+        // The flagged leaf keeps exactly its existing class, with no depth tag.
+        assert!(html.contains(r#"class="row flagged""#));
+    }
+
+    #[test]
+    fn index_leaves_a_deep_gap_unmarked() {
+        // A properly filed gap two levels down carries no smell.
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![container(
+                    "Series",
+                    "Author/Series",
+                    vec![flagged_leaf("Book", "Author/Series/Book", &["01.mp3"])],
+                )],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        assert!(!html.contains("loose at top"));
+        assert!(!html.contains("holds audio + subfolders"));
+    }
+
+    #[test]
+    fn show_all_keeps_depth_tags_on_covered_containers() {
+        // Audio under a series with an ebook at the author level covers the
+        // whole branch in show-all. The containers stay (no audio of their own,
+        // so not flagged), and the book leaf flips from flagged to covered.
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![container(
+                    "Series",
+                    "Author/Series",
+                    vec![covered_leaf("Book", "Author/Series/Book", &[])],
+                )],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::All).into_string();
+        // The covered top and nested containers still carry their depth tags, so the
+        // depth cue survives the view switch and composes with the covered class.
+        assert!(html.contains(r#"class="row covered container-top""#));
+        assert!(html.contains(r#"class="row covered container-nested""#));
+        // The covered leaf book carries the bare covered class with no depth tag
+        // (the trailing quote rules out a `covered container-*` prefix match).
+        assert!(html.contains(r#"class="row covered""#));
+    }
+
+    #[test]
+    fn section_carries_a_data_root_hook() {
+        // The toast's Undo targets the section by index, so each section names it.
+        let view = section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        );
+        let html = render_section(&view, 0, None, &[], ViewMode::GapsOnly).into_string();
+        assert!(html.contains(r#"data-root="0""#));
+    }
 }
