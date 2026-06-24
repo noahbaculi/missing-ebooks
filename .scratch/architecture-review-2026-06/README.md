@@ -10,7 +10,7 @@ Vocabulary follows `CONTEXT.md` (library root, flagged folder, container, covere
 |---|---|---|---|
 | 1 | `scanner::scan_root` owning canonicalize + classify + `RootScan` | Strong | **done** (see `.scratch/scanner-scan-root/`) |
 | 2 | `RawViewStore` replacing the four cache primitives | Strong | **done** (see `.scratch/raw-view-store/`, ADR-0027) |
-| 3 | `Autosync::attach` collapsing snapshot/seed/subscribe | Strong | open |
+| 3 | `Autosync::attach` collapsing snapshot/seed/subscribe | Strong | **done** (see `.scratch/autosync-attach/`) |
 | 4 | `tree.rs` owns the ADR-0005 `.`-node rule end-to-end | Worth exploring | open |
 | 5 | Declarative `ScenarioSpec` data | Worth exploring | open |
 | 6 | `Renderer` context object | Speculative | open |
@@ -176,4 +176,4 @@ One `materialize(spec, base)` walks it. A second `expected_flagged(spec)` derive
 
 ## Suggested next pick
 
-Open Strong candidates: #2 and #3. They compose with the now-shipped #1. If both feel large, #4 is the smallest open candidate and lands a real piece of the ADR-0005 rule into one module.
+All three Strong candidates (#1, #2, #3) have shipped. Open candidates are all Worth-exploring or Speculative: #4 (smallest, lands a piece of ADR-0005 in one module), #5 (independent, replaces 31 KB of imperative scenario builders with data), #7 (composes with the just-shipped #3 by collapsing three render loops into one iterator), and #6 (speculative, best paired with #7).
