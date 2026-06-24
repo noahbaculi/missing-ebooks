@@ -41,8 +41,7 @@ fn compute_pushes(
             last_hash[mode].resize(raw.len(), None);
         }
         for (root_idx, section) in raw.iter().enumerate() {
-            let html = render_oob_section(section, root_idx, mode, links);
-            let h = stable_hash(&html);
+            let (html, h) = rendered_oob_with_hash(section, root_idx, mode, links);
             if last_hash[mode][root_idx] != Some(h) {
                 last_hash[mode][root_idx] = Some(h);
                 pushes.push((mode, root_idx, html));
