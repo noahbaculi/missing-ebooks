@@ -6,6 +6,64 @@
 
 use std::path::{Path, PathBuf};
 
+/// Marker file kind a scenario can drop into a folder. The dot prefix lives
+/// in `materialize`, so a missing dot is unrepresentable.
+pub enum MarkerKind {
+    /// `.no_ebook`: this folder has audio but no ebook is expected.
+    NoEbook,
+    /// `.ebook_elsewhere`: the ebook lives in another library root.
+    EbookElsewhere,
+}
+
+/// One node in a `ScenarioSpec` tree.
+pub enum Entry {
+    /// A subdirectory containing further entries.
+    Folder {
+        /// Folder name (one path component).
+        name: String,
+        /// Children written under this folder.
+        items: Vec<Entry>,
+    },
+    /// Full audio filename including extension, e.g. `"01 - Dune.mp3"`.
+    Audio {
+        /// Audio filename written into the parent folder.
+        name: String,
+    },
+    /// Full ebook filename including extension, e.g. `"Dune.epub"`.
+    Ebook {
+        /// Ebook filename written into the parent folder.
+        name: String,
+    },
+    /// Marker file (`.no_ebook` or `.ebook_elsewhere`) in the parent folder.
+    Marker(MarkerKind),
+}
+
+/// A library root that `materialize` seeds under `base`.
+pub struct RootSpec {
+    /// Root folder name, joined under `base`.
+    pub name: String,
+    /// Top-level entries written under this root.
+    pub items: Vec<Entry>,
+}
+
+/// One root in a scenario. `Uncreated` reserves the path without touching
+/// disk, so canonicalization fails and the section renders Error.
+pub enum RootPlan {
+    /// A root that `materialize` creates on disk.
+    Created(RootSpec),
+    /// A root whose path is returned but never created on disk.
+    Uncreated {
+        /// Root folder name, joined under `base` without being created.
+        name: String,
+    },
+}
+
+/// Declarative description of a synthetic library, walked by `materialize`.
+pub struct ScenarioSpec {
+    /// Roots in render order.
+    pub roots: Vec<RootPlan>,
+}
+
 /// One catalog entry: a name, a one-line description, and the builder that seeds
 /// it.
 #[derive(Clone, Copy)]
@@ -71,6 +129,81 @@ pub(crate) fn touch(path: &Path) {
         mkdirs(parent);
     }
     std::fs::write(path, b"").expect("write scenario file");
+}
+
+/// Seed `spec` under `base` and return the library roots in spec order.
+#[allow(dead_code)]
+pub fn materialize(spec: &ScenarioSpec, base: &Path) -> Vec<PathBuf> {
+    spec.roots
+        .iter()
+        .map(|plan| match plan {
+            RootPlan::Created(root) => {
+                let path = base.join(&root.name);
+                for item in &root.items {
+                    write_entry(&path, item);
+                }
+                path
+            }
+            RootPlan::Uncreated { name } => base.join(name),
+        })
+        .collect()
+}
+
+fn write_entry(parent: &Path, entry: &Entry) {
+    match entry {
+        Entry::Folder { name, items } => {
+            let dir = parent.join(name);
+            mkdirs(&dir);
+            for item in items {
+                write_entry(&dir, item);
+            }
+        }
+        Entry::Audio { name } | Entry::Ebook { name } => {
+            touch(&parent.join(name));
+        }
+        Entry::Marker(kind) => {
+            let file = match kind {
+                MarkerKind::NoEbook => ".no_ebook",
+                MarkerKind::EbookElsewhere => ".ebook_elsewhere",
+            };
+            touch(&parent.join(file));
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn folder(name: &str, items: Vec<Entry>) -> Entry {
+    Entry::Folder {
+        name: name.into(),
+        items,
+    }
+}
+#[allow(dead_code)]
+fn audio(name: &str) -> Entry {
+    Entry::Audio { name: name.into() }
+}
+#[allow(dead_code)]
+fn ebook(name: &str) -> Entry {
+    Entry::Ebook { name: name.into() }
+}
+#[allow(dead_code)]
+fn no_ebook() -> Entry {
+    Entry::Marker(MarkerKind::NoEbook)
+}
+#[allow(dead_code)]
+fn elsewhere() -> Entry {
+    Entry::Marker(MarkerKind::EbookElsewhere)
+}
+#[allow(dead_code)]
+fn root(name: &str, items: Vec<Entry>) -> RootPlan {
+    RootPlan::Created(RootSpec {
+        name: name.into(),
+        items,
+    })
+}
+#[allow(dead_code)]
+fn uncreated(name: &str) -> RootPlan {
+    RootPlan::Uncreated { name: name.into() }
 }
 
 // Scenario builders. Each one seeds a synthetic library and returns its roots.
@@ -665,5 +798,31 @@ mod tests {
     fn find_scenario_matches_by_name_and_rejects_unknown() {
         assert!(find_scenario("pre-marked").is_some());
         assert!(find_scenario("does-not-exist").is_none());
+    }
+
+    #[test]
+    fn materialize_writes_marker_files_with_leading_dot() {
+        let dir = tempfile::tempdir().unwrap();
+        let spec = ScenarioSpec {
+            roots: vec![root(
+                "R",
+                vec![folder("F", vec![audio("a.mp3"), no_ebook(), elsewhere()])],
+            )],
+        };
+        materialize(&spec, dir.path());
+        assert!(dir.path().join("R/F/.no_ebook").is_file());
+        assert!(dir.path().join("R/F/.ebook_elsewhere").is_file());
+        assert!(dir.path().join("R/F/a.mp3").is_file());
+    }
+
+    #[test]
+    fn materialize_returns_uncreated_paths_without_touching_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let spec = ScenarioSpec {
+            roots: vec![uncreated("Missing")],
+        };
+        let roots = materialize(&spec, dir.path());
+        assert_eq!(roots, vec![dir.path().join("Missing")]);
+        assert!(!roots[0].exists());
     }
 }
