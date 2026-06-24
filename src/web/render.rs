@@ -839,4 +839,70 @@ mod tests {
             "the half-sorted author is marked mixed"
         );
     }
+
+    #[test]
+    fn index_shows_a_file_count_and_a_collapsed_file_list_on_a_flagged_leaf() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf(
+                "Book",
+                "Book",
+                &["01 - The Gunslinger.mp3"],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The count sits on the row, and the file row is present but inside a closed
+        // <details> (no `open`), so the names are hidden until the row is expanded.
+        assert!(html.contains("1 file"));
+        assert!(html.contains(r#"<details class="node-files">"#));
+        assert!(html.contains("01 - The Gunslinger.mp3"));
+    }
+
+    #[test]
+    fn index_pluralizes_the_file_count() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf(
+                "Book",
+                "Book",
+                &["01.mp3", "02.mp3", "03.mp3"],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        assert!(html.contains("3 files"));
+        // The trailing space pins this to the singular row text. A bare
+        // "3 file" would also match the plural "3 files", so we anchor on
+        // the space that follows on a row that says e.g. "3 file ▸".
+        assert!(
+            !html.contains("3 file "),
+            "rendered singular instead of plural"
+        );
+    }
+
+    #[test]
+    fn mixed_node_shows_its_own_files_above_its_child_gap() {
+        // A mixed author: holds its own loose audio file AND has a flagged child.
+        let mixed = Node {
+            name: "Terry Pratchett".into(),
+            rel_path: "Terry Pratchett".into(),
+            directly_holds_audio: true,
+            missing_ebook: true,
+            children: vec![flagged_leaf(
+                "Going Postal",
+                "Terry Pratchett/Going Postal",
+                &["01.mp3"],
+            )],
+            cover_files: Vec::new(),
+            audio_files: vec!["01 - The Colour of Magic.mp3".into()],
+        };
+        let view = vec![section("/lib", forest(vec![mixed]), 2)];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The mixed author's own loose file renders as a file row, and the child gap
+        // still renders as a folder row carrying its badge.
+        assert!(html.contains("01 - The Colour of Magic.mp3"));
+        assert!(html.contains(r#"class="file-row""#));
+        assert!(html.contains("Going Postal"));
+    }
 }
