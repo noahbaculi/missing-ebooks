@@ -2,7 +2,6 @@
 //! (current view, marker write) shared by the HTML UI and a future JSON API.
 
 use std::sync::Arc;
-use std::time::Instant;
 
 #[cfg(test)]
 use std::path::Path;
@@ -10,9 +9,8 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::config::Config;
 use crate::marker::Marker;
-use crate::scanner::{self, ScanSettings};
+use crate::scanner;
 use crate::state::{self, AppState};
 use crate::tree::{self, Node};
 
@@ -225,75 +223,16 @@ pub(crate) fn render_root_state(scan: &scanner::RootScan, mode: ViewMode) -> Roo
     }
 }
 
-/// Build the raw view for every configured root, in config order. Each root is
-/// scanned on a blocking task so the directory walk does not stall the runtime.
-/// The response renders per mode from the result (see ADR-0022).
-pub(crate) async fn build_view(
-    config: &Config,
-    settings: &Arc<ScanSettings>,
-    index: Arc<std::sync::Mutex<scanner::DirIndex>>,
-) -> state::RawView {
-    let started = Instant::now();
-    let mut sections = Vec::with_capacity(config.library_roots.len());
-    for root in &config.library_roots {
-        sections.push(build_section(root.clone(), Arc::clone(settings), Arc::clone(&index)).await);
-    }
-    tracing::info!(
-        roots = sections.len(),
-        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
-        "scanned library"
-    );
-    sections
-}
-
-/// Scans one root off the async runtime and folds the result into a `RootScan`.
-pub(crate) async fn build_section(
-    root: std::path::PathBuf,
-    settings: Arc<ScanSettings>,
-    index: Arc<std::sync::Mutex<scanner::DirIndex>>,
-) -> scanner::RootScan {
-    let started = Instant::now();
-    let scan = match tokio::task::spawn_blocking(move || {
-        let mut guard = lock_index(&index);
-        scanner::scan_root(&root, &settings, &mut guard)
-    })
-    .await
-    {
-        Ok(scan) => scan,
-        Err(join_err) => {
-            tracing::error!(error = %join_err, "scan task panicked");
-            scanner::RootScan::Failed {
-                path: std::path::PathBuf::from("<unknown>"),
-                message: "scan task failed".to_string(),
-            }
-        }
-    };
-    tracing::debug!(
-        root = %scan.display_path(),
-        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
-        "scanned root"
-    );
-    scan
-}
-
-/// Lock the shared index, recovering the guard when a previous walk panicked while
-/// holding it. A poisoned `DirIndex` is not corrupt: a stale entry is re-listed on
-/// its next mtime check, so recovery beats wedging every later scan on a restart.
-pub(crate) fn lock_index(
-    index: &std::sync::Mutex<scanner::DirIndex>,
-) -> std::sync::MutexGuard<'_, scanner::DirIndex> {
-    index
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
 
+    use crate::config::Config;
+    use crate::scanner::ScanSettings;
     use crate::scenarios::touch;
+    use crate::state::build_view;
 
     fn test_config(roots: Vec<PathBuf>, ttl_seconds: u64) -> Config {
         Config {

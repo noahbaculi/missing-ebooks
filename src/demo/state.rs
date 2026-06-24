@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use crate::config::{Config, SearchLink};
 use crate::scanner::{DirIndex, ScanSettings};
-use crate::service::build_view;
 use crate::state::RawView;
+use crate::state::build_view;
 
 use super::session::SessionStore;
 
