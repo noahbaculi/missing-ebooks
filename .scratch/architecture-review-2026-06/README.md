@@ -11,7 +11,7 @@ Vocabulary follows `CONTEXT.md` (library root, flagged folder, container, covere
 | 1 | `scanner::scan_root` owning canonicalize + classify + `RootScan` | Strong | **done** (see `.scratch/scanner-scan-root/`) |
 | 2 | `RawViewStore` replacing the four cache primitives | Strong | **done** (see `.scratch/raw-view-store/`, ADR-0027) |
 | 3 | `Autosync::attach` collapsing snapshot/seed/subscribe | Strong | **done** (see `.scratch/autosync-attach/`) |
-| 4 | `tree.rs` owns the ADR-0005 `.`-node rule end-to-end | Worth exploring | open |
+| 4 | `tree.rs` owns the ADR-0005 `.`-node rule end-to-end | Worth exploring | **done** (see `.scratch/tree-owns-dot-node/`) |
 | 5 | Declarative `ScenarioSpec` data | Worth exploring | open |
 | 6 | `Renderer` context object | Speculative | open |
 | 7 | Single `RawView::sections(mode)` iterator | Worth exploring | **done** (scoped down; see `.scratch/autosync-oob-hash-pair/`) |
@@ -176,4 +176,4 @@ One `materialize(spec, base)` walks it. A second `expected_flagged(spec)` derive
 
 ## Suggested next pick
 
-All three Strong candidates (#1, #2, #3) have shipped, and #7 landed in a scoped-down form (the autosync render+hash pair, not the original `RawView::sections` iterator: post-#3, the iteration shape was already a one-liner and the meaningful remaining duplication was the lockstep inside autosync). Open candidates are #4 (smallest, lands a piece of ADR-0005 in one module), #5 (independent, replaces 31 KB of imperative scenario builders with data), and #6 (speculative).
+All three Strong candidates (#1, #2, #3) have shipped, #4 has landed (ADR-0005's `.`-node rule and the canonical-path name extraction now live inside `tree::build`), and #7 landed in a scoped-down form (the autosync render+hash pair, not the original `RawView::sections` iterator: post-#3, the iteration shape was already a one-liner and the meaningful remaining duplication was the lockstep inside autosync). Open candidates are #5 (independent, replaces 31 KB of imperative scenario builders with data) and #6 (speculative).
