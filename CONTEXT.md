@@ -48,9 +48,9 @@ _Avoid_: ignore, blocklist entry.
 A glob pattern matched against a folder's path relative to its library root, case-insensitively. A match drops that folder and its descendants, the same way an exclude name does; the two differ only in match criterion. Glob syntax is standard; the subtree-dropping follows the gitignore convention for applying globs to a tree.
 _Avoid_: filter, ignore pattern.
 
-**Render cache**:
-The in-memory cache holding the raw scan output (`Cache` in `src/state.rs`), TTL-bounded by `ttl_seconds`. One slot per process; both view modes render from the same raw data at request time (ADR-0022). This is the cache page loads and SSE snapshots hit.
-_Avoid_: the cache, scan cache (ambiguous with the dir index).
+**Raw view store**:
+The substrate that produces and memoizes raw scan output (`RawViewStore` in `src/state.rs`). Owns the scan settings, the dir index, the TTL-bounded cache slot, and the marker file IO. One slot per process, TTL-bounded by `ttl_seconds`; both view modes render from the same raw data at request time (ADR-0022). Marker writes edit the slot in place (ADR-0002). See ADR-0027.
+_Avoid_: render cache, scan cache (ambiguous with the dir index), the cache.
 
 **Dir index**:
 The in-memory per-directory mtime map (`dir_index` in `src/state.rs`) that lets a scan skip unchanged directories. Process-lifetime, written by every scan, discarded only by a `/rescan` click or process restart (see ADR-0020).
