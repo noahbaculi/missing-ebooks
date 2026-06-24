@@ -144,42 +144,10 @@ pub async fn mark(
     marker: Marker,
     mode: ViewMode,
 ) -> Result<MarkOutcome, DomainError> {
-    let root_path = state
-        .config
-        .library_roots
-        .get(root)
-        .ok_or(DomainError::RootIndex)?
-        .clone();
-    let rel_owned = rel.to_string();
-    let write_path = root_path.clone();
-    let (created, canonical_root) =
-        tokio::task::spawn_blocking(move || write_marker(&write_path, &rel_owned, marker))
-            .await
-            .map_err(|_| {
-                DomainError::WriteFailed(std::io::Error::other("marker write task failed"))
-            })??;
-
-    // A self-write may not bump the folder mtime, so force a re-list on rescan.
-    invalidate_index(state, &canonical_root, rel);
-
-    let rel_for_edit = rel.to_string();
-    let marker_for_edit = marker;
-    let raw = state
-        .cache
-        .apply_marker_or_build(
-            move |raw| apply_mark_raw(raw, root, &rel_for_edit, marker_for_edit),
-            || {
-                build_view(
-                    state.config.as_ref(),
-                    &state.settings,
-                    Arc::clone(&state.dir_index),
-                )
-            },
-        )
-        .await;
+    let applied = state.store.write_mark(root, rel, marker).await?;
     Ok(MarkOutcome {
-        view: Arc::new(render_view(&raw, mode)),
-        created,
+        view: Arc::new(render_view(&applied.raw, mode)),
+        created: applied.created,
     })
 }
 
@@ -210,7 +178,16 @@ pub async fn unmark(
     };
 
     // A self-delete may not bump the folder mtime, so force a re-list on rebuild.
-    invalidate_index(state, &canonical_root, rel);
+    // Inlined invalidate; Task 4 removes this whole block by migrating unmark
+    // through the store.
+    {
+        let target = if rel == "." {
+            canonical_root.clone()
+        } else {
+            canonical_root.join(rel)
+        };
+        lock_index(&state.dir_index).invalidate(&target);
+    }
 
     let section_root = root_path.clone();
     let section_settings = Arc::clone(&state.settings);
@@ -237,47 +214,6 @@ pub async fn unmark(
         )
         .await;
     Ok(Arc::new(render_view(&raw, mode)))
-}
-
-/// Guard the target and create the marker file, on a blocking task. The root base
-/// comes from config, so only `rel` is request-controlled. It is re-validated by
-/// canonicalizing the join and confirming it stays inside the root. The open is
-/// create-only: `Ok(true)` when this call made the file, `Ok(false)` when it was
-/// already there, which keeps a re-mark a no-op and lets undo delete only files it
-/// created.
-fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(bool, PathBuf), DomainError> {
-    let started = Instant::now();
-    let canonical_root = std::fs::canonicalize(root).map_err(|_| DomainError::TargetMissing)?;
-    let target = if rel == "." {
-        canonical_root.clone()
-    } else {
-        canonical_root.join(rel)
-    };
-    let canonical_target =
-        std::fs::canonicalize(&target).map_err(|_| DomainError::TargetMissing)?;
-    if !canonical_target.starts_with(&canonical_root) {
-        return Err(DomainError::OutsideRoots);
-    }
-    if !canonical_target.is_dir() {
-        return Err(DomainError::NotADirectory);
-    }
-    let created = match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(canonical_target.join(marker.filename()))
-    {
-        Ok(_) => true,
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => false,
-        Err(e) => return Err(DomainError::WriteFailed(e)),
-    };
-    tracing::debug!(
-        rel,
-        marker = marker.filename(),
-        created,
-        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
-        "wrote marker"
-    );
-    Ok((created, canonical_root))
 }
 
 /// Guard the target and delete the marker file. The guarded mirror of
@@ -317,51 +253,6 @@ fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<PathBuf, Doma
         "removed marker"
     );
     Ok(canonical_root)
-}
-
-/// Apply a marker write to the raw view. For a non-root mark with path `P`:
-/// every entry whose `rel_path` equals `P` or starts with `P` followed by `/`
-/// flips `missing_ebook` to false, and the entry whose `rel_path` equals `P`
-/// gains the marker filename in `cover_files`. For a root mark (rel == ".",
-/// see ADR-0005): every entry under that root flips `missing_ebook` to false,
-/// and the empty-rel-path entry gains the marker filename. Component-aware
-/// match: `Author` does not cover `Authority/X`.
-pub(crate) fn apply_mark_raw(raw: &mut state::RawView, root: usize, rel: &str, marker: Marker) {
-    let Some(section) = raw.get_mut(root) else {
-        return;
-    };
-    let scanner::RootScan::Walked { folders, .. } = section else {
-        // A Failed section has no folders to flip; the next rescan will
-        // reflect the marker on disk when the slot rebuilds.
-        return;
-    };
-    if rel == "." {
-        for folder in folders.iter_mut() {
-            folder.missing_ebook = false;
-            if folder.rel_path.as_os_str().is_empty() {
-                add_marker(&mut folder.cover_files, marker);
-            }
-        }
-        return;
-    }
-    let marked = std::path::PathBuf::from(rel);
-    for folder in folders.iter_mut() {
-        if folder.rel_path == marked {
-            folder.missing_ebook = false;
-            add_marker(&mut folder.cover_files, marker);
-        } else if folder.rel_path.starts_with(&marked) {
-            // PathBuf::starts_with is component-aware, so Author does not match
-            // Authority/X; this is the correctness pin against a naive str cmp.
-            folder.missing_ebook = false;
-        }
-    }
-}
-
-fn add_marker(cover_files: &mut Vec<String>, marker: Marker) {
-    let name = marker.filename().to_string();
-    if !cover_files.iter().any(|existing| existing == &name) {
-        cover_files.push(name);
-    }
 }
 
 /// Render the cached raw view into the requested `ViewMode`'s `FlaggedView`. The
@@ -482,23 +373,6 @@ pub(crate) fn lock_index(
     index
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
-/// Drop the index entry for `rel` under `root` so the next walk re-lists it. Used
-/// after this process writes or deletes a marker, so the change is picked up even
-/// if the directory mtime resolution would have hidden the same-tick write. A
-/// no-op when the path was never indexed.
-///
-/// `canonical_root` must already be canonicalized by the caller. `write_marker`
-/// and `delete_marker` do that on `spawn_blocking` and hand back the result, so
-/// the sync `canonicalize` syscall stays off the async runtime thread.
-fn invalidate_index(state: &AppState, canonical_root: &Path, rel: &str) {
-    let target = if rel == "." {
-        canonical_root.to_path_buf()
-    } else {
-        canonical_root.join(rel)
-    };
-    lock_index(&state.dir_index).invalidate(&target);
 }
 
 #[cfg(test)]
@@ -852,56 +726,6 @@ mod tests {
     }
 
     #[test]
-    fn write_marker_creates_each_marker_file() {
-        for marker in Marker::ALL {
-            let dir = tempfile::tempdir().unwrap();
-            fs::create_dir_all(dir.path().join("Book")).unwrap();
-            write_marker(dir.path(), "Book", marker).unwrap();
-            assert!(dir.path().join("Book").join(marker.filename()).exists());
-        }
-    }
-
-    #[test]
-    fn write_marker_reports_created_then_not_created() {
-        let dir = tempfile::tempdir().unwrap();
-        fs::create_dir_all(dir.path().join("Book")).unwrap();
-        // First write creates the file.
-        assert!(write_marker(dir.path(), "Book", Marker::NoEbook).unwrap().0);
-        // Second write finds it already there: not created, file still present.
-        assert!(!write_marker(dir.path(), "Book", Marker::NoEbook).unwrap().0);
-        assert!(dir.path().join("Book").join(".no_ebook").exists());
-    }
-
-    #[test]
-    fn write_marker_at_the_root_uses_dot() {
-        let dir = tempfile::tempdir().unwrap();
-        write_marker(dir.path(), ".", Marker::NoEbook).unwrap();
-        assert!(dir.path().join(".no_ebook").exists());
-    }
-
-    #[test]
-    fn write_marker_rejects_an_escape() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = write_marker(dir.path(), "..", Marker::NoEbook).unwrap_err();
-        assert!(matches!(err, DomainError::OutsideRoots));
-    }
-
-    #[test]
-    fn write_marker_missing_target_is_an_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = write_marker(dir.path(), "Nope", Marker::NoEbook).unwrap_err();
-        assert!(matches!(err, DomainError::TargetMissing));
-    }
-
-    #[test]
-    fn write_marker_rejects_a_file_target() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let err = write_marker(dir.path(), "Book/01.mp3", Marker::NoEbook).unwrap_err();
-        assert!(matches!(err, DomainError::NotADirectory));
-    }
-
-    #[test]
     fn delete_marker_removes_each_marker_file() {
         for marker in Marker::ALL {
             let dir = tempfile::tempdir().unwrap();
@@ -950,13 +774,13 @@ mod tests {
             .unwrap();
         assert!(matches!(after.view[0].state, RootState::Clean));
         assert!(dir.path().join("Book/.no_ebook").exists());
-        let raw_after_mark = state.cache.peek_stored_arc().await.expect("warmed slot");
+        let raw_after_mark = state.store.peek_stored_arc().await.expect("warmed slot");
 
         // A new gap appears on disk, but the warm TTL means the next read
         // serves from the cached raw slot rather than rescanning.
         touch(&dir.path().join("Other/01.mp3"));
         let _again = current_view(&state, ViewMode::GapsOnly).await;
-        let raw_after_read = state.cache.peek_stored_arc().await.expect("warmed slot");
+        let raw_after_read = state.store.peek_stored_arc().await.expect("warmed slot");
         // Drop the post-mark snapshot before the assert so the diagnostic
         // doesn't accidentally include extra holders if the test is extended.
         drop(raw_after_read.clone());
