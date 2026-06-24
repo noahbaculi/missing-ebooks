@@ -65,7 +65,7 @@ The 82 tests in `web.rs::tests` split three ways. Cluster counts are approximate
 | A. Row shape and depth | Container-top, container-nested, flagged-leaf classes by depth | `render_node` |
 | B. Loose / mixed badges | `smell_label` output for loose-at-top and holds-audio-plus-subfolders | `smell_label` |
 | C. File lists and counts | Singular vs plural file count, collapsed `<details>` file list, mixed-node ordering | `file_count`, `file_rows` |
-| D. Section structure | `<section>` wrapper, `data-root` and `data-total-audiobooks` attrs, root-badge for Forest / Clean / Error, the empty-Forest "Nothing here" arm, the inline-alert arm, the scan-bar wrapper | `render_section`, `root_badge` |
+| D. Section structure | `<section>` wrapper, `data-root` and `data-total-audiobooks` attrs, root-badge for Forest / Clean / Error, the empty-Forest "Nothing here" arm, the inline-alert arm | `render_section`, `root_badge` |
 | E. Marker buttons and action sheet | Button visibility per view mode, confirm metadata, action-sheet title and labels, search-section row, covered-row suppression, marker-delay class in gaps-only, written marker badge on a row after a mark | `marker_buttons`, `row_actions` |
 | F. Search links | One link, every configured link, omitted-when-none, popover menu shape, percent-encoded query | `search_links` |
 | G. Cover files and status icons | All-view lists the covering ebook, gaps-only suppresses cover files and status icons, all-view dims covered rows | `cover_files_span`, `status_icon` |
@@ -76,7 +76,7 @@ The 82 tests in `web.rs::tests` split three ways. Cluster counts are approximate
 | Cluster | What it pins | Page surface |
 |---|---|---|
 | P1. Head and shell | Inline favicon, prepaint accent bootstrap, stylesheet link, noscript notice, body-end script tags (htmx, htmx-sse, app.js) | `page::page` head and body-end blocks |
-| P2. Navbar | Brand mark, spacer placement, view toggle active segment, settings cog and theme/confirm controls, accent picker panel, flagged-badge with hover title, decorative-icon `aria-hidden`, shortcuts panel inside settings, rescan form attrs (`hx-target="#roots"`, `hx-post="/rescan"`, `hx-disabled-elt`) | `page::page` navbar, `view_toggle`, `settings_menu` |
+| P2. Navbar and indicators | Brand mark, spacer placement, view toggle active segment, settings cog and theme/confirm controls, accent picker panel, flagged-badge with hover title, decorative-icon `aria-hidden`, shortcuts panel inside settings, rescan form attrs (`hx-target="#roots"`, `hx-post="/rescan"`, `hx-disabled-elt`), `scan_bar()` shape | `page::page` navbar, `view_toggle`, `settings_menu`, `scan_bar` |
 | P3. Search box | Disabled filter input with no-matches line, hidden themed clear button | `search_box` |
 | P4. Stack | Hidden connection banner, confirm dialog, toast stack and template | `conn_banner`, `confirm_dialog`, `toast` |
 
@@ -93,7 +93,7 @@ The 82 tests in `web.rs::tests` split three ways. Cluster counts are approximate
 
 `index_renders_the_marker_buttons_and_script`: the marker-button assertion belongs in render cluster E. The `<script>` tag assertion folds into page cluster P1, which pins the head and body-end script tags wholesale.
 
-`rescan_is_an_in_place_htmx_swap_with_a_progress_bar`: the rescan form attrs (`hx-target`, `hx-post`, `hx-disabled-elt`) sit in `page::page`'s navbar, so the form-attr part goes to page cluster P2. The `#scan-bar` indicator and the progress-bar markup live in `render_view`, so the scan-bar shape goes to render cluster D. No handler-shape part survives in `web.rs`.
+`rescan_is_an_in_place_htmx_swap_with_a_progress_bar`: the rescan form attrs (`hx-target`, `hx-post`, `hx-disabled-elt`) sit in `page::page`'s navbar, so the form-attr part goes to page cluster P2. The `#scan-bar` indicator helper is `page::scan_bar()`, so the scan-bar id pin also goes to P2 (calling `scan_bar()` directly). No handler-shape part survives in `web.rs`.
 
 ## Migration shape
 
