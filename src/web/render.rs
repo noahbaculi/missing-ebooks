@@ -806,4 +806,37 @@ mod tests {
         let html = render_section(&view, 0, None, &[], ViewMode::GapsOnly).into_string();
         assert!(html.contains(r#"data-root="0""#));
     }
+
+    #[test]
+    fn index_marks_loose_and_mixed_flagged_folders() {
+        // A loose gap: a flagged leaf at the top of the root.
+        let loose = flagged_leaf("The Hobbit", "The Hobbit", &["01.mp3"]);
+
+        // A mixed gap: a parent that itself holds audio AND has a flagged child.
+        let mixed = Node {
+            name: "Terry Pratchett".into(),
+            rel_path: "Terry Pratchett".into(),
+            directly_holds_audio: true,
+            missing_ebook: true,
+            children: vec![flagged_leaf(
+                "Going Postal",
+                "Terry Pratchett/Going Postal",
+                &["01.mp3"],
+            )],
+            cover_files: Vec::new(),
+            audio_files: vec!["01.mp3".into()],
+        };
+
+        let view = vec![section("/lib", forest(vec![loose, mixed]), 3)];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+
+        assert!(
+            html.contains("loose at top"),
+            "the top-level book is marked loose"
+        );
+        assert!(
+            html.contains("holds audio + subfolders"),
+            "the half-sorted author is marked mixed"
+        );
+    }
 }

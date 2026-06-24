@@ -321,31 +321,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn index_marks_loose_and_mixed_flagged_folders() {
-        let dir = tempfile::tempdir().unwrap();
-        // A loose gap: a book folder at the very top, with no author folder around it.
-        touch(&dir.path().join("The Hobbit/01.mp3"));
-        // A mixed node: an author folder that holds a loose file and also a gap subfolder.
-        touch(&dir.path().join("Terry Pratchett/01.mp3"));
-        touch(&dir.path().join("Terry Pratchett/Going Postal/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        assert!(
-            body.contains("loose at top"),
-            "the top-level book is marked loose"
-        );
-        assert!(
-            body.contains("holds audio + subfolders"),
-            "the half-sorted author is marked mixed"
-        );
-    }
-
-    #[tokio::test]
     async fn index_shows_a_file_count_and_a_collapsed_file_list_on_a_flagged_leaf() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01 - The Gunslinger.mp3"));
