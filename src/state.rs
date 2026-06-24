@@ -19,15 +19,6 @@ use crate::service::DomainError;
 /// scan cache, and the autosync registry. Shared as `Arc<AppState>`.
 pub struct AppState {
     pub(crate) config: Arc<Config>,
-    // settings and dir_index are removed in Task 7; the store owns the
-    // canonical references during the transition.
-    #[allow(dead_code)]
-    pub(crate) settings: Arc<ScanSettings>,
-    /// The shared per-directory mtime index. Read by every scan path and
-    /// discarded only on a `/rescan` click or process restart (see ADR-0020,
-    /// ADR-0023). A blocking scan locks it to reuse unchanged directories.
-    #[allow(dead_code)]
-    pub(crate) dir_index: Arc<StdMutex<DirIndex>>,
     pub(crate) store: RawViewStore,
     /// The autosync subscriber registry and loop handle. The loop spawns on the
     /// first SSE subscription with a non-zero `autosync_interval_seconds` and
@@ -154,6 +145,13 @@ impl RawViewStore {
         let slot = self.entries.lock().await;
         slot.as_ref().map(|entry| Arc::clone(&entry.raw))
     }
+
+    /// Test accessor: returns the shared dir index. Used in tests that need
+    /// to insert synthetic entries or assert on the index's content.
+    #[cfg(test)]
+    pub fn dir_index(&self) -> &Arc<StdMutex<DirIndex>> {
+        &self.dir_index
+    }
 }
 
 impl AppState {
@@ -166,19 +164,15 @@ impl AppState {
             Some(Duration::from_secs(config.ttl_seconds))
         };
         let config = Arc::new(config);
-        let settings = Arc::new(settings);
-        let dir_index = Arc::new(StdMutex::new(DirIndex::new()));
         let autosync = crate::autosync::Autosync::new(config.autosync_interval_seconds);
         let store = RawViewStore::new(
             Arc::clone(&config),
-            Arc::clone(&settings),
-            Arc::clone(&dir_index),
+            Arc::new(settings),
+            Arc::new(StdMutex::new(DirIndex::new())),
             ttl,
         );
         AppState {
             config,
-            settings,
-            dir_index,
             store,
             autosync,
         }

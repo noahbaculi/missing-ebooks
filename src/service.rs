@@ -471,13 +471,13 @@ mod tests {
 
         // Warm the index by reading once.
         let _ = current_view(&state, ViewMode::GapsOnly).await;
-        let after_warm = state.dir_index.lock().unwrap().len();
+        let after_warm = state.store.dir_index().lock().unwrap().len();
         assert!(after_warm > 0, "the warm read populated the dir index");
 
         // Drop a synthetic entry into the index that no real walk could reach.
         // A cold rescan must drop it; a warm rescan would preserve it.
         let synthetic_path = std::path::PathBuf::from("/nonexistent/synthetic/marker/path");
-        state.dir_index.lock().unwrap().insert(
+        state.store.dir_index().lock().unwrap().insert(
             synthetic_path.clone(),
             scanner::CachedDir {
                 mtime: std::time::UNIX_EPOCH,
@@ -488,7 +488,8 @@ mod tests {
         );
         assert!(
             state
-                .dir_index
+                .store
+                .dir_index()
                 .lock()
                 .unwrap()
                 .get(&synthetic_path)
@@ -499,14 +500,15 @@ mod tests {
         let _ = rescan(&state, ViewMode::GapsOnly).await;
         assert!(
             state
-                .dir_index
+                .store
+                .dir_index()
                 .lock()
                 .unwrap()
                 .get(&synthetic_path)
                 .is_none(),
             "rescan must clear the dir index, dropping the synthetic entry"
         );
-        let after_rescan = state.dir_index.lock().unwrap().len();
+        let after_rescan = state.store.dir_index().lock().unwrap().len();
         assert_eq!(
             after_rescan, after_warm,
             "rescan must clear and repopulate to the same count on an unchanged tree"
@@ -526,7 +528,7 @@ mod tests {
         assert!(matches!(first[0].state, RootState::Forest(_)));
         assert!(matches!(second[0].state, RootState::Forest(_)));
 
-        let reused = state.dir_index.lock().unwrap().len();
+        let reused = state.store.dir_index().lock().unwrap().len();
         assert!(reused > 0, "the index retained the walked directories");
     }
 
@@ -541,7 +543,7 @@ mod tests {
         let canonical = std::fs::canonicalize(dir.path()).unwrap();
         let book = canonical.join("Book");
         assert!(
-            state.dir_index.lock().unwrap().get(&book).is_some(),
+            state.store.dir_index().lock().unwrap().get(&book).is_some(),
             "Book is indexed after the scan"
         );
 
@@ -551,7 +553,7 @@ mod tests {
             .await
             .unwrap();
         assert!(
-            state.dir_index.lock().unwrap().get(&book).is_none(),
+            state.store.dir_index().lock().unwrap().get(&book).is_none(),
             "Book's index entry is invalidated by the marker write"
         );
     }
