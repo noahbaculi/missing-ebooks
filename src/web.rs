@@ -321,25 +321,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn index_wraps_the_sections_in_a_roots_container() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The root sections live inside a positioned wrapper so the rescan bar
-        // can pin above them, and inside #roots so htmx can swap them in place.
-        assert!(body.contains(r#"class="roots-wrap""#));
-        assert!(body.contains(r#"id="roots""#));
-        // The sections themselves are unchanged.
-        assert!(body.contains(r#"class="card root""#));
-    }
-
-    #[tokio::test]
     async fn marker_form_delays_the_swap_only_in_gaps_only() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
@@ -446,19 +427,6 @@ mod tests {
         assert!(body.contains("%23605dff"));
         assert!(body.contains("prefers-color-scheme:dark"));
         assert!(!body.contains("width='22'"));
-    }
-
-    #[tokio::test]
-    async fn index_shows_the_clean_message_for_a_covered_root() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        touch(&dir.path().join("Book/Book.epub"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        assert!(body.contains("No missing ebooks in this root"));
     }
 
     #[tokio::test]
@@ -1207,58 +1175,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn each_root_renders_a_collapsible_summary_with_a_gap_count() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Author/Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The root head is now a <summary> inside a collapsible <details>.
-        assert!(body.contains(r#"class="root-fold""#));
-        assert!(body.contains("root-head"));
-        // One gap under this root, so the badge reads "1 gap".
-        assert!(body.contains("1 gap"));
-    }
-
-    #[tokio::test]
-    async fn a_clean_root_badge_reads_no_gaps() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        touch(&dir.path().join("Book/Book.epub"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        assert!(body.contains("no gaps"));
-    }
-
-    #[tokio::test]
-    async fn all_view_shows_nothing_here_for_a_root_with_no_folders() {
-        let dir = tempfile::tempdir().unwrap();
-        // An empty root: no subfolders, no audio.
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(
-                    Request::builder()
-                        .uri("/?view=all")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap(),
-        )
-        .await;
-        assert!(body.contains("Nothing here"));
-    }
-
-    #[tokio::test]
     async fn all_view_lists_the_covering_ebook_on_a_covered_row() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Author/Covered/01.mp3"));
@@ -1585,38 +1501,6 @@ mod tests {
         assert!(body.contains("audiobooks"));
         // The all-clear line renders too, hidden until the live total reaches zero.
         assert!(body.contains(r#"id="gap-summary-clear" hidden"#));
-    }
-
-    #[tokio::test]
-    async fn section_open_tag_carries_total_audiobooks_data_attr() {
-        let dir = tempfile::tempdir().unwrap();
-        // Two audiobook folders, one covered, one a flagged gap.
-        touch(&dir.path().join("A/B1/01.mp3"));
-        touch(&dir.path().join("A/B2/01.mp3"));
-        touch(&dir.path().join("A/B2/B2.epub"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // Walked root carries the audiobook total on its outer <section>.
-        assert!(body.contains(r#"data-total-audiobooks="2""#));
-    }
-
-    #[tokio::test]
-    async fn section_open_tag_carries_zero_total_audiobooks_for_errored_root() {
-        let body = body_string(
-            app_for_roots(&[Path::new("/no/such/root/xyz123")])
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // Errored root still carries the attribute so the JS aggregator
-        // never has to special-case missing attrs.
-        assert!(body.contains(r#"data-total-audiobooks="0""#));
     }
 
     #[tokio::test]

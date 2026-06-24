@@ -905,4 +905,92 @@ mod tests {
         assert!(html.contains(r#"class="file-row""#));
         assert!(html.contains("Going Postal"));
     }
+
+    #[test]
+    fn index_wraps_the_sections_in_a_roots_container() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The root sections live inside a positioned wrapper so the rescan bar
+        // can pin above them, and inside #roots so htmx can swap them in place.
+        assert!(html.contains(r#"class="roots-wrap""#));
+        assert!(html.contains(r#"id="roots""#));
+        // The sections themselves are unchanged.
+        assert!(html.contains(r#"class="card root""#));
+    }
+
+    #[test]
+    fn each_root_renders_a_collapsible_summary_with_a_gap_count() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![flagged_leaf("Book", "Author/Book", &["01.mp3"])],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The root head is now a <summary> inside a collapsible <details>.
+        assert!(html.contains(r#"class="root-fold""#));
+        assert!(html.contains("root-head"));
+        // One gap under this root, so the badge reads "1 gap".
+        assert!(html.contains("1 gap"));
+    }
+
+    #[test]
+    fn a_clean_root_badge_reads_no_gaps() {
+        let view = vec![clean("/lib", 1)];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        assert!(html.contains("no gaps"));
+    }
+
+    #[test]
+    fn all_view_shows_nothing_here_for_a_root_with_no_folders() {
+        // A walked-but-empty root in show-all keeps the `Forest(vec![])` arm
+        // so the "Nothing here" branch fires for the loose-root edge case.
+        let view = vec![section("/lib", forest(vec![]), 0)];
+        let html = render_view(&view, &[], ViewMode::All).into_string();
+        assert!(html.contains("Nothing here"));
+    }
+
+    #[test]
+    fn index_shows_the_clean_message_for_a_covered_root() {
+        let view = vec![clean("/lib", 1)];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        assert!(html.contains("No missing ebooks in this root"));
+    }
+
+    #[test]
+    fn section_open_tag_carries_total_audiobooks_data_attr() {
+        // Two audiobook folders under a shared parent. The renderer takes
+        // the count verbatim from RootSection.total_audiobooks.
+        let view = section(
+            "/lib",
+            forest(vec![container(
+                "A",
+                "A",
+                vec![
+                    flagged_leaf("B1", "A/B1", &["01.mp3"]),
+                    covered_leaf("B2", "A/B2", &["B2.epub"]),
+                ],
+            )]),
+            2,
+        );
+        let html = render_section(&view, 0, None, &[], ViewMode::GapsOnly).into_string();
+        // Walked root carries the audiobook total on its outer <section>.
+        assert!(html.contains(r#"data-total-audiobooks="2""#));
+    }
+
+    #[test]
+    fn section_open_tag_carries_zero_total_audiobooks_for_errored_root() {
+        let view = errored("/no/such/root/xyz123", "no such file or directory");
+        let html = render_section(&view, 0, None, &[], ViewMode::GapsOnly).into_string();
+        // Errored root still carries the attribute so the JS aggregator
+        // never has to special-case missing attrs.
+        assert!(html.contains(r#"data-total-audiobooks="0""#));
+    }
 }
