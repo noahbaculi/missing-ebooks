@@ -24,7 +24,7 @@ use crate::state;
 ///
 /// `has_subs[mode]` short-circuits modes nobody is listening to: their hashes
 /// stay untouched and they produce no pushes.
-pub(crate) fn compute_pushes(
+fn compute_pushes(
     raw: &state::RawView,
     last_hash: &mut EnumMap<ViewMode, Vec<Option<u64>>>,
     has_subs: EnumMap<ViewMode, bool>,
@@ -67,7 +67,7 @@ fn stable_hash(s: &str) -> u64 {
 /// packaging), then delegates to `web::render::single_oob_section` so the OOB
 /// wrapping uses one renderer shared with the page-level snapshot path (see
 /// ADR-0024).
-pub(crate) fn render_oob_section(
+fn render_oob_section(
     raw_section: &crate::scanner::RootScan,
     root_idx: usize,
     mode: ViewMode,
@@ -82,7 +82,7 @@ pub(crate) fn render_oob_section(
 /// section events. The handler sends the payload, then passes the hashes to
 /// `Autosync::subscribe` so the loop's first compute_pushes finds matching
 /// hashes and emits nothing until something actually changes.
-pub(crate) fn snapshot_and_seed(
+fn snapshot_and_seed(
     raw: &state::RawView,
     mode: ViewMode,
     links: &[crate::config::SearchLink],
@@ -102,9 +102,6 @@ pub(crate) fn snapshot_and_seed(
 /// raw read, snapshot send, registry subscription with seed hashes) so the
 /// "snapshot before subscribe" ordering invariant lives in one place. See
 /// ADR-0023 and ADR-0024.
-// `web::events` switches to this in the next commit; until then only the test
-// references it from the non-test build.
-#[allow(dead_code)]
 pub(crate) async fn attach(
     state: &Arc<crate::state::AppState>,
     mode: ViewMode,
@@ -210,7 +207,7 @@ impl Autosync {
     /// non-zero. The caller is responsible for sending the snapshot event
     /// into `sender` first so the channel's first event is always the
     /// snapshot.
-    pub(crate) fn subscribe_and_seed(
+    fn subscribe_and_seed(
         &self,
         state: &Arc<crate::state::AppState>,
         mode: ViewMode,

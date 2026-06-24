@@ -209,24 +209,7 @@ pub(crate) fn events_response(rx: mpsc::Receiver<Result<Event, Infallible>>) -> 
 /// `KeepAlive` every 15 seconds to survive idle TCP drops by reverse proxies.
 async fn events(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery>) -> Response {
     let mode = ViewMode::from_query(query.view.as_deref());
-    let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(16);
-
-    // Build the snapshot payload AND the per-root hashes from the same raw
-    // view, so the loop's first tick suppresses redundant section events for
-    // sections the snapshot already carried (see ADR-0024).
-    let raw = state.store.current().await;
-    let (snapshot, seed_hashes) =
-        crate::autosync::snapshot_and_seed(&raw, mode, &state.config.search_links);
-    let _ = tx
-        .send(Ok(Event::default().event("snapshot").data(snapshot)))
-        .await;
-
-    // Register with the autosync registry. Spawns the loop if this is the
-    // first subscriber and the interval is non-zero.
-    state
-        .autosync
-        .subscribe_and_seed(&state, mode, tx, seed_hashes);
-
+    let rx = crate::autosync::attach(&state, mode).await;
     events_response(rx)
 }
 
