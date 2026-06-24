@@ -35,13 +35,9 @@ Make the "what counts as the wire bytes for a section, and what hash represents 
 Add one private helper to `src/autosync.rs`:
 
 ```rust
-/// Render the OOB-swap bytes for one section and hash those exact bytes,
-/// returning the pair both autosync paths need. Shared by `snapshot_and_seed`
-/// (which seeds the registry's per-root baseline) and `compute_pushes` (which
-/// diffs each tick against the baseline) so the seed hash a subscriber writes
-/// always equals the loop's first-tick hash for unchanged bytes — the
-/// ADR-0024 byte-equality invariant becomes structural rather than
-/// authorship-enforced.
+/// Render one section's OOB-swap bytes and hash them. Shared by
+/// `snapshot_and_seed` and `compute_pushes` so the seed hash and the loop's
+/// first-tick hash agree by construction (ADR-0024).
 fn rendered_oob_with_hash(
     scan: &crate::scanner::RootScan,
     root_idx: usize,
@@ -100,14 +96,8 @@ Add one test pinning the pair contract:
 ```rust
 #[test]
 fn rendered_oob_with_hash_returns_render_oob_section_paired_with_its_stable_hash() {
-    // Given a representative RootScan, the pair the helper yields equals
-    // (render_oob_section(...), stable_hash(render_oob_section(...))) byte for
-    // byte. This is what makes seed hashes and first-tick hashes structurally
-    // identical.
-    // Build a walked RootScan the same way the existing
-    // `render_oob_section_html_carries_total_audiobooks_for_a_walked_root`
-    // test does (autosync.rs:696), so the input matches the shape autosync
-    // sees in production.
+    // Mirror the walked-RootScan setup from
+    // `render_oob_section_html_carries_total_audiobooks_for_a_walked_root`.
     let raw = /* representative walked RootScan */;
     let links: &[crate::config::SearchLink] = &[];
 
