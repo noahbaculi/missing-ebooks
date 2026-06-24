@@ -128,6 +128,7 @@ impl Cache {
     /// already mutated the cache, so the section is rebuilt by a fresh per-root
     /// scan. A cold or stale slot is rebuilt from `build_full` rather than
     /// spliced into stale neighbors.
+    #[allow(dead_code)] // Cache is deleted in a later commit.
     pub(crate) async fn rebuild_root<RS, RsFut, F, Fut>(
         &self,
         root: usize,
@@ -372,6 +373,56 @@ impl RawViewStore {
         };
         crate::service::lock_index(&self.dir_index).invalidate(&target);
     }
+
+    /// Delete a marker file and refresh the cached view by rescanning the one
+    /// affected root (ADR-0002). The guard and delete run on a blocking task;
+    /// the cache lock is held only for the per-root rebuild.
+    pub async fn remove_mark(
+        &self,
+        root: usize,
+        rel: &str,
+        marker: Marker,
+    ) -> Result<Arc<RawView>, DomainError> {
+        let root_path = self
+            .config
+            .library_roots
+            .get(root)
+            .ok_or(DomainError::RootIndex)?
+            .clone();
+        let rel_owned = rel.to_string();
+        let delete_path = root_path.clone();
+        let canonical_root =
+            tokio::task::spawn_blocking(move || delete_marker(&delete_path, &rel_owned, marker))
+                .await
+                .map_err(|_| {
+                    DomainError::WriteFailed(std::io::Error::other("marker delete task failed"))
+                })??;
+
+        // A self-delete may not bump the folder mtime, so force a re-list.
+        self.invalidate_index(&canonical_root, rel);
+
+        let raw = {
+            let mut slot = self.entries.lock().await;
+            if slot.as_ref().is_some_and(|entry| is_fresh(entry, self.ttl)) {
+                let section = crate::service::build_section(
+                    root_path.clone(),
+                    Arc::clone(&self.settings),
+                    Arc::clone(&self.dir_index),
+                )
+                .await;
+                let entry = slot.as_mut().expect("checked Some above");
+                let raw = Arc::make_mut(&mut entry.raw);
+                if root < raw.len() {
+                    raw[root] = section;
+                }
+                Arc::clone(&entry.raw)
+            } else {
+                let raw = self.build_view().await;
+                store_fresh(&mut slot, raw)
+            }
+        };
+        Ok(raw)
+    }
 }
 
 /// Guard the target and create the marker file, on a blocking task. The root
@@ -413,6 +464,46 @@ fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(bool, PathBuf
         "wrote marker"
     );
     Ok((created, canonical_root))
+}
+
+/// Guard the target and delete the marker file. The guarded mirror of
+/// `write_marker`: same canonicalize-and-stay-inside-the-root check. Undo is
+/// tolerant: a missing file or a folder that no longer exists is success,
+/// since the intended end state (no marker) already holds. Runs on a blocking
+/// task.
+fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<PathBuf, DomainError> {
+    let started = Instant::now();
+    let canonical_root = match std::fs::canonicalize(root) {
+        Ok(path) => path,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(root.to_path_buf()),
+        Err(_) => return Err(DomainError::TargetMissing),
+    };
+    let target = if rel == "." {
+        canonical_root.clone()
+    } else {
+        canonical_root.join(rel)
+    };
+    let canonical_target = match std::fs::canonicalize(&target) {
+        Ok(path) => path,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(canonical_root),
+        Err(_) => return Err(DomainError::TargetMissing),
+    };
+    if !canonical_target.starts_with(&canonical_root) {
+        return Err(DomainError::OutsideRoots);
+    }
+    let removed = match std::fs::remove_file(canonical_target.join(marker.filename())) {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => return Err(DomainError::WriteFailed(e)),
+    };
+    tracing::debug!(
+        rel,
+        marker = marker.filename(),
+        removed,
+        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+        "removed marker"
+    );
+    Ok(canonical_root)
 }
 
 /// Apply a marker write to the raw view. For a non-root mark with path `P`:
@@ -825,5 +916,58 @@ mod tests {
         crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
         let err = write_marker(dir.path(), "Book/01.mp3", Marker::NoEbook).unwrap_err();
         assert!(matches!(err, DomainError::NotADirectory));
+    }
+
+    #[test]
+    fn delete_marker_removes_each_marker_file() {
+        for marker in Marker::ALL {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::create_dir_all(dir.path().join("Book")).unwrap();
+            let path = dir.path().join("Book").join(marker.filename());
+            std::fs::write(&path, b"").unwrap();
+            delete_marker(dir.path(), "Book", marker).unwrap();
+            assert!(!path.exists());
+        }
+    }
+
+    #[test]
+    fn delete_marker_rejects_an_escape() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = delete_marker(dir.path(), "..", Marker::NoEbook).unwrap_err();
+        assert!(matches!(err, DomainError::OutsideRoots));
+    }
+
+    #[test]
+    fn delete_marker_is_tolerant_of_a_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("Book")).unwrap();
+        delete_marker(dir.path(), "Book", Marker::NoEbook).unwrap();
+    }
+
+    #[test]
+    fn delete_marker_is_tolerant_of_a_missing_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        delete_marker(dir.path(), "Gone", Marker::NoEbook).unwrap();
+    }
+
+    #[tokio::test]
+    async fn store_remove_mark_re_flags_the_root() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        let _ = store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        assert!(dir.path().join("Book/.no_ebook").exists());
+
+        let after = store.remove_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        assert!(!dir.path().join("Book/.no_ebook").exists());
+        let scanner::RootScan::Walked { folders, .. } = &after[0] else {
+            panic!("expected Walked");
+        };
+        let book = folders
+            .iter()
+            .find(|f| f.rel_path.to_str() == Some("Book"))
+            .unwrap();
+        assert!(book.missing_ebook, "remove_mark re-flagged the folder");
     }
 }

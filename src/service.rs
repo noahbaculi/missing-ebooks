@@ -1,9 +1,11 @@
 //! Web-agnostic service layer: the read view types and the typed operations
 //! (current view, marker write) shared by the HTML UI and a future JSON API.
 
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
+
+#[cfg(test)]
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -161,98 +163,8 @@ pub async fn unmark(
     marker: Marker,
     mode: ViewMode,
 ) -> Result<Arc<FlaggedView>, DomainError> {
-    let root_path = state
-        .config
-        .library_roots
-        .get(root)
-        .ok_or(DomainError::RootIndex)?
-        .clone();
-    let rel_owned = rel.to_string();
-    let canonical_root = {
-        let delete_path = root_path.clone();
-        tokio::task::spawn_blocking(move || delete_marker(&delete_path, &rel_owned, marker))
-            .await
-            .map_err(|_| {
-                DomainError::WriteFailed(std::io::Error::other("marker delete task failed"))
-            })??
-    };
-
-    // A self-delete may not bump the folder mtime, so force a re-list on rebuild.
-    // Inlined invalidate; Task 4 removes this whole block by migrating unmark
-    // through the store.
-    {
-        let target = if rel == "." {
-            canonical_root.clone()
-        } else {
-            canonical_root.join(rel)
-        };
-        lock_index(&state.dir_index).invalidate(&target);
-    }
-
-    let section_root = root_path.clone();
-    let section_settings = Arc::clone(&state.settings);
-    let section_index = Arc::clone(&state.dir_index);
-    let build_config = Arc::clone(&state.config);
-    let build_settings = Arc::clone(&state.settings);
-    let build_index = Arc::clone(&state.dir_index);
-    let raw = state
-        .cache
-        .rebuild_root(
-            root,
-            move || {
-                let path = section_root.clone();
-                let settings = Arc::clone(&section_settings);
-                let index = Arc::clone(&section_index);
-                async move { build_section(path, settings, index).await }
-            },
-            move || {
-                let config = Arc::clone(&build_config);
-                let settings = Arc::clone(&build_settings);
-                let index = Arc::clone(&build_index);
-                async move { build_view(config.as_ref(), &settings, index).await }
-            },
-        )
-        .await;
+    let raw = state.store.remove_mark(root, rel, marker).await?;
     Ok(Arc::new(render_view(&raw, mode)))
-}
-
-/// Guard the target and delete the marker file. The guarded mirror of
-/// `write_marker`: same canonicalize-and-stay-inside-the-root check. Undo is
-/// tolerant: a missing file or a folder that no longer exists is success, since
-/// the intended end state (no marker) already holds. Runs on a blocking task.
-fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<PathBuf, DomainError> {
-    let started = Instant::now();
-    let canonical_root = match std::fs::canonicalize(root) {
-        Ok(path) => path,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(root.to_path_buf()),
-        Err(_) => return Err(DomainError::TargetMissing),
-    };
-    let target = if rel == "." {
-        canonical_root.clone()
-    } else {
-        canonical_root.join(rel)
-    };
-    let canonical_target = match std::fs::canonicalize(&target) {
-        Ok(path) => path,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(canonical_root),
-        Err(_) => return Err(DomainError::TargetMissing),
-    };
-    if !canonical_target.starts_with(&canonical_root) {
-        return Err(DomainError::OutsideRoots);
-    }
-    let removed = match std::fs::remove_file(canonical_target.join(marker.filename())) {
-        Ok(()) => true,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
-        Err(e) => return Err(DomainError::WriteFailed(e)),
-    };
-    tracing::debug!(
-        rel,
-        marker = marker.filename(),
-        removed,
-        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
-        "removed marker"
-    );
-    Ok(canonical_root)
 }
 
 /// Render the cached raw view into the requested `ViewMode`'s `FlaggedView`. The
@@ -335,7 +247,7 @@ pub(crate) async fn build_view(
 }
 
 /// Scans one root off the async runtime and folds the result into a `RootScan`.
-async fn build_section(
+pub(crate) async fn build_section(
     root: std::path::PathBuf,
     settings: Arc<ScanSettings>,
     index: Arc<std::sync::Mutex<scanner::DirIndex>>,
@@ -723,40 +635,6 @@ mod tests {
             value,
             serde_json::json!({ "path": "/lib", "state": "clean", "total_audiobooks": 0 })
         );
-    }
-
-    #[test]
-    fn delete_marker_removes_each_marker_file() {
-        for marker in Marker::ALL {
-            let dir = tempfile::tempdir().unwrap();
-            fs::create_dir_all(dir.path().join("Book")).unwrap();
-            let path = dir.path().join("Book").join(marker.filename());
-            fs::write(&path, b"").unwrap();
-            delete_marker(dir.path(), "Book", marker).unwrap();
-            assert!(!path.exists());
-        }
-    }
-
-    #[test]
-    fn delete_marker_rejects_an_escape() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = delete_marker(dir.path(), "..", Marker::NoEbook).unwrap_err();
-        assert!(matches!(err, DomainError::OutsideRoots));
-    }
-
-    #[test]
-    fn delete_marker_is_tolerant_of_a_missing_file() {
-        let dir = tempfile::tempdir().unwrap();
-        fs::create_dir_all(dir.path().join("Book")).unwrap();
-        // No marker on disk: deleting it is a success, the intended end state holds.
-        delete_marker(dir.path(), "Book", Marker::NoEbook).unwrap();
-    }
-
-    #[test]
-    fn delete_marker_is_tolerant_of_a_missing_folder() {
-        let dir = tempfile::tempdir().unwrap();
-        // The folder never existed: still a success, nothing to remove.
-        delete_marker(dir.path(), "Gone", Marker::NoEbook).unwrap();
     }
 
     #[tokio::test]
