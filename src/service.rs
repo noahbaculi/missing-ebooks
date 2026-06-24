@@ -109,18 +109,9 @@ pub enum DomainError {
 }
 
 /// Return the cached view if it is still fresh, otherwise scan and cache it.
-/// Single-flight is enforced by `Cache::get_or_build`.
+/// Single-flight is enforced by `RawViewStore::current`.
 pub async fn current_view(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> {
-    let raw = state
-        .cache
-        .get_or_build(|| {
-            build_view(
-                state.config.as_ref(),
-                &state.settings,
-                Arc::clone(&state.dir_index),
-            )
-        })
-        .await;
+    let raw = state.store.current().await;
     Arc::new(render_view(&raw, mode))
 }
 
@@ -128,17 +119,7 @@ pub async fn current_view(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> 
 /// scratch. Ignores the TTL. This is the explicit "fix any drift" path; the
 /// autosync loop keeps using warm scans (see ADR-0023).
 pub async fn rescan(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> {
-    lock_index(&state.dir_index).clear();
-    let raw = state
-        .cache
-        .rebuild(|| {
-            build_view(
-                state.config.as_ref(),
-                &state.settings,
-                Arc::clone(&state.dir_index),
-            )
-        })
-        .await;
+    let raw = state.store.rescan().await;
     Arc::new(render_view(&raw, mode))
 }
 
@@ -672,11 +653,11 @@ mod tests {
         let state = state_for(dir.path(), 600);
 
         let _first = current_view(&state, ViewMode::GapsOnly).await;
-        let raw_before = state.cache.peek_stored_arc().await.expect("warmed slot");
+        let raw_before = state.store.peek_stored_arc().await.expect("warmed slot");
         // Cover the gap on disk after the first scan.
         touch(&dir.path().join("Book/Book.epub"));
         let _second = current_view(&state, ViewMode::GapsOnly).await;
-        let raw_after = state.cache.peek_stored_arc().await.expect("warmed slot");
+        let raw_after = state.store.peek_stored_arc().await.expect("warmed slot");
 
         assert!(
             Arc::ptr_eq(&raw_before, &raw_after),
@@ -697,7 +678,7 @@ mod tests {
 
         // Warm the cache once so the racing reads land on a fresh slot.
         let _warm = current_view(&state, ViewMode::GapsOnly).await;
-        let raw_before = state.cache.peek_stored_arc().await.expect("warmed slot");
+        let raw_before = state.store.peek_stored_arc().await.expect("warmed slot");
 
         let (a, b) = tokio::join!(
             current_view(&state, ViewMode::GapsOnly),
@@ -705,7 +686,7 @@ mod tests {
         );
         assert_eq!(*a, *b, "warm concurrent renders must produce equal views");
 
-        let raw_after = state.cache.peek_stored_arc().await.expect("warmed slot");
+        let raw_after = state.store.peek_stored_arc().await.expect("warmed slot");
         assert!(
             Arc::ptr_eq(&raw_before, &raw_after),
             "warm concurrent reads must not rebuild the raw slot"

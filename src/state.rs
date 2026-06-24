@@ -23,9 +23,6 @@ pub struct AppState {
     /// ADR-0023). A blocking scan locks it to reuse unchanged directories.
     pub(crate) dir_index: Arc<StdMutex<DirIndex>>,
     pub(crate) cache: Cache,
-    // Wired into service/web/autosync in subsequent commits; field exists
-    // first so `AppState::new` can construct the store from shared Arcs.
-    #[allow(dead_code)]
     pub(crate) store: RawViewStore,
     /// The autosync subscriber registry and loop handle. The loop spawns on the
     /// first SSE subscription with a non-zero `autosync_interval_seconds` and
