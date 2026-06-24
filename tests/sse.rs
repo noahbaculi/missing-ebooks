@@ -42,7 +42,7 @@ fn setup(library_roots: Vec<PathBuf>, autosync_interval_seconds: u64) -> (Router
 async fn snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let scenario = scenarios::find_scenario("mixed-forest").expect("scenario exists");
-    let roots = (scenario.build)(dir.path());
+    let roots = scenarios::materialize(&(scenario.spec)(), dir.path());
     let (app, _state) = setup(roots, 60);
 
     // The index render carries every section, each tagged with its id.
@@ -104,7 +104,7 @@ async fn snapshot() {
 async fn change_pushes() {
     let dir = tempfile::tempdir().unwrap();
     let scenario = scenarios::find_scenario("mixed-forest").expect("scenario exists");
-    let roots = (scenario.build)(dir.path());
+    let roots = scenarios::materialize(&(scenario.spec)(), dir.path());
     let first_root = roots[0].clone();
     let (app, _state) = setup(roots, 1);
 
@@ -159,7 +159,7 @@ async fn change_pushes() {
 async fn no_change_silent() {
     let dir = tempfile::tempdir().unwrap();
     let scenario = scenarios::find_scenario("mixed-forest").expect("scenario exists");
-    let roots = (scenario.build)(dir.path());
+    let roots = scenarios::materialize(&(scenario.spec)(), dir.path());
     let (app, _state) = setup(roots, 1);
 
     let response = app

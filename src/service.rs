@@ -369,7 +369,7 @@ mod tests {
     async fn rescan_clears_the_dir_index_then_repopulates_it() {
         let dir = tempfile::tempdir().unwrap();
         let scenario = crate::scenarios::find_scenario("mixed-forest").expect("scenario exists");
-        let roots = (scenario.build)(dir.path());
+        let roots = crate::scenarios::materialize(&(scenario.spec)(), dir.path());
         let cfg = Config {
             library_roots: roots,
             ttl_seconds: 600,

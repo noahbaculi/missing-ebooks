@@ -18,7 +18,7 @@ use missing_ebooks::web::render::{oob_sections, render_section};
 async fn render_is_byte_equal_across_hits_and_a_mark_undo_round_trip() {
     let dir = tempfile::tempdir().unwrap();
     let scenario = scenarios::find_scenario("mixed-forest").expect("scenario exists");
-    let roots = (scenario.build)(dir.path());
+    let roots = scenarios::materialize(&(scenario.spec)(), dir.path());
 
     let config = Config {
         library_roots: roots,

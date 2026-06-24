@@ -180,7 +180,7 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let roots = (scenario.build)(&temp.path().join(scenario.name));
+    let roots = scenarios::materialize(&(scenario.spec)(), &temp.path().join(scenario.name));
 
     // The real server config, defaulted except for the seeded roots and the TTL.
     // The default search links stay so the row links render. The example binds

@@ -494,7 +494,7 @@ mod tests {
     fn test_state_with_interval(autosync_interval_seconds: u64) -> Arc<crate::state::AppState> {
         let dir = tempfile::tempdir().expect("tempdir");
         let scenario = crate::scenarios::find_scenario("clean-error").expect("scenario exists");
-        let roots: Vec<PathBuf> = (scenario.build)(dir.path());
+        let roots: Vec<PathBuf> = crate::scenarios::materialize(&(scenario.spec)(), dir.path());
         let config = crate::config::Config {
             library_roots: roots,
             ttl_seconds: 600,

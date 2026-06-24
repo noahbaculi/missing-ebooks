@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
     // the Linux container, where the platform temp dir is already /tmp.
     let seed_dir = std::path::Path::new("/tmp").join("missing-ebooks-demo");
     std::fs::create_dir_all(&seed_dir)?;
-    let roots = (scenario.build)(&seed_dir);
+    let roots = scenarios::materialize(&(scenario.spec)(), &seed_dir);
 
     // The production config over the seeded roots, defaulted otherwise.
     // autosync_interval_seconds=0 disables the autosync loop everywhere a
