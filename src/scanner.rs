@@ -325,6 +325,50 @@ impl From<RootScan> for crate::state::RawRootSection {
     }
 }
 
+/// Scans one library root: canonicalize, verify it is a directory, then walk.
+///
+/// Returns `Walked` on success (possibly empty when no folder qualified) and
+/// `Failed` when canonicalize or the directory check rejected the path. Runs
+/// synchronously and assumes the caller has already taken the dir-index lock.
+///
+/// Emits the same tracing events `service::scan_root` did before this move.
+#[must_use]
+pub fn scan_root(root: &Path, settings: &ScanSettings, index: &mut DirIndex) -> RootScan {
+    let canonical = match std::fs::canonicalize(root) {
+        Ok(path) => path,
+        Err(err) => {
+            tracing::warn!(
+                root = %root.display(),
+                error = %err,
+                "skipping unreadable library root"
+            );
+            return RootScan::Failed {
+                path: root.to_path_buf(),
+                message: err.to_string(),
+            };
+        }
+    };
+    if !canonical.is_dir() {
+        tracing::warn!(root = %canonical.display(), "library root is not a directory");
+        return RootScan::Failed {
+            path: canonical,
+            message: "not a directory".to_string(),
+        };
+    }
+    let (folders, stats) = scan_warm(&canonical, settings, index);
+    tracing::debug!(
+        root = %canonical.display(),
+        dirs_visited = stats.dirs_visited,
+        dirs_reused = stats.dirs_reused,
+        entries_seen = stats.entries_seen,
+        "walked root"
+    );
+    RootScan::Walked {
+        canonical_path: canonical,
+        folders,
+    }
+}
+
 /// A warm scan: stat each directory and reuse the `index` entry when the
 /// mtime is unchanged, listing and re-indexing the rest. The same `index`
 /// passed across calls makes each rescan cheaper than the last cold walk.
@@ -1291,6 +1335,72 @@ mod tests {
         let section: crate::state::RawRootSection = scan.into();
         assert_eq!(section.path, "/lib");
         assert!(matches!(section.state, crate::state::RawRootState::Clean));
+    }
+
+    #[test]
+    fn scan_root_failed_for_missing_path() {
+        let mut index = DirIndex::new();
+        let settings = default_settings(&[]);
+        let scan = scan_root(
+            Path::new("/nonexistent/path/xyz/123"),
+            &settings,
+            &mut index,
+        );
+        match scan {
+            RootScan::Failed { path, message } => {
+                assert_eq!(path, PathBuf::from("/nonexistent/path/xyz/123"));
+                assert!(!message.is_empty());
+            }
+            _ => panic!("expected Failed"),
+        }
+    }
+
+    #[test]
+    fn scan_root_failed_for_non_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("regular_file");
+        std::fs::write(&file_path, b"x").unwrap();
+        let mut index = DirIndex::new();
+        let settings = default_settings(&[]);
+        let scan = scan_root(&file_path, &settings, &mut index);
+        match scan {
+            RootScan::Failed { path, message } => {
+                // canonicalize succeeds for regular files, so path is canonical here.
+                assert_eq!(path, std::fs::canonicalize(&file_path).unwrap());
+                assert_eq!(message, "not a directory");
+            }
+            _ => panic!("expected Failed"),
+        }
+    }
+
+    #[test]
+    fn scan_root_walked_for_existing_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Author/Book/01.mp3"));
+        let mut index = DirIndex::new();
+        let settings = default_settings(&[]);
+        let scan = scan_root(dir.path(), &settings, &mut index);
+        match scan {
+            RootScan::Walked {
+                canonical_path,
+                folders,
+            } => {
+                assert_eq!(canonical_path, std::fs::canonicalize(dir.path()).unwrap());
+                assert!(!folders.is_empty());
+            }
+            _ => panic!("expected Walked"),
+        }
+    }
+
+    #[test]
+    fn scan_root_walked_empty_for_no_qualifying_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        // Empty directory: walk completes, no folder holds audio.
+        let mut index = DirIndex::new();
+        let settings = default_settings(&[]);
+        let scan = scan_root(dir.path(), &settings, &mut index);
+        assert!(matches!(scan, RootScan::Walked { .. }));
+        assert_eq!(scan.audiobook_count(), 0);
     }
 
     #[test]
