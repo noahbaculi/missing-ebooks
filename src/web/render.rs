@@ -280,10 +280,10 @@ pub fn render_section(
                 @match &section.state {
                     RootState::Forest(nodes) => {
                         @if nodes.is_empty() {
-                            // The normal empty-root path is RawRootState::Clean,
-                            // rendered as the Clean arm below. This arm is reached
-                            // only for the loose-root edge case where the walk
-                            // emits one entry with rel_path = "", which tree::build
+                            // The normal empty-root path renders as Clean
+                            // (the arm below). This arm is reached only for the
+                            // loose-root edge case where the walk emits one
+                            // entry with rel_path = "", which tree::build
                             // skips because insert_all has no components to descend.
                             div.empty { span { "Nothing here" } }
                         } @else {

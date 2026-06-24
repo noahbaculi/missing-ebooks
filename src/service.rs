@@ -349,9 +349,9 @@ pub(crate) fn apply_mark_raw(raw: &mut state::RawView, root: usize, rel: &str, m
     let Some(section) = raw.get_mut(root) else {
         return;
     };
-    let state::RawRootState::Walked(folders) = &mut section.state else {
-        // A Clean or Error section has no folders to flip; the next rescan
-        // will reflect the marker on disk when the slot rebuilds.
+    let scanner::RootScan::Walked { folders, .. } = section else {
+        // A Failed section has no folders to flip; the next rescan will
+        // reflect the marker on disk when the slot rebuilds.
         return;
     };
     if rel == "." {
@@ -383,18 +383,6 @@ fn add_marker(cover_files: &mut Vec<String>, marker: Marker) {
     }
 }
 
-/// Folders directly holding audio in this root's raw state. Zero for `Clean`
-/// and `Error`. Used by `render_view` and `autosync::render_oob_section` to
-/// populate `RootSection.total_audiobooks`.
-pub(crate) fn count_audiobooks(state: &state::RawRootState) -> usize {
-    match state {
-        state::RawRootState::Walked(folders) => {
-            folders.iter().filter(|f| f.directly_holds_audio).count()
-        }
-        state::RawRootState::Clean | state::RawRootState::Error(_) => 0,
-    }
-}
-
 /// Render the cached raw view into the requested `ViewMode`'s `FlaggedView`. The
 /// gaps path filters with `reduce_to_flagged` and builds the forest. Show-all
 /// builds directly from the raw folders. Both run on the request thread (the
@@ -402,40 +390,38 @@ pub(crate) fn count_audiobooks(state: &state::RawRootState) -> usize {
 /// `FlaggedView` per response and drops it after the response writes.
 pub(crate) fn render_view(raw: &state::RawView, mode: ViewMode) -> FlaggedView {
     raw.iter()
-        .map(|section| render_section_from_raw(section, mode))
+        .map(|scan| render_section_from_raw(scan, mode))
         .collect()
 }
 
-/// Build one `RootSection` from a raw section for the requested mode. The single
-/// place that owns the "raw → rendered" packaging: `render_view` calls it per
-/// section on the snapshot path, and `autosync::render_oob_section` calls it on
-/// the push path, so any future field (per-root coverage, per-root timestamps)
-/// only has to land here once. The autosync byte-equality test routes through
-/// this helper so a drift in the helper fails the test loudly.
-pub(crate) fn render_section_from_raw(
-    section: &state::RawRootSection,
-    mode: ViewMode,
-) -> RootSection {
+/// Build one `RootSection` from a raw `RootScan` for the requested mode.
+///
+/// The single owner of the raw-to-rendered packaging. `render_view` calls it on
+/// the snapshot path; `autosync::render_oob_section` calls it on the push path.
+/// Any future per-root field lands here once.
+pub(crate) fn render_section_from_raw(scan: &scanner::RootScan, mode: ViewMode) -> RootSection {
     RootSection {
-        path: section.path.clone(),
-        state: render_root_state(&section.path, &section.state, mode),
-        total_audiobooks: count_audiobooks(&section.state),
+        path: scan.display_path().to_string(),
+        state: render_root_state(scan, mode),
+        total_audiobooks: scan.audiobook_count(),
     }
 }
 
-/// Render one section per mode. The root name for `tree::build`'s `.` node
-/// comes from the section's canonical path (last component, or "." when absent),
-/// matching how `scan_root` derives it.
-pub(crate) fn render_root_state(
-    path: &str,
-    state: &state::RawRootState,
-    mode: ViewMode,
-) -> RootState {
-    match state {
-        state::RawRootState::Clean => RootState::Clean,
-        state::RawRootState::Error(err) => RootState::Error(err.clone()),
-        state::RawRootState::Walked(folders) => {
-            let root_name = Path::new(path)
+/// Renders one root in the requested mode.
+///
+/// The root name for `tree::build`'s `.` node comes from the canonical path's
+/// last component, falling back to `.` when absent.
+pub(crate) fn render_root_state(scan: &scanner::RootScan, mode: ViewMode) -> RootState {
+    match scan {
+        scanner::RootScan::Failed { message, .. } => RootState::Error(message.clone()),
+        scanner::RootScan::Walked {
+            canonical_path,
+            folders,
+        } => {
+            if folders.is_empty() {
+                return RootState::Clean;
+            }
+            let root_name = canonical_path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or(".");
@@ -476,12 +462,12 @@ pub(crate) async fn build_view(
     sections
 }
 
-/// Scans one root off the async runtime and folds the result into a raw section.
+/// Scans one root off the async runtime and folds the result into a `RootScan`.
 async fn build_section(
     root: std::path::PathBuf,
     settings: Arc<ScanSettings>,
     index: Arc<std::sync::Mutex<scanner::DirIndex>>,
-) -> state::RawRootSection {
+) -> scanner::RootScan {
     let started = Instant::now();
     let scan = match tokio::task::spawn_blocking(move || {
         let mut guard = lock_index(&index);
@@ -503,7 +489,7 @@ async fn build_section(
         elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
         "scanned root"
     );
-    scan.into()
+    scan
 }
 
 /// Lock the shared index, recovering the guard when a previous walk panicked while
@@ -603,39 +589,47 @@ mod tests {
     }
 
     #[test]
-    fn count_audiobooks_counts_walked_folders_that_directly_hold_audio() {
-        use crate::scanner::ScannedFolder;
+    fn audiobook_count_counts_walked_folders_that_directly_hold_audio() {
+        use crate::scanner::{RootScan, ScannedFolder};
         use std::path::PathBuf;
 
-        let walked = state::RawRootState::Walked(vec![
-            ScannedFolder {
-                rel_path: PathBuf::from("A/Book1"),
-                directly_holds_audio: true,
-                missing_ebook: true,
-                cover_files: Vec::new(),
-                audio_files: vec!["01.mp3".to_string()],
-            },
-            ScannedFolder {
-                rel_path: PathBuf::from("A"),
-                directly_holds_audio: false,
-                missing_ebook: false,
-                cover_files: Vec::new(),
-                audio_files: Vec::new(),
-            },
-            ScannedFolder {
-                rel_path: PathBuf::from("A/Book2"),
-                directly_holds_audio: true,
-                missing_ebook: false,
-                cover_files: vec!["Book2.epub".to_string()],
-                audio_files: vec!["01.mp3".to_string()],
-            },
-        ]);
-        assert_eq!(count_audiobooks(&walked), 2);
-        assert_eq!(count_audiobooks(&state::RawRootState::Clean), 0);
-        assert_eq!(
-            count_audiobooks(&state::RawRootState::Error("nope".into())),
-            0,
-        );
+        let walked = RootScan::Walked {
+            canonical_path: PathBuf::from("/lib"),
+            folders: vec![
+                ScannedFolder {
+                    rel_path: PathBuf::from("A/Book1"),
+                    directly_holds_audio: true,
+                    missing_ebook: true,
+                    cover_files: Vec::new(),
+                    audio_files: vec!["01.mp3".to_string()],
+                },
+                ScannedFolder {
+                    rel_path: PathBuf::from("A"),
+                    directly_holds_audio: false,
+                    missing_ebook: false,
+                    cover_files: Vec::new(),
+                    audio_files: Vec::new(),
+                },
+                ScannedFolder {
+                    rel_path: PathBuf::from("A/Book2"),
+                    directly_holds_audio: true,
+                    missing_ebook: false,
+                    cover_files: vec!["Book2.epub".to_string()],
+                    audio_files: vec!["01.mp3".to_string()],
+                },
+            ],
+        };
+        assert_eq!(walked.audiobook_count(), 2);
+        let empty_walked = RootScan::Walked {
+            canonical_path: PathBuf::from("/lib"),
+            folders: Vec::new(),
+        };
+        assert_eq!(empty_walked.audiobook_count(), 0);
+        let failed = RootScan::Failed {
+            path: PathBuf::from("/lib"),
+            message: "nope".to_string(),
+        };
+        assert_eq!(failed.audiobook_count(), 0);
     }
 
     #[tokio::test]

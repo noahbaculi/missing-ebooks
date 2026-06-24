@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 use crate::config::Config;
-use crate::scanner::{DirIndex, ScanSettings, ScannedFolder};
+use crate::scanner::{DirIndex, RootScan, ScanSettings};
 
 /// Everything a request handler needs: the immutable config and settings, the
 /// scan cache, and the autosync registry. Shared as `Arc<AppState>`.
@@ -29,34 +29,8 @@ pub struct AppState {
     pub(crate) autosync: crate::autosync::Autosync,
 }
 
-/// The result of scanning one root, in raw form: enough to render either view
-/// without re-walking.
-#[derive(Debug, Clone)]
-pub struct RawRootSection {
-    /// The canonical root path when it resolved, else the configured path.
-    pub path: String,
-    /// What the scan found for this root.
-    pub state: RawRootState,
-}
-
-/// Per-root state held by the cache. `Walked` carries the full
-/// `Vec<ScannedFolder>` the scanner emitted; the response reduces it per mode.
-/// `Clean` is stored when the walk produced no entries at all so a render
-/// decision does not have to inspect an empty `Vec`. `Error` carries the
-/// scanner's message for a root that could not be canonicalized or was not a
-/// directory.
-#[derive(Debug, Clone)]
-pub enum RawRootState {
-    /// The scan completed and produced no entries to render.
-    Clean,
-    /// The scan completed; render the gaps or show-all view from these folders.
-    Walked(Vec<ScannedFolder>),
-    /// The scan failed; the message is surfaced in the response.
-    Error(String),
-}
-
-/// The whole raw view: one section per configured library root, in config order.
-pub type RawView = Vec<RawRootSection>;
+/// The whole raw view: one `RootScan` per configured library root, in config order.
+pub type RawView = Vec<RootScan>;
 
 /// The cache: one raw slot and the staleness window, behind one mutex so a
 /// marker write and a TTL rescan cannot interleave (see ADR-0002). A `None` TTL
@@ -157,7 +131,7 @@ impl Cache {
     ) -> Arc<RawView>
     where
         RS: FnOnce() -> RsFut,
-        RsFut: Future<Output = RawRootSection>,
+        RsFut: Future<Output = RootScan>,
         F: FnOnce() -> Fut,
         Fut: Future<Output = RawView>,
     {
@@ -256,10 +230,24 @@ mod tests {
     }
 
     fn sample_raw(tag: &str) -> RawView {
-        vec![RawRootSection {
-            path: tag.to_string(),
-            state: RawRootState::Clean,
-        }]
+        vec![walked(tag)]
+    }
+
+    fn walked(tag: &str) -> RootScan {
+        RootScan::Walked {
+            canonical_path: std::path::PathBuf::from(tag),
+            folders: Vec::new(),
+        }
+    }
+
+    fn path_of(scan: &RootScan) -> String {
+        scan.display_path().to_string()
+    }
+
+    fn rename(scan: &mut RootScan, new: &str) {
+        if let RootScan::Walked { canonical_path, .. } = scan {
+            *canonical_path = std::path::PathBuf::from(new);
+        }
     }
 
     #[tokio::test]
@@ -271,7 +259,7 @@ mod tests {
             Arc::ptr_eq(&first, &second),
             "a fresh cache must not rebuild the raw slot"
         );
-        assert_eq!(second[0].path, "first");
+        assert_eq!(path_of(&second[0]), "first");
     }
 
     #[tokio::test]
@@ -306,7 +294,7 @@ mod tests {
         let first = cache.get_or_build(|| async { sample_raw("first") }).await;
         let second = cache.rebuild(|| async { sample_raw("second") }).await;
         assert!(!Arc::ptr_eq(&first, &second));
-        assert_eq!(second[0].path, "second");
+        assert_eq!(path_of(&second[0]), "second");
     }
 
     #[tokio::test]
@@ -315,11 +303,14 @@ mod tests {
         cache.get_or_build(|| async { sample_raw("gaps") }).await;
         let returned = cache
             .apply_marker_or_build(
-                |raw| raw[0].path = format!("{}-edited", raw[0].path),
+                |raw| {
+                    let renamed = format!("{}-edited", path_of(&raw[0]));
+                    rename(&mut raw[0], &renamed);
+                },
                 || async { sample_raw("rebuilt") },
             )
             .await;
-        assert_eq!(returned[0].path, "gaps-edited");
+        assert_eq!(path_of(&returned[0]), "gaps-edited");
     }
 
     #[tokio::test]
@@ -327,45 +318,28 @@ mod tests {
         let cache = test_cache(Some(Duration::from_secs(600)));
         let returned = cache
             .apply_marker_or_build(
-                |raw| raw[0].path = format!("{}-edited", raw[0].path),
+                |raw| {
+                    let renamed = format!("{}-edited", path_of(&raw[0]));
+                    rename(&mut raw[0], &renamed);
+                },
                 || async { sample_raw("built") },
             )
             .await;
         // The cold slot was built fresh; the edit closure did not run because
         // the fresh build already reflects the marker on disk.
-        assert_eq!(returned[0].path, "built");
+        assert_eq!(path_of(&returned[0]), "built");
     }
 
     #[tokio::test]
     async fn rebuild_root_replaces_one_section_in_the_raw_slot() {
         let cache = test_cache(Some(Duration::from_secs(600)));
-        let two = || {
-            vec![
-                RawRootSection {
-                    path: "keep".to_string(),
-                    state: RawRootState::Clean,
-                },
-                RawRootSection {
-                    path: "old".to_string(),
-                    state: RawRootState::Clean,
-                },
-            ]
-        };
+        let two = || vec![walked("keep"), walked("old")];
         cache.get_or_build(|| async { two() }).await;
         let returned = cache
-            .rebuild_root(
-                1,
-                || async {
-                    RawRootSection {
-                        path: "new".to_string(),
-                        state: RawRootState::Clean,
-                    }
-                },
-                || async { two() },
-            )
+            .rebuild_root(1, || async { walked("new") }, || async { two() })
             .await;
-        assert_eq!(returned[0].path, "keep");
-        assert_eq!(returned[1].path, "new");
+        assert_eq!(path_of(&returned[0]), "keep");
+        assert_eq!(path_of(&returned[1]), "new");
     }
 
     #[tokio::test]
@@ -378,7 +352,7 @@ mod tests {
         };
         cache
             .apply_marker_or_build(
-                |raw| raw[0].path = "edited".to_string(),
+                |raw| rename(&mut raw[0], "edited"),
                 || async { sample_raw("unused") },
             )
             .await;
@@ -399,12 +373,16 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(20)).await;
         let returned = cache
             .apply_marker_or_build(
-                |raw| raw[0].path = format!("{}-edited", raw[0].path),
+                |raw| {
+                    let renamed = format!("{}-edited", path_of(&raw[0]));
+                    rename(&mut raw[0], &renamed);
+                },
                 || async { sample_raw("rebuilt") },
             )
             .await;
         assert_eq!(
-            returned[0].path, "rebuilt",
+            path_of(&returned[0]),
+            "rebuilt",
             "a stale slot must be rebuilt, not edited"
         );
         let after = {
@@ -422,49 +400,19 @@ mod tests {
         // The undo path against a stale slot rebuilds the whole view rather
         // than splicing one section into stale neighbors.
         let cache = test_cache(Some(Duration::from_millis(10)));
-        let two = || {
-            vec![
-                RawRootSection {
-                    path: "keep".to_string(),
-                    state: RawRootState::Clean,
-                },
-                RawRootSection {
-                    path: "old".to_string(),
-                    state: RawRootState::Clean,
-                },
-            ]
-        };
+        let two = || vec![walked("keep"), walked("old")];
         cache.get_or_build(|| async { two() }).await;
         tokio::time::sleep(Duration::from_millis(20)).await;
-        let fresh = || {
-            vec![
-                RawRootSection {
-                    path: "fresh-keep".to_string(),
-                    state: RawRootState::Clean,
-                },
-                RawRootSection {
-                    path: "fresh-new".to_string(),
-                    state: RawRootState::Clean,
-                },
-            ]
-        };
+        let fresh = || vec![walked("fresh-keep"), walked("fresh-new")];
         let returned = cache
-            .rebuild_root(
-                1,
-                || async {
-                    RawRootSection {
-                        path: "splice".to_string(),
-                        state: RawRootState::Clean,
-                    }
-                },
-                || async { fresh() },
-            )
+            .rebuild_root(1, || async { walked("splice") }, || async { fresh() })
             .await;
         assert_eq!(
-            returned[0].path, "fresh-keep",
+            path_of(&returned[0]),
+            "fresh-keep",
             "a stale slot must be rebuilt via build_full, not spliced"
         );
-        assert_eq!(returned[1].path, "fresh-new");
+        assert_eq!(path_of(&returned[1]), "fresh-new");
         let after = {
             let slot = cache.entries.lock().await;
             slot.as_ref().unwrap().stored_at.elapsed()

@@ -32,7 +32,7 @@ pub(crate) fn compute_pushes<R>(
     mut render: R,
 ) -> Vec<(ViewMode, usize, String)>
 where
-    R: FnMut(ViewMode, usize, &state::RawRootSection) -> String,
+    R: FnMut(ViewMode, usize, &crate::scanner::RootScan) -> String,
 {
     let mut pushes = Vec::new();
     for mode in [ViewMode::GapsOnly, ViewMode::All] {
@@ -72,7 +72,7 @@ fn stable_hash(s: &str) -> u64 {
 /// wrapping uses one renderer shared with the page-level snapshot path (see
 /// ADR-0024).
 pub(crate) fn render_oob_section(
-    raw_section: &state::RawRootSection,
+    raw_section: &crate::scanner::RootScan,
     root_idx: usize,
     mode: ViewMode,
     links: &[crate::config::SearchLink],
@@ -337,14 +337,14 @@ fn section_event(html: String) -> Event {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{RawRootSection, RawRootState};
+    use crate::scanner::RootScan;
     use enum_map::enum_map;
 
     fn empty_raw_view(n: usize) -> state::RawView {
         (0..n)
-            .map(|i| RawRootSection {
-                path: format!("/root/{i}"),
-                state: RawRootState::Clean,
+            .map(|i| RootScan::Walked {
+                canonical_path: std::path::PathBuf::from(format!("/root/{i}")),
+                folders: Vec::new(),
             })
             .collect()
     }
@@ -375,7 +375,7 @@ mod tests {
     fn identical_second_call_pushes_nothing() {
         let raw = empty_raw_view(2);
         let mut hashes = empty_hashes();
-        let render = |mode: ViewMode, root: usize, _: &RawRootSection| format!("{mode:?}-{root}");
+        let render = |mode: ViewMode, root: usize, _: &RootScan| format!("{mode:?}-{root}");
         let _first = compute_pushes(&raw, &mut hashes, both_modes_subscribed(), render);
         let second = compute_pushes(&raw, &mut hashes, both_modes_subscribed(), render);
         assert!(second.is_empty(), "no roots changed, no pushes");
@@ -587,9 +587,9 @@ mod tests {
         // rendered section through service::render_section_from_raw — the
         // helper render_oob_section itself uses — so a drift in that helper
         // fails this test rather than getting silently re-applied here.
-        let raw = RawRootSection {
-            path: "/some/root".to_string(),
-            state: RawRootState::Clean,
+        let raw = RootScan::Walked {
+            canonical_path: std::path::PathBuf::from("/some/root"),
+            folders: Vec::new(),
         };
         let links: Vec<crate::config::SearchLink> = Vec::new();
 
@@ -612,9 +612,9 @@ mod tests {
         use crate::scanner::ScannedFolder;
         use std::path::PathBuf;
 
-        let raw = RawRootSection {
-            path: "/lib".to_string(),
-            state: RawRootState::Walked(vec![
+        let raw = RootScan::Walked {
+            canonical_path: PathBuf::from("/lib"),
+            folders: vec![
                 ScannedFolder {
                     rel_path: PathBuf::from("Book"),
                     directly_holds_audio: true,
@@ -629,7 +629,7 @@ mod tests {
                     cover_files: Vec::new(),
                     audio_files: Vec::new(),
                 },
-            ]),
+            ],
         };
         let html = render_oob_section(&raw, 0, ViewMode::GapsOnly, &[]);
         // The pushed fragment includes the data attr on its section open tag,

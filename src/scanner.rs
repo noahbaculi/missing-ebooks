@@ -249,9 +249,9 @@ pub struct ScannedFolder {
 
 /// The result of scanning one library root: walked folders or a failure message.
 ///
-/// Replaces the previous split between `service::scan_root`'s classifier and
-/// `state::RawRootState`'s variants. The two halves of "one root produced one of
-/// two outcomes" live here.
+/// Single owner of the "one root produced one of two outcomes" split: the cache
+/// stores a `Vec<RootScan>` (see `state::RawView`), and the renderer consumes
+/// it directly.
 #[derive(Debug, Clone)]
 pub enum RootScan {
     /// The walk completed. `folders` may be empty when no entry qualified.
@@ -296,31 +296,6 @@ impl RootScan {
         match self {
             RootScan::Walked { folders, .. } => folders,
             RootScan::Failed { .. } => &[],
-        }
-    }
-}
-
-/// Bridge used during the migration window so `service::build_section` can route
-/// through `scanner::scan_root` while the cache still stores `RawRootSection`.
-/// Deleted in the commit that switches `RawView` over to `Vec<RootScan>`.
-impl From<RootScan> for crate::state::RawRootSection {
-    fn from(scan: RootScan) -> Self {
-        match scan {
-            RootScan::Walked {
-                canonical_path,
-                folders,
-            } => crate::state::RawRootSection {
-                path: canonical_path.display().to_string(),
-                state: if folders.is_empty() {
-                    crate::state::RawRootState::Clean
-                } else {
-                    crate::state::RawRootState::Walked(folders)
-                },
-            },
-            RootScan::Failed { path, message } => crate::state::RawRootSection {
-                path: path.display().to_string(),
-                state: crate::state::RawRootState::Error(message),
-            },
         }
     }
 }
@@ -1303,117 +1278,5 @@ mod tests {
         };
         assert_eq!(scan.audiobook_count(), 0);
         assert!(scan.folders().is_empty());
-    }
-
-    #[test]
-    fn bridge_walked_non_empty_yields_walked_state() {
-        let folders = vec![ScannedFolder {
-            rel_path: ".".into(),
-            directly_holds_audio: true,
-            cover_files: Vec::new(),
-            audio_files: Vec::new(),
-            missing_ebook: true,
-        }];
-        let scan = RootScan::Walked {
-            canonical_path: PathBuf::from("/lib"),
-            folders,
-        };
-        let section: crate::state::RawRootSection = scan.into();
-        assert_eq!(section.path, "/lib");
-        assert!(matches!(
-            section.state,
-            crate::state::RawRootState::Walked(_)
-        ));
-    }
-
-    #[test]
-    fn bridge_walked_empty_yields_clean_state() {
-        let scan = RootScan::Walked {
-            canonical_path: PathBuf::from("/lib"),
-            folders: Vec::new(),
-        };
-        let section: crate::state::RawRootSection = scan.into();
-        assert_eq!(section.path, "/lib");
-        assert!(matches!(section.state, crate::state::RawRootState::Clean));
-    }
-
-    #[test]
-    fn scan_root_failed_for_missing_path() {
-        let mut index = DirIndex::new();
-        let settings = default_settings(&[]);
-        let scan = scan_root(
-            Path::new("/nonexistent/path/xyz/123"),
-            &settings,
-            &mut index,
-        );
-        match scan {
-            RootScan::Failed { path, message } => {
-                assert_eq!(path, PathBuf::from("/nonexistent/path/xyz/123"));
-                assert!(!message.is_empty());
-            }
-            _ => panic!("expected Failed"),
-        }
-    }
-
-    #[test]
-    fn scan_root_failed_for_non_directory() {
-        let dir = tempfile::tempdir().unwrap();
-        let file_path = dir.path().join("regular_file");
-        std::fs::write(&file_path, b"x").unwrap();
-        let mut index = DirIndex::new();
-        let settings = default_settings(&[]);
-        let scan = scan_root(&file_path, &settings, &mut index);
-        match scan {
-            RootScan::Failed { path, message } => {
-                // canonicalize succeeds for regular files, so path is canonical here.
-                assert_eq!(path, std::fs::canonicalize(&file_path).unwrap());
-                assert_eq!(message, "not a directory");
-            }
-            _ => panic!("expected Failed"),
-        }
-    }
-
-    #[test]
-    fn scan_root_walked_for_existing_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Author/Book/01.mp3"));
-        let mut index = DirIndex::new();
-        let settings = default_settings(&[]);
-        let scan = scan_root(dir.path(), &settings, &mut index);
-        match scan {
-            RootScan::Walked {
-                canonical_path,
-                folders,
-            } => {
-                assert_eq!(canonical_path, std::fs::canonicalize(dir.path()).unwrap());
-                assert!(!folders.is_empty());
-            }
-            _ => panic!("expected Walked"),
-        }
-    }
-
-    #[test]
-    fn scan_root_walked_empty_for_no_qualifying_folders() {
-        let dir = tempfile::tempdir().unwrap();
-        // Empty directory: walk completes, no folder holds audio.
-        let mut index = DirIndex::new();
-        let settings = default_settings(&[]);
-        let scan = scan_root(dir.path(), &settings, &mut index);
-        assert!(matches!(scan, RootScan::Walked { .. }));
-        assert_eq!(scan.audiobook_count(), 0);
-    }
-
-    #[test]
-    fn bridge_failed_yields_error_state() {
-        let scan = RootScan::Failed {
-            path: PathBuf::from("/lib/missing"),
-            message: "no such file".into(),
-        };
-        let section: crate::state::RawRootSection = scan.into();
-        assert_eq!(section.path, "/lib/missing");
-        assert!(matches!(
-            section.state,
-            crate::state::RawRootState::Error(_)
-        ));
     }
 }
