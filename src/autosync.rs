@@ -97,6 +97,45 @@ pub(crate) fn snapshot_and_seed(
     (payload, hashes)
 }
 
+/// Establish one SSE subscription and return the receiver the handler will
+/// stream to the client. Owns the four-step handshake (channel construction,
+/// raw read, snapshot send, registry subscription with seed hashes) so the
+/// "snapshot before subscribe" ordering invariant lives in one place. See
+/// ADR-0023 and ADR-0024.
+// `web::events` switches to this in the next commit; until then only the test
+// references it from the non-test build.
+#[allow(dead_code)]
+pub(crate) async fn attach(
+    state: &Arc<crate::state::AppState>,
+    mode: ViewMode,
+) -> mpsc::Receiver<Result<Event, Infallible>> {
+    let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(16);
+
+    // Build the snapshot payload and per-root seed hashes from the same raw
+    // view, so the loop's first tick suppresses redundant section events for
+    // sections the snapshot already carried (ADR-0024).
+    let raw = state.store.current().await;
+    let (snapshot, seed_hashes) = snapshot_and_seed(&raw, mode, &state.config.search_links);
+
+    // Send the snapshot before subscribing so a tick that fires immediately
+    // after the registry insert cannot interleave a section event ahead of
+    // the snapshot on the channel. The channel is unread at this point and
+    // has capacity 16, so the send returns immediately. A send error means
+    // the receiver was dropped between channel construction and here, which
+    // cannot happen in practice; matches today's web::events behavior.
+    let _ = tx
+        .send(Ok(Event::default().event("snapshot").data(snapshot)))
+        .await;
+
+    // Register with the autosync registry. Spawns the loop if this is the
+    // first subscriber for any mode and the interval is non-zero.
+    state
+        .autosync
+        .subscribe_and_seed(state, mode, tx, seed_hashes);
+
+    rx
+}
+
 /// One subscriber's outbound channel. The loop fans out to every sender in
 /// `subs[mode]`. A `try_send` failure prunes the sender.
 pub(crate) type SseSender = mpsc::Sender<Result<Event, Infallible>>;
@@ -321,6 +360,7 @@ fn section_event(html: String) -> Event {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::autosync;
     use crate::scanner::RootScan;
     use enum_map::enum_map;
 
@@ -506,6 +546,47 @@ mod tests {
             .as_ref()
             .expect("respawn left a live JoinHandle");
         assert!(!handle.is_finished(), "respawned task is running");
+    }
+
+    #[tokio::test]
+    async fn attach_sends_snapshot_first_and_registers_subscriber() {
+        // Interval high enough that the autosync loop will not tick during the
+        // test, so we observe the post-attach state without races.
+        let state = test_state_with_interval(60);
+
+        let mut rx = autosync::attach(&state, ViewMode::GapsOnly).await;
+
+        // The first event off the channel is the snapshot. Axum's Event type
+        // does not expose its name or data via getters; serialize and inspect.
+        let evt = rx
+            .recv()
+            .await
+            .expect("attach must place at least one event on the channel")
+            .expect("Result<Event, Infallible> is always Ok");
+        let serialized = format!("{:?}", evt);
+        assert!(
+            serialized.contains("snapshot"),
+            "first event must be the snapshot, got: {serialized}",
+        );
+
+        // The subscriber landed in the registry under GapsOnly.
+        assert_eq!(
+            state.autosync.subscriber_count(),
+            1,
+            "attach registers exactly one subscriber",
+        );
+
+        // The per-mode baseline was seeded so the loop's first tick would
+        // suppress redundant section events for unchanged roots.
+        let baseline = state.autosync.inner.lock().unwrap().last_hash[ViewMode::GapsOnly].clone();
+        assert!(
+            !baseline.is_empty(),
+            "attach seeded the GapsOnly baseline hashes",
+        );
+        assert!(
+            baseline.iter().all(Option::is_some),
+            "every root got a seeded hash, not None",
+        );
     }
 
     #[tokio::test]
