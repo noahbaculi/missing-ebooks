@@ -357,7 +357,6 @@ fn section_event(html: String) -> Event {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::autosync;
     use crate::scanner::RootScan;
     use enum_map::enum_map;
 
@@ -551,16 +550,19 @@ mod tests {
         // test, so we observe the post-attach state without races.
         let state = test_state_with_interval(60);
 
-        let mut rx = autosync::attach(&state, ViewMode::GapsOnly).await;
+        let mut rx = attach(&state, ViewMode::GapsOnly).await;
 
-        // The first event off the channel is the snapshot. Axum's Event type
-        // does not expose its name or data via getters; serialize and inspect.
+        // The first event off the channel is the snapshot. Axum's `Event` does
+        // not expose its name or data via getters, so we match a substring of
+        // its Debug output. TODO(axum): switch to a structural check (or an
+        // on-the-wire SSE-frame check) when axum exposes accessors; the Debug
+        // format is not part of axum's public contract.
         let evt = rx
             .recv()
             .await
             .expect("attach must place at least one event on the channel")
             .expect("Result<Event, Infallible> is always Ok");
-        let serialized = format!("{:?}", evt);
+        let serialized = format!("{evt:?}");
         assert!(
             serialized.contains("snapshot"),
             "first event must be the snapshot, got: {serialized}",
