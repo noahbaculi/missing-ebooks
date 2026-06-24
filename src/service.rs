@@ -127,42 +127,8 @@ pub(crate) fn render_view(raw: &state::RawView, mode: ViewMode) -> FlaggedView {
 pub(crate) fn render_section_from_raw(scan: &scanner::RootScan, mode: ViewMode) -> RootSection {
     RootSection {
         path: scan.display_path().to_string(),
-        state: render_root_state(scan, mode),
+        state: tree::build(scan, mode),
         total_audiobooks: scan.audiobook_count(),
-    }
-}
-
-/// Renders one root in the requested mode.
-///
-/// The root name for `tree::build`'s `.` node comes from the canonical path's
-/// last component, falling back to `.` when absent.
-pub(crate) fn render_root_state(scan: &scanner::RootScan, mode: ViewMode) -> RootState {
-    match scan {
-        scanner::RootScan::Failed { message, .. } => RootState::Error(message.clone()),
-        scanner::RootScan::Walked {
-            canonical_path,
-            folders,
-        } => {
-            if folders.is_empty() {
-                return RootState::Clean;
-            }
-            let root_name = canonical_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(".");
-            match mode {
-                ViewMode::GapsOnly => {
-                    let flagged = scanner::reduce_to_flagged(folders);
-                    let forest = tree::build(root_name, &flagged);
-                    if forest.is_empty() {
-                        RootState::Clean
-                    } else {
-                        RootState::Forest(forest)
-                    }
-                }
-                ViewMode::All => RootState::Forest(tree::build(root_name, folders)),
-            }
-        }
     }
 }
 

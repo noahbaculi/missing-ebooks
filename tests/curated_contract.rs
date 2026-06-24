@@ -6,8 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use missing_ebooks::config::Config;
-use missing_ebooks::scanner::{DirIndex, ScanInputs, ScanSettings, ScannedFolder, scan_warm};
-use missing_ebooks::tree::{Node, build};
+use missing_ebooks::scanner::{
+    DirIndex, RootScan, ScanInputs, ScanSettings, ScannedFolder, scan_warm,
+};
+use missing_ebooks::tree::{Node, RootState, ViewMode, build};
 
 use serde::Deserialize;
 
@@ -98,7 +100,14 @@ fn tree_container_set_matches_the_contract() {
             audio_files: Vec::new(),
         })
         .collect();
-    let forest = build("Audiobooks", &flagged_paths);
+    let scan = RootScan::Walked {
+        canonical_path: PathBuf::from("/Audiobooks"),
+        folders: flagged_paths,
+    };
+    let forest = match build(&scan, ViewMode::All) {
+        RootState::Forest(f) => f,
+        other => panic!("expected Forest, got {other:?}"),
+    };
 
     let mut got_flagged = BTreeSet::new();
     let mut got_containers = BTreeSet::new();
@@ -130,7 +139,14 @@ fn scan_and_build_match_the_contract() {
     let expected = load_expected();
     let root = fixture_dir().join("Audiobooks");
     let folders = scan_warm(&root, &expected_settings(&expected), &mut DirIndex::new()).0;
-    let forest = build("Audiobooks", &folders);
+    let scan = RootScan::Walked {
+        canonical_path: PathBuf::from("/Audiobooks"),
+        folders,
+    };
+    let forest = match build(&scan, ViewMode::All) {
+        RootState::Forest(f) => f,
+        other => panic!("expected Forest, got {other:?}"),
+    };
 
     let mut got: BTreeMap<String, (bool, bool, Vec<String>)> = BTreeMap::new();
     collect_all(&forest, &mut got);

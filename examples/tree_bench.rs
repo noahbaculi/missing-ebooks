@@ -231,22 +231,24 @@ fn generate(total: usize, depth: usize, fanout: usize, gap_rate: f64) -> Vec<Sca
 fn run_shape(total: usize, depth: usize, fanout: usize, gap_rate: f64, iterations: usize) -> Row {
     let folders = generate(total, depth, fanout, gap_rate);
     let actual = folders.len();
-    let root_name = "Audiobooks";
+    let scan = scanner::RootScan::Walked {
+        canonical_path: PathBuf::from("/Audiobooks"),
+        folders,
+    };
 
     let mut gaps_samples: Vec<f64> = Vec::with_capacity(iterations);
     let mut all_samples: Vec<f64> = Vec::with_capacity(iterations);
 
     for _ in 0..iterations {
         let gaps_start = Instant::now();
-        let flagged = scanner::reduce_to_flagged(&folders);
-        let forest = tree::build(root_name, &flagged);
+        let state = tree::build(&scan, tree::ViewMode::GapsOnly);
         gaps_samples.push(round3(gaps_start.elapsed().as_secs_f64() * 1000.0));
-        std::hint::black_box(&forest);
+        std::hint::black_box(&state);
 
         let all_start = Instant::now();
-        let forest = tree::build(root_name, &folders);
+        let state = tree::build(&scan, tree::ViewMode::All);
         all_samples.push(round3(all_start.elapsed().as_secs_f64() * 1000.0));
-        std::hint::black_box(&forest);
+        std::hint::black_box(&state);
     }
 
     Row {

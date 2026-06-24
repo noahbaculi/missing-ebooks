@@ -111,6 +111,46 @@ pub enum RootState {
     Error(String),
 }
 
+/// Builds the `RootState` for one library root in the requested mode.
+///
+/// Dispatches over the `RootScan` variant, derives the display name from the
+/// canonical path for the loose-root `.`-node (ADR-0005), filters with
+/// `reduce_to_flagged` when `mode` is `ViewMode::GapsOnly`, and collapses an
+/// empty `GapsOnly` forest to `RootState::Clean`. Show-all keeps an empty
+/// forest as `RootState::Forest(vec![])` so the renderer's "Nothing here"
+/// branch still fires for the loose-root edge case the walk emits.
+#[must_use]
+pub fn build(scan: &crate::scanner::RootScan, mode: ViewMode) -> RootState {
+    use crate::scanner::{RootScan, reduce_to_flagged};
+    match scan {
+        RootScan::Failed { message, .. } => RootState::Error(message.clone()),
+        RootScan::Walked {
+            canonical_path,
+            folders,
+        } => {
+            if folders.is_empty() {
+                return RootState::Clean;
+            }
+            let root_name = canonical_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(".");
+            match mode {
+                ViewMode::GapsOnly => {
+                    let flagged = reduce_to_flagged(folders);
+                    let forest = build_forest(root_name, &flagged);
+                    if forest.is_empty() {
+                        RootState::Clean
+                    } else {
+                        RootState::Forest(forest)
+                    }
+                }
+                ViewMode::All => RootState::Forest(build_forest(root_name, folders)),
+            }
+        }
+    }
+}
+
 /// Build the forest of top-level nodes for one root from the flat
 /// `Vec<ScannedFolder>` the scanner produces. Every folder carries its own two
 /// facts. Intermediate containers absent from the input get a placeholder
@@ -120,8 +160,7 @@ pub enum RootState {
 /// a show-all input every folder appears, so each node's own entry overwrites
 /// the placeholder. `root_name` names the `.` node emitted when the root itself
 /// directly holds audio (see ADR-0005). Siblings are natural-sorted.
-#[must_use]
-pub fn build(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> Vec<Node> {
+fn build_forest(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> Vec<Node> {
     let mut roots: Vec<Node> = Vec::new();
     let mut root_entry: Option<&crate::scanner::ScannedFolder> = None;
     for folder in folders {
@@ -223,8 +262,28 @@ fn sort_forest(nodes: &mut [Node]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scanner::ScannedFolder;
+    use crate::scanner::{RootScan, ScannedFolder};
     use std::path::PathBuf;
+
+    /// Build a `RootScan::Walked` whose `canonical_path` ends in `name`, so the
+    /// loose-root `.`-node picks up `name` as its display label (ADR-0005). The
+    /// `/lib` prefix is arbitrary padding; only the last component matters.
+    fn walked(name: &str, folders: Vec<ScannedFolder>) -> RootScan {
+        RootScan::Walked {
+            canonical_path: PathBuf::from("/lib").join(name),
+            folders,
+        }
+    }
+
+    /// Run `build` and unwrap to a `Vec<Node>`, panicking on `Clean`/`Error`.
+    /// Keeps the tests focused on the forest shape, since most predate the
+    /// `RootState` envelope.
+    fn build_root(name: &str, folders: Vec<ScannedFolder>, mode: ViewMode) -> Vec<Node> {
+        match build(&walked(name, folders), mode) {
+            RootState::Forest(f) => f,
+            other => panic!("expected Forest, got {other:?}"),
+        }
+    }
 
     fn ff(rel: &str, audio: &[&str]) -> crate::scanner::ScannedFolder {
         crate::scanner::ScannedFolder {
@@ -238,7 +297,7 @@ mod tests {
 
     fn forest(paths: &[&str]) -> Vec<Node> {
         let owned: Vec<crate::scanner::ScannedFolder> = paths.iter().map(|p| ff(p, &[])).collect();
-        build("Audiobooks", &owned)
+        build_root("Audiobooks", owned, ViewMode::All)
     }
 
     fn names(nodes: &[Node]) -> Vec<&str> {
@@ -305,7 +364,7 @@ mod tests {
         // The scanner reports the root itself as the empty relative path
         // (see ADR-0005). It must surface as a flagged node pinned first.
         let owned = vec![ff("", &[]), ff("Andy Weir/Artemis", &[])];
-        let roots = build("Audiobooks", &owned);
+        let roots = build_root("Audiobooks", owned, ViewMode::All);
         assert_eq!(names(&roots), vec!["Audiobooks", "Andy Weir"]);
         assert!(roots[0].needs_ebook());
         assert_eq!(roots[0].rel_path, ".");
@@ -314,7 +373,11 @@ mod tests {
 
     #[test]
     fn build_carries_audio_files_onto_a_flagged_leaf() {
-        let forest = build("Audiobooks", &[ff("Author/Book", &["01.mp3", "02.mp3"])]);
+        let forest = build_root(
+            "Audiobooks",
+            vec![ff("Author/Book", &["01.mp3", "02.mp3"])],
+            ViewMode::GapsOnly,
+        );
         assert_eq!(
             find(&forest, "Author/Book").unwrap().audio_files,
             vec!["01.mp3".to_string(), "02.mp3".to_string()]
@@ -378,7 +441,7 @@ mod tests {
             sf("Gap Author", false, true),     // plain container
             sf("Gap Author/Book", true, true), // gap
         ];
-        let forest = build("Audiobooks", &folders);
+        let forest = build_root("Audiobooks", folders, ViewMode::All);
 
         // Top level is natural-sorted and the root has no `.` node.
         assert_eq!(names(&forest), vec!["Gap Author", "Series"]);
@@ -405,7 +468,7 @@ mod tests {
             sf("Andy Weir", false, true),
             sf("Andy Weir/Artemis", true, true),
         ];
-        let forest = build("Audiobooks", &folders);
+        let forest = build_root("Audiobooks", folders, ViewMode::All);
         assert_eq!(names(&forest), vec!["Audiobooks", "Andy Weir"]);
         assert_eq!(forest[0].rel_path, ".");
         assert!(forest[0].needs_ebook());
@@ -428,7 +491,7 @@ mod tests {
             sf_cov("Series", false, false, &["Series.epub"]),
             sf_cov("Series/Book 1", true, false, &[]),
         ];
-        let forest = build("Audiobooks", &folders);
+        let forest = build_root("Audiobooks", folders, ViewMode::All);
         assert_eq!(
             find(&forest, "Series").unwrap().cover_files,
             vec!["Series.epub".to_string()]
@@ -444,7 +507,7 @@ mod tests {
     #[test]
     fn build_all_carries_audio_files_onto_the_node() {
         let folders = vec![sf_audio("Book", &["01 - One.mp3", "02 - Two.mp3"])];
-        let forest = build("Audiobooks", &folders);
+        let forest = build_root("Audiobooks", folders, ViewMode::All);
         assert_eq!(
             find(&forest, "Book").unwrap().audio_files,
             vec!["01 - One.mp3".to_string(), "02 - Two.mp3".to_string()]
@@ -457,7 +520,7 @@ mod tests {
             sf_cov("", true, false, &[".no_ebook"]),
             sf_cov("Author", false, true, &[]),
         ];
-        let forest = build("Audiobooks", &folders);
+        let forest = build_root("Audiobooks", folders, ViewMode::All);
         assert_eq!(forest[0].rel_path, ".");
         assert_eq!(forest[0].cover_files, vec![".no_ebook".to_string()]);
     }
@@ -478,7 +541,7 @@ mod tests {
             sf("Series/Book 10", true, false),
             sf("Series/Book 2", true, false),
         ];
-        let got = build("Audiobooks", &folders);
+        let got = build_root("Audiobooks", folders, ViewMode::All);
         let expected = vec![
             Node {
                 name: "AuthorA".to_string(),
@@ -557,7 +620,7 @@ mod tests {
             .filter(|f| f.directly_holds_audio && f.missing_ebook)
             .cloned()
             .collect();
-        let unified = build("Audiobooks", &flagged_input);
+        let unified = build_root("Audiobooks", flagged_input, ViewMode::All);
         let expected = vec![Node {
             name: "AuthorA".to_string(),
             rel_path: "AuthorA".to_string(),

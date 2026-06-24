@@ -617,17 +617,23 @@ fn time_reuse_walk(
     let walk_start = Instant::now();
     let (folders, stats) = scanner::scan_warm(root, settings, index);
     let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
-    let render_start = Instant::now();
     let flagged = scanner::reduce_to_flagged(&folders);
-    let forest = tree::build(root_name(root), &flagged);
-    let tree_build_ms = round3(render_start.elapsed().as_secs_f64() * 1000.0);
+    let gaps = flagged.len();
     let audio_files: usize = flagged.iter().map(|f| f.audio_files.len()).sum();
-    std::hint::black_box(&forest);
+    drop(flagged);
+    let scan = scanner::RootScan::Walked {
+        canonical_path: root.to_path_buf(),
+        folders,
+    };
+    let render_start = Instant::now();
+    let state = tree::build(&scan, tree::ViewMode::GapsOnly);
+    let tree_build_ms = round3(render_start.elapsed().as_secs_f64() * 1000.0);
+    std::hint::black_box(&state);
     (
         walk_ms,
         WalkCounts {
             stats,
-            gaps: flagged.len(),
+            gaps,
             audio_files,
             tree_build_ms,
         },
@@ -650,10 +656,14 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
                 .filter(|f| f.directly_holds_audio && f.missing_ebook)
                 .count();
             let audio_files = folders.iter().map(|f| f.audio_files.len()).sum();
+            let scan = scanner::RootScan::Walked {
+                canonical_path: root.to_path_buf(),
+                folders,
+            };
             let render_start = Instant::now();
-            let forest = tree::build(root_name(root), &folders);
+            let state = tree::build(&scan, tree::ViewMode::All);
             let tree_build_ms = round3(render_start.elapsed().as_secs_f64() * 1000.0);
-            std::hint::black_box(&forest);
+            std::hint::black_box(&state);
             (
                 walk_ms,
                 WalkCounts {
@@ -669,17 +679,23 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
             let (folders, stats) =
                 scanner::scan_warm(root, settings, &mut scanner::DirIndex::new());
             let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
-            let render_start = Instant::now();
             let flagged = scanner::reduce_to_flagged(&folders);
-            let forest = tree::build(root_name(root), &flagged);
-            let tree_build_ms = round3(render_start.elapsed().as_secs_f64() * 1000.0);
+            let gaps = flagged.len();
             let audio_files: usize = flagged.iter().map(|f| f.audio_files.len()).sum();
-            std::hint::black_box(&forest);
+            drop(flagged);
+            let scan = scanner::RootScan::Walked {
+                canonical_path: root.to_path_buf(),
+                folders,
+            };
+            let render_start = Instant::now();
+            let state = tree::build(&scan, tree::ViewMode::GapsOnly);
+            let tree_build_ms = round3(render_start.elapsed().as_secs_f64() * 1000.0);
+            std::hint::black_box(&state);
             (
                 walk_ms,
                 WalkCounts {
                     stats,
-                    gaps: flagged.len(),
+                    gaps,
                     audio_files,
                     tree_build_ms,
                 },
@@ -688,12 +704,6 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
         // Warm is routed to run_warm before any phase calls this.
         Mode::Warm => unreachable!("warm mode does not use time_walk"),
     }
-}
-
-/// The root's directory name as the tree builder expects it, or "." when the path
-/// has no file name (the canonical root, the unusual case the bench guards against).
-fn root_name(root: &Path) -> &str {
-    root.file_name().and_then(|n| n.to_str()).unwrap_or(".")
 }
 
 /// Cold phase: drop the cache before each of `iterations` runs, so every sample
