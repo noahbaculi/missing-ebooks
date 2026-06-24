@@ -77,6 +77,20 @@ fn render_oob_section(
     crate::web::render::single_oob_section(&rendered_section, root_idx, links, mode).into_string()
 }
 
+/// Render one section's OOB-swap bytes and hash them. Shared by
+/// `snapshot_and_seed` and `compute_pushes` so the seed hash and the loop's
+/// first-tick hash agree by construction (ADR-0024).
+fn rendered_oob_with_hash(
+    scan: &crate::scanner::RootScan,
+    root_idx: usize,
+    mode: ViewMode,
+    links: &[crate::config::SearchLink],
+) -> (String, u64) {
+    let oob = render_oob_section(scan, root_idx, mode, links);
+    let hash = stable_hash(&oob);
+    (oob, hash)
+}
+
 /// Build the concatenated OOB-swap payload for an SSE `snapshot` event and the
 /// per-root hashes the autosync loop will use to suppress redundant first-tick
 /// section events. The handler sends the payload, then passes the hashes to
@@ -90,8 +104,8 @@ fn snapshot_and_seed(
     let mut payload = String::with_capacity(raw.len() * 512);
     let mut hashes = Vec::with_capacity(raw.len());
     for (root_idx, section) in raw.iter().enumerate() {
-        let oob = render_oob_section(section, root_idx, mode, links);
-        hashes.push(stable_hash(&oob));
+        let (oob, hash) = rendered_oob_with_hash(section, root_idx, mode, links);
+        hashes.push(hash);
         payload.push_str(&oob);
     }
     (payload, hashes)
@@ -720,5 +734,32 @@ mod tests {
         // The pushed fragment includes the data attr on its section open tag,
         // so the live page's coverage stays current after an autosync swap.
         assert!(html.contains(r#"data-total-audiobooks="1""#));
+    }
+
+    #[test]
+    fn rendered_oob_with_hash_returns_render_oob_section_paired_with_its_stable_hash() {
+        use crate::scanner::ScannedFolder;
+        use std::path::PathBuf;
+
+        // Mirror the walked-RootScan setup from
+        // `render_oob_section_html_carries_total_audiobooks_for_a_walked_root`.
+        let raw = RootScan::Walked {
+            canonical_path: PathBuf::from("/lib"),
+            folders: vec![ScannedFolder {
+                rel_path: PathBuf::from("Book"),
+                directly_holds_audio: true,
+                missing_ebook: true,
+                cover_files: Vec::new(),
+                audio_files: vec!["01.mp3".to_string()],
+            }],
+        };
+        let links: Vec<crate::config::SearchLink> = Vec::new();
+
+        let (oob, hash) = rendered_oob_with_hash(&raw, 0, ViewMode::GapsOnly, &links);
+        let direct_oob = render_oob_section(&raw, 0, ViewMode::GapsOnly, &links);
+        let direct_hash = stable_hash(&direct_oob);
+
+        assert_eq!(oob, direct_oob);
+        assert_eq!(hash, direct_hash);
     }
 }
