@@ -247,6 +247,84 @@ pub struct ScannedFolder {
     pub audio_files: Vec<String>,
 }
 
+/// The result of scanning one library root: walked folders or a failure message.
+///
+/// Replaces the previous split between `service::scan_root`'s classifier and
+/// `state::RawRootState`'s variants. The two halves of "one root produced one of
+/// two outcomes" live here.
+#[derive(Debug, Clone)]
+pub enum RootScan {
+    /// The walk completed. `folders` may be empty when no entry qualified.
+    Walked {
+        /// The canonicalized root path the walk ran against.
+        canonical_path: PathBuf,
+        /// Every folder the walk produced. Empty when no entry qualified.
+        folders: Vec<ScannedFolder>,
+    },
+    /// The root could not be walked.
+    Failed {
+        /// Canonical when `is_dir` failed post-canonicalize, configured when
+        /// canonicalize itself failed.
+        path: PathBuf,
+        /// The scanner's failure message, surfaced verbatim in the response.
+        message: String,
+    },
+}
+
+impl RootScan {
+    /// Returns the display-form path: canonical for `Walked`, best-known for `Failed`.
+    #[must_use]
+    pub fn display_path(&self) -> std::path::Display<'_> {
+        match self {
+            RootScan::Walked { canonical_path, .. } => canonical_path.display(),
+            RootScan::Failed { path, .. } => path.display(),
+        }
+    }
+
+    /// Folders directly holding audio. Zero for `Failed`.
+    #[must_use]
+    pub fn audiobook_count(&self) -> usize {
+        self.folders()
+            .iter()
+            .filter(|f| f.directly_holds_audio)
+            .count()
+    }
+
+    /// Walked folders, empty for `Failed`.
+    #[must_use]
+    pub fn folders(&self) -> &[ScannedFolder] {
+        match self {
+            RootScan::Walked { folders, .. } => folders,
+            RootScan::Failed { .. } => &[],
+        }
+    }
+}
+
+/// Bridge used during the migration window so `service::build_section` can route
+/// through `scanner::scan_root` while the cache still stores `RawRootSection`.
+/// Deleted in the commit that switches `RawView` over to `Vec<RootScan>`.
+impl From<RootScan> for crate::state::RawRootSection {
+    fn from(scan: RootScan) -> Self {
+        match scan {
+            RootScan::Walked {
+                canonical_path,
+                folders,
+            } => crate::state::RawRootSection {
+                path: canonical_path.display().to_string(),
+                state: if folders.is_empty() {
+                    crate::state::RawRootState::Clean
+                } else {
+                    crate::state::RawRootState::Walked(folders)
+                },
+            },
+            RootScan::Failed { path, message } => crate::state::RawRootSection {
+                path: path.display().to_string(),
+                state: crate::state::RawRootState::Error(message),
+            },
+        }
+    }
+}
+
 /// A warm scan: stat each directory and reuse the `index` entry when the
 /// mtime is unchanged, listing and re-indexing the rest. The same `index`
 /// passed across calls makes each rescan cheaper than the last cold walk.
@@ -1142,5 +1220,90 @@ mod tests {
         // @eaDir is pruned: root and Book are read, the excluded dir is not.
         assert_eq!(stats.dirs_visited, 2); // root, Book
         assert_eq!(stats.entries_seen, 3); // root sees @eaDir + Book; Book sees 01.mp3
+    }
+
+    #[test]
+    fn root_scan_walked_carries_canonical_path_and_folders() {
+        let folder = ScannedFolder {
+            rel_path: ".".into(),
+            directly_holds_audio: true,
+            cover_files: Vec::new(),
+            audio_files: Vec::new(),
+            missing_ebook: true,
+        };
+        let scan = RootScan::Walked {
+            canonical_path: PathBuf::from("/lib/audio"),
+            folders: vec![folder],
+        };
+        assert_eq!(scan.display_path().to_string(), "/lib/audio");
+        assert_eq!(scan.audiobook_count(), 1);
+        assert_eq!(scan.folders().len(), 1);
+    }
+
+    #[test]
+    fn root_scan_failed_carries_best_known_path_and_message() {
+        let scan = RootScan::Failed {
+            path: PathBuf::from("/lib/missing"),
+            message: "no such file".to_string(),
+        };
+        assert_eq!(scan.display_path().to_string(), "/lib/missing");
+        assert_eq!(scan.audiobook_count(), 0);
+        assert!(scan.folders().is_empty());
+    }
+
+    #[test]
+    fn root_scan_walked_empty_is_zero_audiobooks() {
+        let scan = RootScan::Walked {
+            canonical_path: PathBuf::from("/lib"),
+            folders: Vec::new(),
+        };
+        assert_eq!(scan.audiobook_count(), 0);
+        assert!(scan.folders().is_empty());
+    }
+
+    #[test]
+    fn bridge_walked_non_empty_yields_walked_state() {
+        let folders = vec![ScannedFolder {
+            rel_path: ".".into(),
+            directly_holds_audio: true,
+            cover_files: Vec::new(),
+            audio_files: Vec::new(),
+            missing_ebook: true,
+        }];
+        let scan = RootScan::Walked {
+            canonical_path: PathBuf::from("/lib"),
+            folders,
+        };
+        let section: crate::state::RawRootSection = scan.into();
+        assert_eq!(section.path, "/lib");
+        assert!(matches!(
+            section.state,
+            crate::state::RawRootState::Walked(_)
+        ));
+    }
+
+    #[test]
+    fn bridge_walked_empty_yields_clean_state() {
+        let scan = RootScan::Walked {
+            canonical_path: PathBuf::from("/lib"),
+            folders: Vec::new(),
+        };
+        let section: crate::state::RawRootSection = scan.into();
+        assert_eq!(section.path, "/lib");
+        assert!(matches!(section.state, crate::state::RawRootState::Clean));
+    }
+
+    #[test]
+    fn bridge_failed_yields_error_state() {
+        let scan = RootScan::Failed {
+            path: PathBuf::from("/lib/missing"),
+            message: "no such file".into(),
+        };
+        let section: crate::state::RawRootSection = scan.into();
+        assert_eq!(section.path, "/lib/missing");
+        assert!(matches!(
+            section.state,
+            crate::state::RawRootState::Error(_)
+        ));
     }
 }
