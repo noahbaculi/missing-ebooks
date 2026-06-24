@@ -277,17 +277,8 @@ async fn run_loop(
             return;
         }
 
-        // Single-flighted with /rescan and page-load rebuilds via Cache::rebuild.
-        let raw = state
-            .cache
-            .rebuild(|| {
-                crate::service::build_view(
-                    state.config.as_ref(),
-                    &state.settings,
-                    Arc::clone(&state.dir_index),
-                )
-            })
-            .await;
+        // Single-flighted with /rescan and page-load rebuilds via RawViewStore::refresh.
+        let raw = state.store.refresh().await;
 
         // Render and diff under the registry lock. The critical section is
         // short: per-section render is microseconds (ADR-0022) and there is no

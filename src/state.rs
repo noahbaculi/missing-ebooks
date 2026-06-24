@@ -20,11 +20,16 @@ use crate::service::DomainError;
 /// scan cache, and the autosync registry. Shared as `Arc<AppState>`.
 pub struct AppState {
     pub(crate) config: Arc<Config>,
+    // settings, dir_index, cache are removed in Task 6/7; the store owns the
+    // canonical references during the transition.
+    #[allow(dead_code)]
     pub(crate) settings: Arc<ScanSettings>,
     /// The shared per-directory mtime index. Read by every scan path and
     /// discarded only on a `/rescan` click or process restart (see ADR-0020,
     /// ADR-0023). A blocking scan locks it to reuse unchanged directories.
+    #[allow(dead_code)]
     pub(crate) dir_index: Arc<StdMutex<DirIndex>>,
+    #[allow(dead_code)]
     pub(crate) cache: Cache,
     pub(crate) store: RawViewStore,
     /// The autosync subscriber registry and loop handle. The loop spawns on the
@@ -67,6 +72,7 @@ impl Cache {
     /// Return the cached raw view if it is still fresh, otherwise build one
     /// under the lock and store it. Single-flight: the lock is held across
     /// `build`.
+    #[allow(dead_code)] // Cache is deleted in a later commit.
     pub(crate) async fn get_or_build<F, Fut>(&self, build: F) -> Arc<RawView>
     where
         F: FnOnce() -> Fut,
@@ -85,6 +91,7 @@ impl Cache {
     }
 
     /// Build a fresh raw view under the lock and store it, ignoring the TTL.
+    #[allow(dead_code)] // Cache is deleted in a later commit.
     pub(crate) async fn rebuild<F, Fut>(&self, build: F) -> Arc<RawView>
     where
         F: FnOnce() -> Fut,

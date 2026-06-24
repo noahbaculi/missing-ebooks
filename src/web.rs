@@ -214,16 +214,7 @@ async fn events(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuer
     // Build the snapshot payload AND the per-root hashes from the same raw
     // view, so the loop's first tick suppresses redundant section events for
     // sections the snapshot already carried (see ADR-0024).
-    let raw = state
-        .cache
-        .get_or_build(|| {
-            service::build_view(
-                state.config.as_ref(),
-                &state.settings,
-                Arc::clone(&state.dir_index),
-            )
-        })
-        .await;
+    let raw = state.store.current().await;
     let (snapshot, seed_hashes) =
         crate::autosync::snapshot_and_seed(&raw, mode, &state.config.search_links);
     let _ = tx
