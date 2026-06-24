@@ -12,7 +12,7 @@ The total audiobook count per root rides to the browser as `data-total-audiobook
 
 The strip carries two readouts that `app.js` toggles between on the same recompute. The head holds `{pct}% covered · {covered} of {total} audiobooks` with the progress bar when gaps remain; the all-clear line carries a trailing ` · 100% covered ({T} of {T} audiobooks)` fragment when the library has audiobooks but no gaps, and stays bare when the library is empty (so the line never reads "0 of 0"). The all-clear tail's two numeric values ride in their own child spans so `app.js` only rewrites the digits and the surrounding wording lives once in the server template. The head readout floors the percent so 199 of 200 reads "99% covered" next to a hero "1 gap to fill", never a false "100%" while gaps remain.
 
-A small `service::count_audiobooks(&RawRootState) -> usize` helper filters the raw `Vec<ScannedFolder>` already in the cache (ADR-0022). One `service::render_section_from_raw(raw, mode)` packages a raw section with its rendered state and audiobook total; both `render_view` (snapshot path) and `autosync::render_oob_section` (push path) call it, so any future per-root field lands in one place. `render_section` emits the attribute on the section open tag.
+A small `scanner::RootScan::audiobook_count(&self) -> usize` method filters the raw `Vec<ScannedFolder>` already in the cache (ADR-0022). One `service::render_section_from_raw(scan, mode)` packages a `RootScan` with its rendered state and audiobook total; both `render_view` (snapshot path) and `autosync::render_oob_section` (push path) call it, so any future per-root field lands in one place. `render_section` emits the attribute on the section open tag.
 
 ## Consequences
 
@@ -25,6 +25,6 @@ The pattern matches the chip and hero updaters, which also count off the DOM. Fu
 ## Alternatives considered
 
 - **Server-rebuilt strip with a new OOB target**: adds an OOB target on every mark, undo, rescan, and autosync push; the strip becomes a swap surface the protocol has to keep in sync. The data-attribute path needs none of that.
-- **Scanner-side stat on `RawRootState`**: bakes a derived statistic into the cache. The vec already has the fact; counting it at render time is `O(folders)` and stays in the layer that already renders.
+- **Store the count alongside the folders in `RootScan::Walked`**: bakes a derived statistic into the cache. The vec already has the fact, counting it at render time is `O(folders)`, and the count stays in the layer that already renders.
 - **No live updates, paint-once readout**: a stale percent after every mark; defeats the point of the readout.
 - **Round the percent instead of floor**: reads "100% covered" beside "1 gap to fill" at high coverage. The floor never lies, at the cost of "0%" while one of a thousand audiobooks is covered.
