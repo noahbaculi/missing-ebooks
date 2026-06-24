@@ -20,20 +20,16 @@ use crate::state;
 
 /// Diff each rendered section against `last_hash` and return the list of pushes
 /// to fan out, mutating `last_hash` in place to reflect what is about to be
-/// sent. The `render` closure produces the HTML for a `(mode, root)` pair; the
-/// loop wires the real renderer, tests pass a sentinel.
+/// sent. Each `(mode, root)` is rendered through `render_oob_section`.
 ///
 /// `has_subs[mode]` short-circuits modes nobody is listening to: their hashes
 /// stay untouched and they produce no pushes.
-pub(crate) fn compute_pushes<R>(
+pub(crate) fn compute_pushes(
     raw: &state::RawView,
     last_hash: &mut EnumMap<ViewMode, Vec<Option<u64>>>,
     has_subs: EnumMap<ViewMode, bool>,
-    mut render: R,
-) -> Vec<(ViewMode, usize, String)>
-where
-    R: FnMut(ViewMode, usize, &crate::scanner::RootScan) -> String,
-{
+    links: &[crate::config::SearchLink],
+) -> Vec<(ViewMode, usize, String)> {
     let mut pushes = Vec::new();
     for mode in [ViewMode::GapsOnly, ViewMode::All] {
         if !has_subs[mode] {
@@ -45,7 +41,7 @@ where
             last_hash[mode].resize(raw.len(), None);
         }
         for (root_idx, section) in raw.iter().enumerate() {
-            let html = render(mode, root_idx, section);
+            let html = render_oob_section(section, root_idx, mode, links);
             let h = stable_hash(&html);
             if last_hash[mode][root_idx] != Some(h) {
                 last_hash[mode][root_idx] = Some(h);
@@ -286,14 +282,11 @@ async fn run_loop(
         let to_send: Vec<(ViewMode, usize, String)> = {
             let mut guard = inner.lock().expect("autosync mutex poisoned");
             let has_subs = EnumMap::from_fn(|mode| !guard.subs[mode].is_empty());
-            let links = &state.config.search_links;
             compute_pushes(
                 &raw,
                 &mut guard.last_hash,
                 has_subs,
-                |mode, root_idx, raw_section| {
-                    render_oob_section(raw_section, root_idx, mode, links)
-                },
+                &state.config.search_links,
             )
         };
 
@@ -331,15 +324,6 @@ mod tests {
     use crate::scanner::RootScan;
     use enum_map::enum_map;
 
-    fn empty_raw_view(n: usize) -> state::RawView {
-        (0..n)
-            .map(|i| RootScan::Walked {
-                canonical_path: std::path::PathBuf::from(format!("/root/{i}")),
-                folders: Vec::new(),
-            })
-            .collect()
-    }
-
     fn both_modes_subscribed() -> EnumMap<ViewMode, bool> {
         enum_map! { ViewMode::GapsOnly => true, ViewMode::All => true }
     }
@@ -348,81 +332,111 @@ mod tests {
         enum_map! { ViewMode::GapsOnly => Vec::new(), ViewMode::All => Vec::new() }
     }
 
+    fn walked_root_with_folder(i: usize, missing_ebook: bool) -> RootScan {
+        use crate::scanner::ScannedFolder;
+        use std::path::PathBuf;
+        RootScan::Walked {
+            canonical_path: PathBuf::from(format!("/root/{i}")),
+            folders: vec![ScannedFolder {
+                rel_path: PathBuf::from("Book"),
+                directly_holds_audio: true,
+                missing_ebook,
+                cover_files: Vec::new(),
+                audio_files: vec!["01.mp3".to_string()],
+            }],
+        }
+    }
+
+    fn raw_view_of(roots: Vec<RootScan>) -> state::RawView {
+        roots
+    }
+
+    fn no_links() -> Vec<crate::config::SearchLink> {
+        Vec::new()
+    }
+
     #[test]
     fn first_call_pushes_every_mode_root_pair() {
-        let raw = empty_raw_view(2);
+        let raw = raw_view_of(vec![
+            walked_root_with_folder(0, true),
+            walked_root_with_folder(1, true),
+        ]);
         let mut hashes = empty_hashes();
-        let pushes = compute_pushes(
-            &raw,
-            &mut hashes,
-            both_modes_subscribed(),
-            |mode, root, _| format!("{mode:?}-{root}"),
-        );
+        let links = no_links();
+        let pushes = compute_pushes(&raw, &mut hashes, both_modes_subscribed(), &links);
         assert_eq!(pushes.len(), 4, "two modes times two roots");
         assert!(pushes.iter().all(|(_, _, html)| !html.is_empty()));
     }
 
     #[test]
     fn identical_second_call_pushes_nothing() {
-        let raw = empty_raw_view(2);
+        let raw = raw_view_of(vec![
+            walked_root_with_folder(0, true),
+            walked_root_with_folder(1, true),
+        ]);
         let mut hashes = empty_hashes();
-        let render = |mode: ViewMode, root: usize, _: &RootScan| format!("{mode:?}-{root}");
-        let _first = compute_pushes(&raw, &mut hashes, both_modes_subscribed(), render);
-        let second = compute_pushes(&raw, &mut hashes, both_modes_subscribed(), render);
+        let links = no_links();
+        let _first = compute_pushes(&raw, &mut hashes, both_modes_subscribed(), &links);
+        let second = compute_pushes(&raw, &mut hashes, both_modes_subscribed(), &links);
         assert!(second.is_empty(), "no roots changed, no pushes");
     }
 
     #[test]
-    fn changed_root_produces_exactly_one_push_and_touches_one_hash_slot() {
-        let raw = empty_raw_view(3);
+    fn changed_root_produces_pushes_only_for_that_root() {
+        // Seed: render three roots, all gap-bearing.
+        let raw_before = raw_view_of(vec![
+            walked_root_with_folder(0, true),
+            walked_root_with_folder(1, true),
+            walked_root_with_folder(2, true),
+        ]);
         let mut hashes = empty_hashes();
-        // Seed: render every (mode, root) once, fill the hash slots.
-        let _ = compute_pushes(&raw, &mut hashes, both_modes_subscribed(), |m, r, _| {
-            format!("{m:?}-{r}")
-        });
+        let links = no_links();
+        let _ = compute_pushes(&raw_before, &mut hashes, both_modes_subscribed(), &links);
         let hashes_before = hashes.clone();
 
-        // Second call: render returns a new string only for (GapsOnly, root 1).
-        let pushes = compute_pushes(
-            &raw,
-            &mut hashes,
-            both_modes_subscribed(),
-            |m, r, _| match (m, r) {
-                (ViewMode::GapsOnly, 1) => "MUTATED".to_string(),
-                _ => format!("{m:?}-{r}"),
-            },
-        );
-        assert_eq!(pushes.len(), 1, "exactly one (mode, root) changed");
-        assert_eq!(pushes[0].0, ViewMode::GapsOnly);
-        assert_eq!(pushes[0].1, 1);
+        // Mutate root 1's folder so its rendered HTML changes for every mode.
+        let raw_after = raw_view_of(vec![
+            walked_root_with_folder(0, true),
+            walked_root_with_folder(1, false), // missing_ebook flipped
+            walked_root_with_folder(2, true),
+        ]);
+        let pushes = compute_pushes(&raw_after, &mut hashes, both_modes_subscribed(), &links);
 
-        // Only that one hash slot moved; everything else equals the prior state.
-        assert_ne!(
-            hashes[ViewMode::GapsOnly][1],
-            hashes_before[ViewMode::GapsOnly][1]
+        // Both subscribed modes push for root 1; no other root pushes.
+        assert!(
+            pushes.iter().all(|(_, root_idx, _)| *root_idx == 1),
+            "only root 1 pushed: {pushes:?}",
         );
-        assert_eq!(
-            hashes[ViewMode::GapsOnly][0],
-            hashes_before[ViewMode::GapsOnly][0]
-        );
-        assert_eq!(
-            hashes[ViewMode::GapsOnly][2],
-            hashes_before[ViewMode::GapsOnly][2]
-        );
-        assert_eq!(hashes[ViewMode::All], hashes_before[ViewMode::All]);
+        assert!(!pushes.is_empty(), "at least one mode saw a real diff");
+
+        // Roots 0 and 2 untouched in both modes.
+        for mode in [ViewMode::GapsOnly, ViewMode::All] {
+            assert_eq!(
+                hashes[mode][0], hashes_before[mode][0],
+                "root 0 unchanged in {mode:?}"
+            );
+            assert_eq!(
+                hashes[mode][2], hashes_before[mode][2],
+                "root 2 unchanged in {mode:?}"
+            );
+        }
     }
 
     #[test]
     fn mode_with_no_subscribers_is_skipped_and_its_hashes_stay_untouched() {
-        let raw = empty_raw_view(2);
+        let raw = raw_view_of(vec![
+            walked_root_with_folder(0, true),
+            walked_root_with_folder(1, true),
+        ]);
         let mut hashes = empty_hashes();
+        let links = no_links();
         let only_gaps = enum_map! { ViewMode::GapsOnly => true, ViewMode::All => false };
-        let pushes = compute_pushes(&raw, &mut hashes, only_gaps, |m, r, _| format!("{m:?}-{r}"));
+        let pushes = compute_pushes(&raw, &mut hashes, only_gaps, &links);
         assert_eq!(pushes.len(), 2, "two roots in GapsOnly only");
         assert!(pushes.iter().all(|(m, _, _)| *m == ViewMode::GapsOnly));
         assert!(
             hashes[ViewMode::All].is_empty(),
-            "the All mode's hashes were never resized or written"
+            "the All mode's hashes were never resized or written",
         );
     }
 
