@@ -23,6 +23,10 @@ pub struct AppState {
     /// ADR-0023). A blocking scan locks it to reuse unchanged directories.
     pub(crate) dir_index: Arc<StdMutex<DirIndex>>,
     pub(crate) cache: Cache,
+    // Wired into service/web/autosync in subsequent commits; field exists
+    // first so `AppState::new` can construct the store from shared Arcs.
+    #[allow(dead_code)]
+    pub(crate) store: RawViewStore,
     /// The autosync subscriber registry and loop handle. The loop spawns on the
     /// first SSE subscription with a non-zero `autosync_interval_seconds` and
     /// exits when the last subscriber disconnects (ADR-0023).
@@ -170,6 +174,97 @@ fn is_fresh(entry: &CacheEntry, ttl: Option<Duration>) -> bool {
     ttl.is_some_and(|ttl| entry.stored_at.elapsed() < ttl)
 }
 
+/// Owns the scan substrate, the TTL-bounded cache slot, and the marker file
+/// IO. The single place where raw scan output is produced, memoized, and
+/// edited. See ADR-0027.
+pub struct RawViewStore {
+    /// The cache slot. Held briefly for in-place edits; held across the
+    /// per-root rescan in `remove_mark` (matching today's `rebuild_root`).
+    entries: Mutex<Option<CacheEntry>>,
+    /// `None` disables caching: every read rescans.
+    ttl: Option<Duration>,
+    /// Scan substrate: the compiled settings and the shared mtime index.
+    settings: Arc<ScanSettings>,
+    dir_index: Arc<StdMutex<DirIndex>>,
+    /// Held by the store for `build_view`; the same `Arc<Config>` is also
+    /// exposed on `AppState.config` for handlers that read pure config data
+    /// (search links, cookie name, library roots). See ADR-0027.
+    config: Arc<Config>,
+}
+
+impl RawViewStore {
+    /// Build a fresh store. `ttl == None` disables caching so every read
+    /// rescans; any other value sets the staleness window.
+    pub fn new(
+        config: Arc<Config>,
+        settings: Arc<ScanSettings>,
+        dir_index: Arc<StdMutex<DirIndex>>,
+        ttl: Option<Duration>,
+    ) -> RawViewStore {
+        RawViewStore {
+            entries: Mutex::new(None),
+            ttl,
+            settings,
+            dir_index,
+            config,
+        }
+    }
+
+    /// Return the cached raw view if still fresh, otherwise build one under the
+    /// lock and store it. Single-flight. TTL-respecting. Used by page loads
+    /// and the SSE first event.
+    pub async fn current(&self) -> Arc<RawView> {
+        let mut slot = self.entries.lock().await;
+        if let Some(entry) = slot.as_ref()
+            && is_fresh(entry, self.ttl)
+        {
+            tracing::debug!("cache hit");
+            return Arc::clone(&entry.raw);
+        }
+        tracing::debug!("cache miss");
+        let raw = self.build_view().await;
+        store_fresh(&mut slot, raw)
+    }
+
+    /// Rebuild under the lock and store, ignoring the TTL but keeping the dir
+    /// index. The autosync loop calls this each tick to pick up filesystem
+    /// changes without forcing a cold walk.
+    pub async fn refresh(&self) -> Arc<RawView> {
+        let mut slot = self.entries.lock().await;
+        let raw = self.build_view().await;
+        store_fresh(&mut slot, raw)
+    }
+
+    /// Force a fresh cold scan: clear the dir index, build under the lock,
+    /// store, return. Ignores the TTL. The explicit "fix any drift" path,
+    /// used by the /rescan click.
+    pub async fn rescan(&self) -> Arc<RawView> {
+        crate::service::lock_index(&self.dir_index).clear();
+        let mut slot = self.entries.lock().await;
+        let raw = self.build_view().await;
+        store_fresh(&mut slot, raw)
+    }
+
+    /// Build the raw view for every configured root, in config order.
+    async fn build_view(&self) -> RawView {
+        crate::service::build_view(
+            self.config.as_ref(),
+            &self.settings,
+            Arc::clone(&self.dir_index),
+        )
+        .await
+    }
+
+    /// Test accessor: returns a cloned `Arc<RawView>` of the stored slot, if any.
+    /// Used in tests to assert that a warm read did not reseat the slot
+    /// (`Arc::ptr_eq` against a prior snapshot).
+    #[cfg(test)]
+    pub async fn peek_stored_arc(&self) -> Option<Arc<RawView>> {
+        let slot = self.entries.lock().await;
+        slot.as_ref().map(|entry| Arc::clone(&entry.raw))
+    }
+}
+
 impl AppState {
     /// Build the shared state. `ttl_seconds == 0` disables the cache; any other
     /// value sets the staleness window.
@@ -179,16 +274,25 @@ impl AppState {
         } else {
             Some(Duration::from_secs(config.ttl_seconds))
         };
+        let config = Arc::new(config);
+        let settings = Arc::new(settings);
         let dir_index = Arc::new(StdMutex::new(DirIndex::new()));
         let autosync = crate::autosync::Autosync::new(config.autosync_interval_seconds);
+        let store = RawViewStore::new(
+            Arc::clone(&config),
+            Arc::clone(&settings),
+            Arc::clone(&dir_index),
+            ttl,
+        );
         AppState {
-            config: Arc::new(config),
-            settings: Arc::new(settings),
+            config,
+            settings,
             dir_index,
             cache: Cache {
                 entries: Mutex::new(None),
                 ttl,
             },
+            store,
             autosync,
         }
     }
@@ -421,5 +525,56 @@ mod tests {
             after < Duration::from_millis(10),
             "stored_at must be refreshed by the rebuild"
         );
+    }
+
+    fn test_store(ttl: Option<Duration>, root: std::path::PathBuf) -> RawViewStore {
+        let cfg = Config {
+            library_roots: vec![root],
+            ttl_seconds: ttl.map(|t| t.as_secs()).unwrap_or(0),
+            ..Default::default()
+        };
+        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
+        let dir_index = Arc::new(StdMutex::new(DirIndex::new()));
+        RawViewStore::new(Arc::new(cfg), Arc::new(settings), dir_index, ttl)
+    }
+
+    #[tokio::test]
+    async fn store_current_serves_stored_raw_within_ttl() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        let first = store.current().await;
+        crate::scenarios::touch(&dir.path().join("Book/Book.epub"));
+        let second = store.current().await;
+
+        assert!(Arc::ptr_eq(&first, &second), "warm store must not rebuild");
+    }
+
+    #[tokio::test]
+    async fn store_current_single_flights_a_cold_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = Arc::new(test_store(
+            Some(Duration::from_secs(600)),
+            dir.path().to_path_buf(),
+        ));
+        let s1 = Arc::clone(&store);
+        let s2 = Arc::clone(&store);
+        let (a, b) = tokio::join!(s1.current(), s2.current());
+        assert!(Arc::ptr_eq(&a, &b), "single-flight: one Arc shared");
+    }
+
+    #[tokio::test]
+    async fn store_rescan_clears_the_dir_index() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+        let _ = store.current().await;
+        let before = store.dir_index.lock().unwrap().len();
+        assert!(before > 0);
+        let _ = store.rescan().await;
+        let after = store.dir_index.lock().unwrap().len();
+        assert!(after > 0, "rescan repopulates the index after clearing it");
     }
 }
