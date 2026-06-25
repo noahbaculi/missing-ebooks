@@ -1279,4 +1279,45 @@ mod tests {
         assert_eq!(scan.audiobook_count(), 0);
         assert!(scan.folders().is_empty());
     }
+
+    #[test]
+    fn audiobook_count_counts_walked_folders_that_directly_hold_audio() {
+        let walked = RootScan::Walked {
+            canonical_path: PathBuf::from("/lib"),
+            folders: vec![
+                ScannedFolder {
+                    rel_path: PathBuf::from("A/Book1"),
+                    directly_holds_audio: true,
+                    missing_ebook: true,
+                    cover_files: Vec::new(),
+                    audio_files: vec!["01.mp3".to_string()],
+                },
+                ScannedFolder {
+                    rel_path: PathBuf::from("A"),
+                    directly_holds_audio: false,
+                    missing_ebook: false,
+                    cover_files: Vec::new(),
+                    audio_files: Vec::new(),
+                },
+                ScannedFolder {
+                    rel_path: PathBuf::from("A/Book2"),
+                    directly_holds_audio: true,
+                    missing_ebook: false,
+                    cover_files: vec!["Book2.epub".to_string()],
+                    audio_files: vec!["01.mp3".to_string()],
+                },
+            ],
+        };
+        assert_eq!(walked.audiobook_count(), 2);
+        let empty_walked = RootScan::Walked {
+            canonical_path: PathBuf::from("/lib"),
+            folders: Vec::new(),
+        };
+        assert_eq!(empty_walked.audiobook_count(), 0);
+        let failed = RootScan::Failed {
+            path: PathBuf::from("/lib"),
+            message: "nope".to_string(),
+        };
+        assert_eq!(failed.audiobook_count(), 0);
+    }
 }

@@ -684,4 +684,26 @@ mod tests {
         };
         assert!(!covered.has_gap_within(), "a fully covered branch has none");
     }
+
+    #[test]
+    fn view_mode_parses_the_query_token_leniently() {
+        assert_eq!(ViewMode::from_query(Some("all")), ViewMode::All);
+        assert_eq!(ViewMode::from_query(Some("gaps")), ViewMode::GapsOnly);
+        // Absent or unrecognized falls back to gaps-only.
+        assert_eq!(ViewMode::from_query(None), ViewMode::GapsOnly);
+        assert_eq!(ViewMode::from_query(Some("xyz")), ViewMode::GapsOnly);
+    }
+
+    #[test]
+    fn view_mode_round_trips_through_its_query_token() {
+        for mode in [ViewMode::GapsOnly, ViewMode::All] {
+            assert_eq!(ViewMode::from_query(Some(mode.as_query())), mode);
+        }
+    }
+
+    #[test]
+    fn view_mode_path_returns_canonical_url_per_mode() {
+        assert_eq!(ViewMode::GapsOnly.path(), "/");
+        assert_eq!(ViewMode::All.path(), "/?view=all");
+    }
 }
