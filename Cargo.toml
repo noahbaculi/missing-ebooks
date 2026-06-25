@@ -25,6 +25,11 @@ name = "tree_bench"
 path = "examples/tree_bench.rs"
 test = true
 
+[[bench]]
+name = "render"
+path = "benches/render.rs"
+harness = false
+
 [dependencies]
 anyhow = "1.0.102"
 axum = "0.8.9"
@@ -45,6 +50,7 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 urlencoding = "2.1.3"
 
 [dev-dependencies]
+criterion = "0.7"
 filetime = "0.2"
 futures-util = { version = "0.3", default-features = false }
 http-body-util = "0.1.3"
