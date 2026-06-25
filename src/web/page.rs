@@ -550,4 +550,37 @@ mod tests {
         let html = scan_bar().into_string();
         assert!(html.contains(r#"id="scan-bar""#));
     }
+
+    #[test]
+    fn navbar_renders_the_disabled_filter_input_and_no_matches_line() {
+        // The search box itself ships inside the navbar (called from `page`),
+        // and the no-matches line is the standalone `search_empty` helper that
+        // `render_view` drops next to the roots block.
+        let box_html = search_box().into_string();
+        // A filter input with an accessible name. The box renders visible from first
+        // paint so it never reflows in; the input renders `disabled` and app.js clears
+        // that once the tree and handler are wired, so the box is greyed but never a
+        // dead box the user can type into before it works.
+        assert!(box_html.contains(r#"id="search-input""#));
+        assert!(box_html.contains(r#"aria-label="Filter folders""#));
+        assert!(box_html.contains(r#"<div class="search" id="search">"#));
+        assert!(box_html.contains(r#"autocomplete="off" disabled>"#));
+
+        let empty_html = search_empty().into_string();
+        // A polite "no matches" line, hidden until a query matches nothing.
+        assert!(empty_html.contains(r#"id="search-empty""#));
+        assert!(empty_html.contains(r#"aria-live="polite""#));
+        assert!(empty_html.contains("No folders match"));
+    }
+
+    #[test]
+    fn search_box_renders_a_hidden_themed_clear_button() {
+        let html = search_box().into_string();
+        // A labelled clear button sits in the filter box, hidden at first paint so it
+        // only appears once the box holds text (app.js drives the toggle).
+        assert!(html.contains(r#"id="search-clear""#));
+        assert!(html.contains(r#"aria-label="Clear filter" hidden"#));
+        // It carries a thin-× glyph, not a circle: two diagonal strokes.
+        assert!(html.contains(r#"d="M6 6l12 12M18 6L6 18""#));
+    }
 }

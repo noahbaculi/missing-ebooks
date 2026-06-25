@@ -832,50 +832,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn navbar_renders_the_disabled_filter_input_and_no_matches_line() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // A filter input with an accessible name. The box renders visible from first
-        // paint so it never reflows in; the input renders `disabled` and app.js clears
-        // that once the tree and handler are wired, so the box is greyed but never a
-        // dead box the user can type into before it works.
-        assert!(body.contains(r#"id="search-input""#));
-        assert!(body.contains(r#"aria-label="Filter folders""#));
-        assert!(body.contains(r#"<div class="search" id="search">"#));
-        assert!(body.contains(r#"autocomplete="off" disabled>"#));
-        // A polite "no matches" line, hidden until a query matches nothing.
-        assert!(body.contains(r#"id="search-empty""#));
-        assert!(body.contains(r#"aria-live="polite""#));
-        assert!(body.contains("No folders match"));
-    }
-
-    #[tokio::test]
-    async fn search_box_renders_a_hidden_themed_clear_button() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // A labelled clear button sits in the filter box, hidden at first paint so it
-        // only appears once the box holds text (app.js drives the toggle).
-        assert!(body.contains(r#"id="search-clear""#));
-        assert!(body.contains(r#"aria-label="Clear filter" hidden"#));
-        // It carries a thin-× glyph, not a circle: two diagonal strokes.
-        assert!(body.contains(r#"d="M6 6l12 12M18 6L6 18""#));
-    }
-
-    #[tokio::test]
     async fn index_tolerates_a_filter_query_param_on_a_view_switch() {
         // The client carries the live filter across a view switch as a q param; the
         // server has no use for it and must ignore it, not reject the request.
