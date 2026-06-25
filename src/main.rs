@@ -95,7 +95,9 @@ async fn main() -> ExitCode {
         }
     });
 
-    if let Err(err) = axum::serve(listener, app).await {
+    let serve =
+        axum::serve(listener, app).with_graceful_shutdown(missing_ebooks::shutdown::signal());
+    if let Err(err) = serve.await {
         tracing::error!(error = %err, "server error");
         return ExitCode::from(1);
     }

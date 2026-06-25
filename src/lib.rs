@@ -8,6 +8,7 @@ pub mod query;
 pub mod raw_view;
 pub mod scanner;
 pub mod scenarios;
+pub mod shutdown;
 pub mod state;
 pub mod telemetry;
 pub mod tree;

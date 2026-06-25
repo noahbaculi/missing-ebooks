@@ -84,9 +84,8 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     tracing::info!(%bind, "missing-ebooks demo listening");
-    let serve = axum::serve(listener, demo_router(state)).with_graceful_shutdown(async {
-        tokio::signal::ctrl_c().await.ok();
-    });
+    let serve = axum::serve(listener, demo_router(state))
+        .with_graceful_shutdown(missing_ebooks::shutdown::signal());
     serve.await?;
     Ok(())
 }
