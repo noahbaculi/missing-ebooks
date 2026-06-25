@@ -471,11 +471,16 @@ mod tests {
         crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
         let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
 
-        let first = store.current().await;
+        let _warm = store.current().await;
+        let rebuilds_before = store.rebuild_count();
         crate::scenarios::touch(&dir.path().join("Book/Book.epub"));
-        let second = store.current().await;
+        let _again = store.current().await;
 
-        assert!(Arc::ptr_eq(&first, &second), "warm store must not rebuild");
+        assert_eq!(
+            store.rebuild_count(),
+            rebuilds_before,
+            "warm read must not rebuild the slot",
+        );
     }
 
     #[tokio::test]
@@ -488,8 +493,12 @@ mod tests {
         ));
         let s1 = Arc::clone(&store);
         let s2 = Arc::clone(&store);
-        let (a, b) = tokio::join!(s1.current(), s2.current());
-        assert!(Arc::ptr_eq(&a, &b), "single-flight: one Arc shared");
+        let (_a, _b) = tokio::join!(s1.current(), s2.current());
+        assert_eq!(
+            store.rebuild_count(),
+            1,
+            "single-flight: one rebuild for two concurrent cold reads",
+        );
     }
 
     #[tokio::test]
@@ -549,12 +558,21 @@ mod tests {
         let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
 
         let _warm = store.current().await;
+        let rebuilds_before = store.rebuild_count();
         let applied = store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
         assert!(applied.created);
-        let stored = store.peek_stored_arc().await.unwrap();
-        assert!(
-            Arc::ptr_eq(&stored, &applied.raw),
-            "slot stores the edited view"
+        assert_eq!(
+            store.rebuild_count(),
+            rebuilds_before,
+            "warm write_mark must not rebuild",
+        );
+        assert!(!book_missing(&applied.raw), "the edit is reflected");
+
+        let _next = store.current().await;
+        assert_eq!(
+            store.rebuild_count(),
+            rebuilds_before,
+            "follow-up read must not rebuild",
         );
     }
 
@@ -699,9 +717,9 @@ mod tests {
 
     #[tokio::test]
     async fn store_warm_concurrent_reads_share_one_raw_slot() {
-        // Warm reads against a single slot must share the same `Arc<RawView>`,
-        // matching the property ADR-0022 documents for warm reads. The cold
-        // single-flight case is `store_current_single_flights_a_cold_slot`.
+        // Warm reads against a single slot must not rebuild, matching the
+        // property ADR-0022 documents for warm reads. The cold single-flight
+        // case is `store_current_single_flights_a_cold_slot`.
         let dir = tempfile::tempdir().unwrap();
         crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
         let store = Arc::new(test_store(
@@ -710,17 +728,16 @@ mod tests {
         ));
 
         let _warm = store.current().await;
-        let before = store.peek_stored_arc().await.expect("warmed slot");
+        let rebuilds_before = store.rebuild_count();
 
         let s1 = Arc::clone(&store);
         let s2 = Arc::clone(&store);
-        let (a, b) = tokio::join!(s1.current(), s2.current());
-        assert!(Arc::ptr_eq(&a, &b), "warm concurrent reads share one Arc");
+        let (_a, _b) = tokio::join!(s1.current(), s2.current());
 
-        let after = store.peek_stored_arc().await.expect("warmed slot");
-        assert!(
-            Arc::ptr_eq(&before, &after),
-            "warm concurrent reads must not rebuild the raw slot"
+        assert_eq!(
+            store.rebuild_count(),
+            rebuilds_before,
+            "warm concurrent reads must not rebuild",
         );
     }
 
@@ -813,26 +830,32 @@ mod tests {
     #[tokio::test]
     async fn store_write_mark_warm_slot_survives_follow_up_read() {
         // The in-place edit must persist across a follow-up read inside the
-        // live TTL: the slot is not rebuilt and the second read serves the
-        // edited Arc that the mark produced.
+        // live TTL: the slot is not rebuilt and the second read reflects the
+        // mark.
         let dir = tempfile::tempdir().unwrap();
         crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
         let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
 
         let _first = store.current().await;
+        let rebuilds_before = store.rebuild_count();
         let applied = store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
         assert!(!book_missing(&applied.raw));
-        let raw_after_mark = store.peek_stored_arc().await.expect("warmed slot");
+        assert_eq!(
+            store.rebuild_count(),
+            rebuilds_before,
+            "warm write_mark must not rebuild",
+        );
 
         // A new gap appears on disk, but the warm TTL means the next read
         // serves from the cached raw slot rather than rescanning.
         crate::scenarios::touch(&dir.path().join("Other/01.mp3"));
-        let _again = store.current().await;
-        let raw_after_read = store.peek_stored_arc().await.expect("warmed slot");
-        assert!(
-            Arc::ptr_eq(&raw_after_mark, &raw_after_read),
-            "a warm raw slot must not have been rebuilt by the second read"
+        let again = store.current().await;
+        assert_eq!(
+            store.rebuild_count(),
+            rebuilds_before,
+            "follow-up read must not rebuild the slot",
         );
+        assert!(!book_missing(&again), "follow-up read reflects the mark");
     }
 
     #[tokio::test]
