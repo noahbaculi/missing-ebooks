@@ -1572,4 +1572,36 @@ mod tests {
         assert!(html.contains(r#"aria-valuemin="0""#));
         assert!(html.contains(r#"id="coverage-bar-fill""#));
     }
+
+    #[test]
+    fn index_renders_the_menu_with_a_flagged_badge() {
+        // `ul.menu`, `section.card.root`, and the `needs ebook` badge are all
+        // emitted by the renderer (render_section + render_node); the original
+        // test reached through the router to assert on them.
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The tree is now a `menu`, and the styled section keeps the `root` hook.
+        assert!(html.contains(r#"class="menu""#));
+        assert!(html.contains(r#"class="card root""#));
+        // A flagged folder carries the warning badge.
+        assert!(html.contains("needs ebook"));
+    }
+
+    #[test]
+    fn the_flagged_badge_carries_a_hover_title() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The mobile dot has no visible text, so the badge gets a title that names
+        // it on hover. The literal label is still emitted as the badge's content.
+        assert!(html.contains(r#"title="needs ebook""#));
+        assert!(html.contains("needs ebook"));
+    }
 }

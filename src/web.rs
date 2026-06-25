@@ -322,36 +322,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rescan_is_an_in_place_htmx_swap_with_a_progress_bar() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // Rescan posts via htmx and swaps the fresh sections into #roots.
-        assert!(body.contains(r#"hx-post="/rescan""#));
-        assert!(body.contains(r##"hx-target="#roots""##));
-        // The progress bar lights up as the indicator, and the button is disabled for
-        // the request so a second click cannot fire a second scan.
-        assert!(body.contains(r##"hx-indicator="#scan-bar, #rescan-btn""##));
-        assert!(body.contains(r##"hx-disabled-elt="#rescan-btn""##));
-        // The bar is wired as the indicator.
-        assert!(body.contains(r#"id="scan-bar""#));
-        // The button keeps its constant "Rescan" label and locks via hx-disabled-elt.
-        assert!(body.contains(r#"id="rescan-btn""#));
-        assert!(body.contains("Rescan"));
-        // Rescan is htmx-driven, not a native form submit: the button posts via
-        // hx-post and the form carries no method/action.
-        assert!(!body.contains(r#"action="/rescan""#));
-        assert!(!body.contains(r#"method="post""#));
-        assert!(body.contains(r#"id="rescan-btn" type="button" hx-post="/rescan""#));
-    }
-
-    #[tokio::test]
     async fn rescan_returns_sections_for_an_htmx_request() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
@@ -377,22 +347,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn index_renders_the_menu_with_a_flagged_badge() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // The tree is now a `menu`, and the styled section keeps the `root` hook.
-        assert!(body.contains(r#"class="menu""#));
-        assert!(body.contains(r#"class="card root""#));
-        // A flagged folder carries the warning badge.
-        assert!(body.contains("needs ebook"));
-    }
-
-    #[tokio::test]
     async fn static_route_serves_the_stylesheet() {
         let dir = tempfile::tempdir().unwrap();
         let response = app_for(dir.path())
@@ -409,21 +363,6 @@ mod tests {
         assert!(content_type.to_str().unwrap().contains("text/css"));
         let body = body_string(response).await;
         assert!(body.contains("--color-base-100"));
-    }
-
-    #[tokio::test]
-    async fn the_flagged_badge_carries_a_hover_title() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // The mobile dot has no visible text, so the badge gets a title that names
-        // it on hover. The literal label is still emitted as the badge's content.
-        assert!(body.contains(r#"title="needs ebook""#));
-        assert!(body.contains("needs ebook"));
     }
 
     #[tokio::test]
@@ -458,84 +397,6 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let content_type = response.headers().get("content-type").unwrap();
         assert!(content_type.to_str().unwrap().contains("javascript"));
-    }
-
-    #[tokio::test]
-    async fn navbar_renders_a_settings_cog_with_theme_and_confirm_controls() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // A labelled cog opens the settings panel via the native popover API.
-        assert!(body.contains(r#"class="btn btn-ghost btn-square settings-cog""#));
-        assert!(body.contains(r#"aria-label="Settings""#));
-        assert!(body.contains(r#"popovertarget="settings-panel""#));
-        assert!(body.contains(r#"id="settings-panel""#));
-        // The theme segmented control offers all three states.
-        assert!(body.contains(r#"data-theme-choice="light""#));
-        assert!(body.contains(r#"data-theme-choice="dark""#));
-        assert!(body.contains(r#"data-theme-choice="system""#));
-        // The Theme control's header reuses the .settings-head styling, like the
-        // folder-depth group.
-        assert!(body.contains(r#"<div class="settings-head">Theme</div>"#));
-        // The confirm-before-marking switch.
-        assert!(body.contains(r#"id="confirm-toggle""#));
-        // The panel orders the theme control first, then the confirm switch, then
-        // the two folder-depth styling switches under their header, bold then italic.
-        assert!(body.contains("Folder depth styling"));
-        assert!(body.contains(r#"id="bold-top-toggle""#));
-        assert!(body.contains(r#"id="italic-nested-toggle""#));
-        let theme_at = body.find(r#"data-theme-choice="light""#).unwrap();
-        let confirm_at = body.find(r#"id="confirm-toggle""#).unwrap();
-        let bold_at = body.find(r#"id="bold-top-toggle""#).unwrap();
-        let italic_at = body.find(r#"id="italic-nested-toggle""#).unwrap();
-        assert!(
-            theme_at < confirm_at && confirm_at < bold_at && bold_at < italic_at,
-            "the panel should order theme, then confirm, then the depth switches bold-then-italic"
-        );
-        // The panel title sits below the theme selector, heading the rest.
-        let settings_head_at = body
-            .find(r#"<div class="settings-head">Settings</div>"#)
-            .unwrap();
-        assert!(
-            theme_at < settings_head_at && settings_head_at < confirm_at,
-            "the Settings title should sit below the theme selector and above the confirm switch"
-        );
-    }
-
-    #[tokio::test]
-    async fn panel_renders_the_accent_color_control() {
-        let dir = tempfile::tempdir().unwrap();
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // A regular-weight row label, not a section header.
-        assert!(body.contains(r#"<span class="settings-label">Accent Color</span>"#));
-        // The native color picker, defaulting to the shipped amber.
-        assert!(body.contains(r#"id="accent-input""#));
-        assert!(body.contains(r#"type="color""#));
-        assert!(body.contains(r##"value="#f5a524""##));
-        // The three preset quick-pick dots. Amber is the default, so it is not a
-        // preset, so the dots offer the alternatives.
-        assert!(body.contains(r##"data-accent="#06b6d4""##));
-        assert!(body.contains(r##"data-accent="#c2410c""##));
-        assert!(body.contains(r##"data-accent="#a21caf""##));
-        // It sits inside the Theme section: after the theme choices, before the
-        // Settings header.
-        let theme_at = body.find(r#"data-theme-choice="system""#).unwrap();
-        let accent_at = body.find(r#"id="accent-input""#).unwrap();
-        let settings_head_at = body
-            .find(r#"<div class="settings-head">Settings</div>"#)
-            .unwrap();
-        assert!(
-            theme_at < accent_at && accent_at < settings_head_at,
-            "the Accent Color row should sit inside the Theme section, below the theme choices and above the Settings header"
-        );
     }
 
     #[tokio::test]
@@ -813,42 +674,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_view_control_marks_the_active_segment() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Author/Book/01.mp3"));
-        let app = app_for(dir.path());
-
-        let gaps = body_string(
-            app.clone()
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // Gaps-only is the active view; "All folders" is the link to the other view.
-        assert!(gaps.contains(r#"class="segmented""#));
-        assert!(gaps.contains("Gaps only"));
-        assert!(gaps.contains("All folders"));
-        assert!(gaps.contains(r#"href="/?view=all""#));
-
-        let all = body_string(
-            app.clone()
-                .oneshot(
-                    Request::builder()
-                        .uri("/?view=all")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap(),
-        )
-        .await;
-        // Show-all is active; "Gaps only" links back to /.
-        assert!(all.contains(r#"href="/""#));
-        assert!(all.contains(r#"aria-current="page""#));
-    }
-
-    #[tokio::test]
     async fn static_assets_carry_cache_control_and_a_strong_etag() {
         let dir = tempfile::tempdir().unwrap();
         let app = app_for(dir.path());
@@ -1007,63 +832,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn navbar_renders_the_brand_mark_before_the_title() {
-        let dir = tempfile::tempdir().unwrap();
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The title is a home link wrapping the brand glyph and the wordmark. The
-        // single assertion fixes the link, the inline mark, and its leading position.
-        assert!(body.contains(r#"<h1><a href="/"><svg class="brand-mark""#));
-        assert!(body.contains("Missing Ebooks"));
-    }
-
-    #[tokio::test]
-    async fn decorative_icons_are_hidden_from_assistive_tech() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The folder glyph renders on every node row; it must be hidden from the
-        // a11y tree (it is paired with the folder name) and not be a tab stop.
-        assert!(body.contains(r#"<svg class="icon" aria-hidden="true" focusable="false""#));
-    }
-
-    #[tokio::test]
-    async fn navbar_places_the_spacer_before_the_search_box() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The flexible spacer sits right after the title, so the title alone pins to the
-        // left and the search box groups with the controls on the right.
-        let spacer = body
-            .find(r#"<span class="spacer">"#)
-            .expect("spacer present");
-        let search = body
-            .find(r#"<div class="search""#)
-            .expect("search box present");
-        assert!(
-            spacer < search,
-            "the spacer should sit before the search box"
-        );
-    }
-
-    #[tokio::test]
     async fn navbar_renders_the_disabled_filter_input_and_no_matches_line() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
@@ -1105,28 +873,6 @@ mod tests {
         assert!(body.contains(r#"aria-label="Clear filter" hidden"#));
         // It carries a thin-× glyph, not a circle: two diagonal strokes.
         assert!(body.contains(r#"d="M6 6l12 12M18 6L6 18""#));
-    }
-
-    #[tokio::test]
-    async fn index_renders_the_shortcuts_inside_the_settings_panel() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The shortcuts are a read-only section inside the settings popover.
-        assert!(body.contains(r#"class="settings-shortcuts""#));
-        assert!(body.contains("Keyboard shortcuts"));
-        // The keys are spelled out for the reader.
-        assert!(body.contains("<kbd>j</kbd>"));
-        assert!(body.contains("Move between gaps"));
-        // Enter leaves the filter box, the complement of / focusing it.
-        assert!(body.contains("<kbd>Enter</kbd>"));
-        assert!(body.contains("Exit the filter"));
     }
 
     #[tokio::test]

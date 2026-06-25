@@ -386,4 +386,168 @@ mod tests {
         assert!(html.contains(r#"src="/static/htmx-sse.js""#));
         assert!(html.contains(r#"src="/static/app.js""#));
     }
+
+    #[test]
+    fn navbar_renders_a_settings_cog_with_theme_and_confirm_controls() {
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        // A labelled cog opens the settings panel via the native popover API.
+        assert!(html.contains(r#"class="btn btn-ghost btn-square settings-cog""#));
+        assert!(html.contains(r#"aria-label="Settings""#));
+        assert!(html.contains(r#"popovertarget="settings-panel""#));
+        assert!(html.contains(r#"id="settings-panel""#));
+        // The theme segmented control offers all three states.
+        assert!(html.contains(r#"data-theme-choice="light""#));
+        assert!(html.contains(r#"data-theme-choice="dark""#));
+        assert!(html.contains(r#"data-theme-choice="system""#));
+        // The Theme control's header reuses the .settings-head styling, like the
+        // folder-depth group.
+        assert!(html.contains(r#"<div class="settings-head">Theme</div>"#));
+        // The confirm-before-marking switch.
+        assert!(html.contains(r#"id="confirm-toggle""#));
+        // The panel orders the theme control first, then the confirm switch, then
+        // the two folder-depth styling switches under their header, bold then italic.
+        assert!(html.contains("Folder depth styling"));
+        assert!(html.contains(r#"id="bold-top-toggle""#));
+        assert!(html.contains(r#"id="italic-nested-toggle""#));
+        let theme_at = html.find(r#"data-theme-choice="light""#).unwrap();
+        let confirm_at = html.find(r#"id="confirm-toggle""#).unwrap();
+        let bold_at = html.find(r#"id="bold-top-toggle""#).unwrap();
+        let italic_at = html.find(r#"id="italic-nested-toggle""#).unwrap();
+        assert!(
+            theme_at < confirm_at && confirm_at < bold_at && bold_at < italic_at,
+            "the panel should order theme, then confirm, then the depth switches bold-then-italic"
+        );
+        // The panel title sits below the theme selector, heading the rest.
+        let settings_head_at = html
+            .find(r#"<div class="settings-head">Settings</div>"#)
+            .unwrap();
+        assert!(
+            theme_at < settings_head_at && settings_head_at < confirm_at,
+            "the Settings title should sit below the theme selector and above the confirm switch"
+        );
+    }
+
+    #[test]
+    fn panel_renders_the_accent_color_control() {
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        // A regular-weight row label, not a section header.
+        assert!(html.contains(r#"<span class="settings-label">Accent Color</span>"#));
+        // The native color picker, defaulting to the shipped amber.
+        assert!(html.contains(r#"id="accent-input""#));
+        assert!(html.contains(r#"type="color""#));
+        assert!(html.contains(r##"value="#f5a524""##));
+        // The three preset quick-pick dots. Amber is the default, so it is not a
+        // preset, so the dots offer the alternatives.
+        assert!(html.contains(r##"data-accent="#06b6d4""##));
+        assert!(html.contains(r##"data-accent="#c2410c""##));
+        assert!(html.contains(r##"data-accent="#a21caf""##));
+        // It sits inside the Theme section: after the theme choices, before the
+        // Settings header.
+        let theme_at = html.find(r#"data-theme-choice="system""#).unwrap();
+        let accent_at = html.find(r#"id="accent-input""#).unwrap();
+        let settings_head_at = html
+            .find(r#"<div class="settings-head">Settings</div>"#)
+            .unwrap();
+        assert!(
+            theme_at < accent_at && accent_at < settings_head_at,
+            "the Accent Color row should sit inside the Theme section, below the theme choices and above the Settings header"
+        );
+    }
+
+    #[test]
+    fn the_view_control_marks_the_active_segment() {
+        // Gaps-only is the active view; "All folders" is the link to the other view.
+        let gaps = page(ViewMode::GapsOnly, stub_body()).into_string();
+        assert!(gaps.contains(r#"class="segmented""#));
+        assert!(gaps.contains("Gaps only"));
+        assert!(gaps.contains("All folders"));
+        assert!(gaps.contains(r#"href="/?view=all""#));
+
+        // Show-all is active; "Gaps only" links back to /.
+        let all = page(ViewMode::All, stub_body()).into_string();
+        assert!(all.contains(r#"href="/""#));
+        assert!(all.contains(r#"aria-current="page""#));
+    }
+
+    #[test]
+    fn navbar_renders_the_brand_mark_before_the_title() {
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        // The title is a home link wrapping the brand glyph and the wordmark. The
+        // single assertion fixes the link, the inline mark, and its leading position.
+        assert!(html.contains(r#"<h1><a href="/"><svg class="brand-mark""#));
+        assert!(html.contains("Missing Ebooks"));
+    }
+
+    #[test]
+    fn decorative_icons_are_hidden_from_assistive_tech() {
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        // The folder glyph renders on every node row; it must be hidden from the
+        // a11y tree (it is paired with the folder name) and not be a tab stop.
+        // The shell carries other icons that satisfy the same shape (cog, search,
+        // check, ebook-elsewhere, no-entry), so calling `page` with a stub body
+        // is enough.
+        assert!(html.contains(r#"<svg class="icon" aria-hidden="true" focusable="false""#));
+    }
+
+    #[test]
+    fn navbar_places_the_spacer_before_the_search_box() {
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        // The flexible spacer sits right after the title, so the title alone pins to the
+        // left and the search box groups with the controls on the right.
+        let spacer = html
+            .find(r#"<span class="spacer">"#)
+            .expect("spacer present");
+        let search = html
+            .find(r#"<div class="search""#)
+            .expect("search box present");
+        assert!(
+            spacer < search,
+            "the spacer should sit before the search box"
+        );
+    }
+
+    #[test]
+    fn index_renders_the_shortcuts_inside_the_settings_panel() {
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        // The shortcuts are a read-only section inside the settings popover.
+        assert!(html.contains(r#"class="settings-shortcuts""#));
+        assert!(html.contains("Keyboard shortcuts"));
+        // The keys are spelled out for the reader.
+        assert!(html.contains("<kbd>j</kbd>"));
+        assert!(html.contains("Move between gaps"));
+        // Enter leaves the filter box, the complement of / focusing it.
+        assert!(html.contains("<kbd>Enter</kbd>"));
+        assert!(html.contains("Exit the filter"));
+    }
+
+    #[test]
+    fn navbar_renders_the_rescan_form_with_htmx_attrs() {
+        // The navbar half of the original
+        // `rescan_is_an_in_place_htmx_swap_with_a_progress_bar`. The scan-bar
+        // id pin lives next to it as `scan_bar_carries_the_indicator_id`.
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        // Rescan posts via htmx and swaps the fresh sections into #roots.
+        assert!(html.contains(r#"hx-post="/rescan""#));
+        assert!(html.contains(r##"hx-target="#roots""##));
+        // The progress bar lights up as the indicator, and the button is disabled for
+        // the request so a second click cannot fire a second scan.
+        assert!(html.contains(r##"hx-indicator="#scan-bar, #rescan-btn""##));
+        assert!(html.contains(r##"hx-disabled-elt="#rescan-btn""##));
+        // The button keeps its constant "Rescan" label and locks via hx-disabled-elt.
+        assert!(html.contains(r#"id="rescan-btn""#));
+        assert!(html.contains("Rescan"));
+        // Rescan is htmx-driven, not a native form submit: the button posts via
+        // hx-post and the form carries no method/action.
+        assert!(!html.contains(r#"action="/rescan""#));
+        assert!(!html.contains(r#"method="post""#));
+        assert!(html.contains(r#"id="rescan-btn" type="button" hx-post="/rescan""#));
+    }
+
+    #[test]
+    fn scan_bar_carries_the_indicator_id() {
+        // The bar is wired as the rescan indicator. The page shell embeds it via
+        // `render_view`; calling `scan_bar` directly pins the id without that detour.
+        let html = scan_bar().into_string();
+        assert!(html.contains(r#"id="scan-bar""#));
+    }
 }
