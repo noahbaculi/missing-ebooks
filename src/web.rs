@@ -321,38 +321,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn marker_form_delays_the_swap_only_in_gaps_only() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let app = app_for(dir.path());
-        // Gaps-only: the marked folder leaves the list, so the section swap is delayed
-        // to let app.js play the row's collapse before the fresh section lands.
-        let gaps = body_string(
-            app.clone()
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        assert!(gaps.contains(r#"hx-swap="outerHTML swap:250ms""#));
-        // Show-all: the row flips to covered in place, so the swap is immediate. The
-        // reserved row height keeps the flip from shifting the rows below.
-        let all = body_string(
-            app.oneshot(
-                Request::builder()
-                    .uri("/?view=all")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap(),
-        )
-        .await;
-        assert!(all.contains(r#"hx-swap="outerHTML""#));
-        assert!(!all.contains("swap:250ms"));
-    }
-
-    #[tokio::test]
     async fn rescan_is_an_in_place_htmx_swap_with_a_progress_bar() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
@@ -427,36 +395,6 @@ mod tests {
         assert!(body.contains("%23605dff"));
         assert!(body.contains("prefers-color-scheme:dark"));
         assert!(!body.contains("width='22'"));
-    }
-
-    #[tokio::test]
-    async fn index_renders_the_marker_buttons_and_script() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        assert!(body.contains(r#"hx-post="/mark""#));
-        assert!(body.contains(r#"src="/static/htmx.min.js""#));
-        assert!(body.contains(r#"src="/static/app.js""#));
-        assert!(body.contains(">No ebook<"));
-    }
-
-    #[tokio::test]
-    async fn elsewhere_button_uses_the_book_check_icon() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // The "Ebook elsewhere" button now carries a book-and-check glyph (the
-        // checkmark path), not the old open-external-link arrow.
-        assert!(body.contains("m9 9.5 2 2 4-4"));
-        assert!(!body.contains("M10 14L21 3"));
     }
 
     #[tokio::test]
@@ -827,30 +765,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn marker_buttons_carry_confirm_metadata() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // Each marker button names its action, file, and folder for the dialog.
-        assert!(body.contains(r#"data-confirm-action="No ebook""#));
-        assert!(body.contains(r#"data-confirm-file=".no_ebook""#));
-        assert!(body.contains(r#"data-confirm-action="Ebook elsewhere""#));
-        assert!(body.contains(r#"data-confirm-file=".ebook_elsewhere""#));
-        assert!(body.contains(r#"data-confirm-folder="Book""#));
-        // Each button carries a hover tooltip spelling out what the marker means.
-        assert!(body.contains(
-            r#"title="No ebook exists or can be sourced. Covers this folder and everything beneath it.""#
-        ));
-        assert!(body.contains(
-            r#"title="The ebook is in another folder. Covers this folder and everything beneath it.""#
-        ));
-    }
-
-    #[tokio::test]
     async fn rescan_without_htmx_still_returns_sections() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
@@ -1093,52 +1007,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn all_view_dims_covered_rows_and_omits_their_buttons() {
-        let dir = tempfile::tempdir().unwrap();
-        // A covered container (series epub) whose books are all covered.
-        touch(&dir.path().join("Series/Series.epub"));
-        touch(&dir.path().join("Series/Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(
-                    Request::builder()
-                        .uri("/?view=all")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap(),
-        )
-        .await;
-        // Covered rows carry the success check and the covered class.
-        assert!(body.contains(r#"title="covered""#));
-        assert!(body.contains(r#"covered""#));
-        // A fully covered branch carries no marker buttons.
-        assert!(!body.contains(r#"hx-post="/mark""#));
-    }
-
-    #[tokio::test]
-    async fn all_view_keeps_buttons_on_a_container_above_a_gap() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Author/Gap/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(
-                    Request::builder()
-                        .uri("/?view=all")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The author is a plain container above a gap, so it still gets buttons.
-        assert!(body.contains(r#"hx-post="/mark""#));
-        assert!(body.contains("Gap"));
-    }
-
-    #[tokio::test]
     async fn the_view_control_marks_the_active_segment() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Author/Book/01.mp3"));
@@ -1210,38 +1078,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn marking_in_all_mode_shows_the_written_marker_on_the_row() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Author/Book/01.mp3"));
-        let app = app_for(dir.path());
-        // Warm the all slot.
-        app.clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/?view=all")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/mark")
-                    .header("content-type", "application/x-www-form-urlencoded")
-                    .body(Body::from("root=0&rel=Author/Book&kind=no_ebook&view=all"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        assert!(body.contains(r#"class="cover-files""#));
-        assert!(body.contains(".no_ebook"));
-    }
-
-    #[tokio::test]
     async fn gaps_only_view_has_no_status_icons_or_covered_rows() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Author/Book/01.mp3"));
@@ -1258,91 +1094,6 @@ mod tests {
         // The gap and its buttons are still there.
         assert!(body.contains("Book"));
         assert!(body.contains(r#"hx-post="/mark""#));
-    }
-
-    #[tokio::test]
-    async fn each_actionable_row_has_an_actions_trigger() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // A labelled kebab that opens the per-row action sheet via the native
-        // popover API, and the group that is that popover.
-        assert!(body.contains(r#"class="actions-trigger""#));
-        assert!(body.contains(r#"aria-label="Actions""#));
-        assert!(body.contains(r#"aria-haspopup="menu""#));
-        assert!(body.contains("popovertarget"));
-        assert!(body.contains(r#"class="actions-group""#));
-        assert!(body.contains(r#"popover="auto""#));
-        // The group is labelled with the folder name and titles the sheet with it.
-        assert!(body.contains(r#"aria-label="Book""#));
-        assert!(body.contains(r#"class="sheet-title""#));
-        // The marker buttons and search links still render inside the group.
-        assert!(body.contains(r#"hx-post="/mark""#));
-        assert!(body.contains(">No ebook<"));
-        assert!(body.contains("Goodreads"));
-    }
-
-    #[tokio::test]
-    async fn the_action_sheet_titles_with_the_folder_and_shows_verbose_labels() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // The sheet header titles the sheet with the folder name.
-        assert!(body.contains(r#"class="sheet-title">Book<"#));
-        // The elsewhere marker keeps a verbose sheet label distinct from its
-        // compact pill; the no-ebook marker reads "No ebook" in both registers.
-        assert!(body.contains("Ebook elsewhere"));
-        // The compact labels render with their exact pill text.
-        assert!(body.contains(">No ebook<"));
-        assert!(body.contains(">Elsewhere<"));
-    }
-
-    #[tokio::test]
-    async fn the_action_sheet_marks_the_search_section() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // A sheet-only "Search" divider separates the marker rows from the links.
-        assert!(body.contains(r#"class="sheet-divider""#));
-        // The links still resolve to their configured search URLs.
-        assert!(body.contains("https://www.goodreads.com/search?q=Book"));
-    }
-
-    #[tokio::test]
-    async fn a_covered_row_has_no_actions_trigger() {
-        let dir = tempfile::tempdir().unwrap();
-        // A fully covered branch: the book has its own ebook, nothing to act on.
-        touch(&dir.path().join("Series/Series.epub"));
-        touch(&dir.path().join("Series/Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(
-                    Request::builder()
-                        .uri("/?view=all")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap(),
-        )
-        .await;
-        // No gap under this branch, so no trigger and no group are emitted.
-        assert!(!body.contains(r#"class="actions-trigger""#));
-        assert!(!body.contains(r#"class="actions-group""#));
     }
 
     #[tokio::test]

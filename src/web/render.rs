@@ -993,4 +993,219 @@ mod tests {
         // never has to special-case missing attrs.
         assert!(html.contains(r#"data-total-audiobooks="0""#));
     }
+
+    /// Default search-link set, matching what `Config::default()` ships and
+    /// what the in-repo router tests historically asserted against.
+    fn default_links() -> Vec<SearchLink> {
+        vec![
+            SearchLink {
+                label: "Goodreads".into(),
+                url: "https://www.goodreads.com/search?q={query}".into(),
+            },
+            SearchLink {
+                label: "OceanofPDF".into(),
+                url: "https://oceanofpdf.com/?s={query}".into(),
+            },
+        ]
+    }
+
+    #[test]
+    fn marker_form_delays_the_swap_only_in_gaps_only() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        // Gaps-only: the marked folder leaves the list, so the section swap is delayed
+        // to let app.js play the row's collapse before the fresh section lands.
+        let gaps = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        assert!(gaps.contains(r#"hx-swap="outerHTML swap:250ms""#));
+        // Show-all: the row flips to covered in place, so the swap is immediate. The
+        // reserved row height keeps the flip from shifting the rows below.
+        let all = render_view(&view, &[], ViewMode::All).into_string();
+        assert!(all.contains(r#"hx-swap="outerHTML""#));
+        assert!(!all.contains("swap:250ms"));
+    }
+
+    #[test]
+    fn index_renders_the_marker_buttons() {
+        // Renderer-half of the original `index_renders_the_marker_buttons_and_script`.
+        // The body-end `<script>` assertions live in `page::tests` (P1).
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        assert!(html.contains(r#"hx-post="/mark""#));
+        assert!(html.contains(">No ebook<"));
+    }
+
+    #[test]
+    fn elsewhere_button_uses_the_book_check_icon() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The "Ebook elsewhere" button now carries a book-and-check glyph (the
+        // checkmark path), not the old open-external-link arrow.
+        assert!(html.contains("m9 9.5 2 2 4-4"));
+        assert!(!html.contains("M10 14L21 3"));
+    }
+
+    #[test]
+    fn marker_buttons_carry_confirm_metadata() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // Each marker button names its action, file, and folder for the dialog.
+        assert!(html.contains(r#"data-confirm-action="No ebook""#));
+        assert!(html.contains(r#"data-confirm-file=".no_ebook""#));
+        assert!(html.contains(r#"data-confirm-action="Ebook elsewhere""#));
+        assert!(html.contains(r#"data-confirm-file=".ebook_elsewhere""#));
+        assert!(html.contains(r#"data-confirm-folder="Book""#));
+        // Each button carries a hover tooltip spelling out what the marker means.
+        assert!(html.contains(
+            r#"title="No ebook exists or can be sourced. Covers this folder and everything beneath it.""#
+        ));
+        assert!(html.contains(
+            r#"title="The ebook is in another folder. Covers this folder and everything beneath it.""#
+        ));
+    }
+
+    #[test]
+    fn all_view_dims_covered_rows_and_omits_their_buttons() {
+        // A covered container (series epub) whose books are all covered.
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Series",
+                "Series",
+                vec![covered_leaf("Book", "Series/Book", &[])],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::All).into_string();
+        // Covered rows carry the success check and the covered class.
+        assert!(html.contains(r#"title="covered""#));
+        assert!(html.contains(r#"covered""#));
+        // A fully covered branch carries no marker buttons.
+        assert!(!html.contains(r#"hx-post="/mark""#));
+    }
+
+    #[test]
+    fn all_view_keeps_buttons_on_a_container_above_a_gap() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![flagged_leaf("Gap", "Author/Gap", &["01.mp3"])],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::All).into_string();
+        // The author is a plain container above a gap, so it still gets buttons.
+        assert!(html.contains(r#"hx-post="/mark""#));
+        assert!(html.contains("Gap"));
+    }
+
+    #[test]
+    fn each_actionable_row_has_an_actions_trigger() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        // A labelled kebab that opens the per-row action sheet via the native
+        // popover API, and the group that is that popover.
+        assert!(html.contains(r#"class="actions-trigger""#));
+        assert!(html.contains(r#"aria-label="Actions""#));
+        assert!(html.contains(r#"aria-haspopup="menu""#));
+        assert!(html.contains("popovertarget"));
+        assert!(html.contains(r#"class="actions-group""#));
+        assert!(html.contains(r#"popover="auto""#));
+        // The group is labelled with the folder name and titles the sheet with it.
+        assert!(html.contains(r#"aria-label="Book""#));
+        assert!(html.contains(r#"class="sheet-title""#));
+        // The marker buttons and search links still render inside the group.
+        assert!(html.contains(r#"hx-post="/mark""#));
+        assert!(html.contains(">No ebook<"));
+        assert!(html.contains("Goodreads"));
+    }
+
+    #[test]
+    fn the_action_sheet_titles_with_the_folder_and_shows_verbose_labels() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The sheet header titles the sheet with the folder name.
+        assert!(html.contains(r#"class="sheet-title">Book<"#));
+        // The elsewhere marker keeps a verbose sheet label distinct from its
+        // compact pill; the no-ebook marker reads "No ebook" in both registers.
+        assert!(html.contains("Ebook elsewhere"));
+        // The compact labels render with their exact pill text.
+        assert!(html.contains(">No ebook<"));
+        assert!(html.contains(">Elsewhere<"));
+    }
+
+    #[test]
+    fn the_action_sheet_marks_the_search_section() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        // A sheet-only "Search" divider separates the marker rows from the links.
+        assert!(html.contains(r#"class="sheet-divider""#));
+        // The links still resolve to their configured search URLs.
+        assert!(html.contains("https://www.goodreads.com/search?q=Book"));
+    }
+
+    #[test]
+    fn a_covered_row_has_no_actions_trigger() {
+        // A fully covered branch: the book has its own ebook, nothing to act on.
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Series",
+                "Series",
+                vec![covered_leaf("Book", "Series/Book", &[])],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::All).into_string();
+        // No gap under this branch, so no trigger and no group are emitted.
+        assert!(!html.contains(r#"class="actions-trigger""#));
+        assert!(!html.contains(r#"class="actions-group""#));
+    }
+
+    #[test]
+    fn marking_in_all_mode_shows_the_written_marker_on_the_row() {
+        // After a no-ebook mark lands, the row flips from flagged to covered
+        // and the marker file shows up in `cover_files`. Re-rendering the
+        // section in show-all then carries the marker on the row.
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![covered_leaf("Book", "Author/Book", &[".no_ebook"])],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::All).into_string();
+        assert!(html.contains(r#"class="cover-files""#));
+        assert!(html.contains(".no_ebook"));
+    }
 }
