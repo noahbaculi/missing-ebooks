@@ -1,8 +1,10 @@
 //! Criterion bench for `render_view` and the per-section OOB render. Three
-//! sizes (1k, 10k, 50k folders) at a single shape, both view modes. The
-//! per-folder throughput column pins the ADR-0022 claim. Baseline save and
-//! compare catches regressions on maud, the section renderer, or
-//! `count_gaps`.
+//! sizes (1k, 10k, 50k folders), depth=3 (the audiobook Author/Series/Book
+//! shape), gap_rate=0.5, both view modes. Fanout grows with size so each row
+//! actually hits the leaf level and `Throughput::Elements` reports honest
+//! per-folder numbers. The per-folder throughput column pins the ADR-0022
+//! claim. Baseline save and compare catches regressions on maud, the section
+//! renderer, or `count_gaps`.
 
 // `criterion_group!` and `criterion_main!` generate undocumented items.
 #![allow(missing_docs)]
@@ -23,14 +25,21 @@ struct Input {
     view_all: FlaggedView,
 }
 
-const SIZES: &[(usize, &str)] = &[(1_000, "1k"), (10_000, "10k"), (50_000, "50k")];
-const DEPTH: usize = 5;
-const FANOUT: usize = 10;
+/// `(total, label, fanout)`. Fanout per size is the smallest `N` whose
+/// `N + N^2 + N^3` capacity at depth=3 covers `total`, so the seeder fills
+/// the leaf level rather than capping mid-container.
+///
+/// - 1k:  fanout=10 (capacity 1110)
+/// - 10k: fanout=22 (capacity 11154)
+/// - 50k: fanout=37 (capacity 52059)
+const SIZES: &[(usize, &str, usize)] =
+    &[(1_000, "1k", 10), (10_000, "10k", 22), (50_000, "50k", 37)];
+const DEPTH: usize = 3;
 const GAP_RATE: f64 = 0.5;
 
 fn bench_render(c: &mut Criterion) {
-    for &(size, label) in SIZES {
-        let scan = synthetic_root_scan(size, DEPTH, FANOUT, GAP_RATE);
+    for &(size, label, fanout) in SIZES {
+        let scan = synthetic_root_scan(size, DEPTH, fanout, GAP_RATE);
         let raw = vec![scan.clone()];
         let view_gaps = package_view(&raw, ViewMode::GapsOnly);
         let view_all = package_view(&raw, ViewMode::All);
