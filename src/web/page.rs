@@ -307,3 +307,17 @@ pub(crate) fn page(mode: ViewMode, body: Markup) -> Markup {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[allow(unused_imports)]
+    use super::*;
+    use maud::html;
+
+    /// A stub body for tests that only care about the page shell, not what
+    /// sits inside it.
+    #[allow(dead_code)]
+    fn stub_body() -> maud::Markup {
+        html! { div #stub {} }
+    }
+}
