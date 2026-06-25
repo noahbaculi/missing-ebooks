@@ -1,5 +1,5 @@
 //! The demo's axum router and handlers. Handlers reuse the production `page`,
-//! `render_section`, `apply_mark_raw`, and `render_view` from the library, plus
+//! `render_section`, `apply_mark_raw`, and `package_view` from the library, plus
 //! the static-asset handlers. A visitor is pinned to an in-memory session by a
 //! cookie; their marks are replayed on top of the shared raw view per request,
 //! then rendered for the requested mode. The full index page carries the demo
@@ -17,12 +17,11 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use tokio::sync::mpsc;
 
-use crate::service::{FlaggedView, render_view};
 use crate::state::{RawView, apply_mark_raw};
 use crate::tree::ViewMode;
 use crate::web::assets::{app_css, htmx_script, htmx_sse_script};
 use crate::web::render::render_view as render_view_html;
-use crate::web::render::{oob_sections, render_section};
+use crate::web::render::{FlaggedView, oob_sections, package_view, render_section};
 use crate::web::{MarkRequest, ViewQuery, events_response};
 
 use super::banner;
@@ -134,7 +133,7 @@ fn resolve_in_store(
 /// inside `apply_mark_raw`.
 fn derive_view(base: &RawView, marks: &[Mark], mode: ViewMode) -> FlaggedView {
     if marks.is_empty() {
-        return render_view(base, mode);
+        return package_view(base, mode);
     }
     let mut raw = base.clone();
     for mark in marks {
@@ -143,7 +142,7 @@ fn derive_view(base: &RawView, marks: &[Mark], mode: ViewMode) -> FlaggedView {
         }
         apply_mark_raw(&mut raw, mark.root, &mark.rel, mark.kind);
     }
-    render_view(&raw, mode)
+    package_view(&raw, mode)
 }
 
 /// The 503 at-capacity response.
@@ -626,12 +625,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn derive_view_with_no_marks_matches_render_view_of_the_base() {
+    async fn derive_view_with_no_marks_matches_package_view_of_the_base() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
 
-        let plain = render_view(&state.base_raw, ViewMode::GapsOnly);
+        let plain = package_view(&state.base_raw, ViewMode::GapsOnly);
         let derived = derive_view(&state.base_raw, &[], ViewMode::GapsOnly);
         assert_eq!(
             serde_json::to_value(&plain).unwrap(),

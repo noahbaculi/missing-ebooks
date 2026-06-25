@@ -6,9 +6,6 @@
 
 pub use crate::state::DomainError;
 pub use crate::web::render::{FlaggedView, RootSection};
-// Pre-fold helper name. Demo still reaches through it; the re-export goes
-// away with service.rs itself in Task 13.
-pub(crate) use crate::web::render::package_view as render_view;
 
 #[cfg(test)]
 mod tests {}
