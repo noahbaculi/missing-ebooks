@@ -1374,4 +1374,202 @@ mod tests {
         assert!(all.contains("Covered"));
         assert!(all.contains("Gap"));
     }
+
+    #[test]
+    fn index_renders_the_gap_summary_strip() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![flagged_leaf("Book", "Author/Book", &["01.mp3"])],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The strip renders server-side, between the navbar and the roots.
+        assert!(html.contains(r#"id="gap-summary""#));
+        // The hero gap total has its own hook; the library coverage readout
+        // and bar carry the new coverage-* ids.
+        assert!(html.contains(r#"id="gap-total""#));
+        assert!(html.contains(r#"id="coverage-pct""#));
+        assert!(html.contains(r#"id="coverage-covered""#));
+        assert!(html.contains(r#"id="coverage-total""#));
+        assert!(html.contains("audiobooks"));
+        // The all-clear line renders too, hidden until the live total reaches zero.
+        assert!(html.contains(r#"id="gap-summary-clear" hidden"#));
+    }
+
+    #[test]
+    fn gap_summary_initial_paint_carries_library_coverage_readout() {
+        // Three audiobooks, one of them a gap, two covered.
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "A",
+                "A",
+                vec![
+                    flagged_leaf("B1", "A/B1", &["01.mp3"]),
+                    covered_leaf("B2", "A/B2", &["B2.epub"]),
+                    covered_leaf("B3", "A/B3", &["B3.epub"]),
+                ],
+            )]),
+            3,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The strip carries the three coverage hooks the JS keeps current.
+        assert!(html.contains(r#"id="coverage-pct""#));
+        assert!(html.contains(r#"id="coverage-covered""#));
+        assert!(html.contains(r#"id="coverage-total""#));
+        assert!(html.contains(r#"id="coverage-bar-fill""#));
+        // Bar values match the load: covered=2, total=3, label is the library.
+        assert!(html.contains(r#"aria-label="Library coverage""#));
+        assert!(html.contains(r#"aria-valuenow="2""#));
+        assert!(html.contains(r#"aria-valuemax="3""#));
+    }
+
+    #[test]
+    fn gap_summary_all_clear_with_audiobooks_shows_trailing_coverage_fragment() {
+        // Two covered audiobooks, no gaps: the cached gaps-only view collapses
+        // an empty forest to `Clean`, so the fixture mirrors that.
+        let view = vec![clean("/lib", 2)];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // All-clear branch is visible, the trailing coverage span shows the
+        // T of T fragment and is not hidden. The numbers ride in their own
+        // child spans so app.js only rewrites the digits and the surrounding
+        // wording stays in the server template.
+        assert!(html.contains(r#"id="gap-summary-clear">"#));
+        assert!(html.contains(r#"id="gap-summary-head" hidden"#));
+        assert!(html.contains(r#"<span class="coverage-clear" id="coverage-clear">"#));
+        assert!(html.contains("100% covered ("));
+        assert!(html.contains(r#"id="coverage-clear-covered">2</span>"#));
+        assert!(html.contains(r#"id="coverage-clear-total">2</span>"#));
+        assert!(html.contains("audiobooks)"));
+    }
+
+    #[test]
+    fn gap_summary_empty_library_keeps_coverage_fragment_hidden() {
+        // No audio at all; the strip is in its empty-library state.
+        let view = vec![clean("/lib", 0)];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // The all-clear line shows but the coverage trailing fragment stays
+        // hidden so the line does not read "0 of 0".
+        assert!(html.contains("All clear"));
+        assert!(html.contains(r#"id="coverage-clear" hidden"#));
+        assert!(html.contains(r#"id="gap-summary-head" hidden"#));
+    }
+
+    #[test]
+    fn gap_summary_excludes_errored_roots_from_the_coverage_total() {
+        // 100 audiobooks under the good root, all of them gaps, plus an
+        // errored root that contributes neither audiobooks nor gaps.
+        let mut leaves = Vec::new();
+        for i in 0..100 {
+            let name = format!("B{i:03}");
+            leaves.push(flagged_leaf(&name, &name, &["01.mp3"]));
+        }
+        let view = vec![
+            section("/good", forest(leaves), 100),
+            errored("/no/such/root/xyz123", "no such file or directory"),
+        ];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // Total reads 100 (errored root contributes zero); covered = 0; pct = 0.
+        assert!(html.contains(r#"aria-valuemax="100""#));
+        assert!(html.contains(r#"aria-valuenow="0""#));
+        // The readout text reflects the same numbers.
+        assert!(html.contains(r#"id="coverage-total">100"#));
+        assert!(html.contains(r#"id="coverage-covered">0"#));
+    }
+
+    #[test]
+    fn gap_summary_shows_all_clear_for_a_covered_library() {
+        let view = vec![clean("/lib", 1)];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // Total zero: the all-clear line shows and the head loads hidden so an
+        // undo back from the last mark can bring it back.
+        assert!(html.contains("All clear"));
+        assert!(html.contains(r#"id="gap-summary-clear">"#));
+        assert!(html.contains(r#"id="gap-summary-head" hidden"#));
+        // The trailing coverage fragment carries the audiobook count and is
+        // visible because the library has audiobooks but no gaps. The numbers
+        // ride in their own child spans.
+        assert!(html.contains("100% covered ("));
+        assert!(html.contains(r#"id="coverage-clear-covered">1</span>"#));
+        assert!(html.contains(r#"id="coverage-clear-total">1</span>"#));
+        assert!(html.contains("audiobooks)"));
+        // The hidden bar still floors its max at 1, never a degenerate max-of-zero.
+        assert!(html.contains(r#"aria-valuemax="1""#));
+        assert!(!html.contains(r#"aria-valuemax="0""#));
+    }
+
+    #[test]
+    fn gap_summary_renders_a_chip_per_root_for_a_multi_root_config() {
+        let view = vec![
+            section(
+                "/a",
+                forest(vec![flagged_leaf("BookA", "BookA", &["01.mp3"])]),
+                1,
+            ),
+            section(
+                "/b",
+                forest(vec![flagged_leaf("BookB", "BookB", &["01.mp3"])]),
+                1,
+            ),
+        ];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // One chip per root, each with its own gap count and a data-root hook the
+        // client recompute updates.
+        assert!(html.contains(r#"id="gap-chips""#));
+        assert!(html.contains(r#"class="gap-chip" data-root="0""#));
+        assert!(html.contains(r#"data-root="1""#));
+    }
+
+    #[test]
+    fn gap_summary_omits_chips_for_a_single_root() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        assert!(!html.contains(r#"id="gap-chips""#));
+    }
+
+    #[test]
+    fn gap_summary_chips_handle_a_clean_and_an_error_root() {
+        let view = vec![
+            clean("/good", 1),
+            errored("/no/such/root/xyz123", "no such file or directory"),
+        ];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // Total is zero, so the all-clear message shows, and a multi-root setup still
+        // gets its chips, the error root labelled.
+        assert!(html.contains("All clear"));
+        assert!(html.contains(r#"id="gap-chips""#));
+        assert!(html.contains("gap-chip-clean"));
+        assert!(html.contains("gap-chip-error"));
+        assert!(html.contains("scan error"));
+    }
+
+    #[test]
+    fn gap_summary_renders_a_library_coverage_progressbar() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![flagged_leaf("Book", "Author/Book", &["01.mp3"])],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // A progressbar that measures the library: covered over total audiobooks.
+        // With one audiobook and one gap, covered=0 of total=1.
+        assert!(html.contains(r#"role="progressbar""#));
+        assert!(html.contains(r#"aria-label="Library coverage""#));
+        assert!(html.contains(r#"aria-valuenow="0""#));
+        assert!(html.contains(r#"aria-valuemax="1""#));
+        assert!(html.contains(r#"aria-valuemin="0""#));
+        assert!(html.contains(r#"id="coverage-bar-fill""#));
+    }
 }
