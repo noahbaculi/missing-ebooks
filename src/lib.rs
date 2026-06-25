@@ -10,6 +10,7 @@ pub mod scanner;
 pub mod scenarios;
 pub mod shutdown;
 pub mod state;
+pub mod synthetic;
 pub mod telemetry;
 pub mod tree;
 pub mod web;
