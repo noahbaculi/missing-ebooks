@@ -142,19 +142,21 @@ Add `docs/adr/0028-service-layer-folded-into-handlers-and-renderer.md` recording
 
 Granular, conventional, no squash. Build green at every commit.
 
+The ordering rule is: relocate types and tests before deleting the wrappers they depend on. The 27 tests under `service::tests` call `current_view`, `rescan`, `mark`, and `unmark` directly (see lines 289-593 of today's `service.rs`); deleting those wrappers before moving the tests would break the build mid-plan. So test moves happen first, handler folds after.
+
 1. `docs: record service-layer fold as ADR-0028` (the ADR file only).
 2. `refactor(state): move DomainError to state.rs` (enum moves; `service.rs` keeps a `pub use crate::state::DomainError;` stub so the rest of the commits compile).
-3. `refactor(render): move FlaggedView, RootSection, package_view, package_section to web/render.rs` (types and helpers move; `service.rs` re-exports them under their old names plus the new names; `web/render.rs`'s `use crate::service::{...}` line is deleted).
-4. `refactor(web): inline service::current_view into web::index and main warm-up` (handler and warm-up fold; `service::current_view` deleted).
-5. `refactor(web): inline service::rescan into web::rescan` (handler fold; `service::rescan` deleted).
-6. `refactor(web): inline service::mark into web::mark; drop MarkOutcome` (handler fold; `MarkOutcome` deleted; `Arc::new` wrappers vanish on this path).
-7. `refactor(web): inline service::unmark into web::unmark` (handler fold; `service::unmark` deleted; `Arc::new` wrapper vanishes on this path).
-8. `refactor(autosync): rewire render_section_from_raw to web::render::package_section` (one-line import and call-site rename).
-9. `refactor(demo): rewire render_view to web::render::package_view` (one-line import and call-site rename).
-10. `chore(tests): move store-behavior tests from service to state::tests` (~15 tests; mirror the recent render-page-tests cluster commits).
-11. `chore(tests): move render-packaging and type-shape tests from service to render::tests` (~6 tests).
-12. `chore(tests): move ViewMode tests to tree::tests and audiobook_count test to scanner::tests` (~4 tests).
-13. `chore: delete src/service.rs` (file disappears; `lib.rs` loses `pub mod service;`; the stub re-exports go with it).
+3. `refactor(render): move FlaggedView, RootSection, package_view, package_section to web/render.rs` (types and helpers move; `service.rs` re-exports them under both old and new names; `web/render.rs`'s `use crate::service::{...}` line is deleted; `service.rs::tests` keeps compiling via `super::*` pulling in the re-exports).
+4. `chore(tests): move store-behavior tests from service to state::tests` (the 13 store-behavior tests; each is compared against the existing `state::tests` block first, then added, merged into a near-duplicate, or dropped outright; rewritten to call `store.X()` directly rather than going through the soon-to-be-deleted wrappers; the `state_for` helper is dropped since `state::tests::test_store` covers the same need).
+5. `chore(tests): move render-packaging and type-shape tests from service to render::tests` (the 5 packaging tests plus `root_states_serialize_to_stable_json`; tests call `package_view` / `package_section` directly).
+6. `chore(tests): move ViewMode tests to tree::tests and audiobook_count test to scanner::tests` (the 3 `ViewMode` tests plus `audiobook_count_counts_walked_folders_that_directly_hold_audio`).
+7. `refactor(web): inline service::current_view into web::index and main warm-up` (handler and `main.rs` warm-up fold; `service::current_view` deleted).
+8. `refactor(web): inline service::rescan into web::rescan` (handler fold; `service::rescan` deleted).
+9. `refactor(web): inline service::mark into web::mark; drop MarkOutcome` (handler fold; `MarkOutcome` deleted; `Arc::new` wrappers vanish on this path).
+10. `refactor(web): inline service::unmark into web::unmark` (handler fold; `service::unmark` deleted; `Arc::new` wrapper vanishes on this path).
+11. `refactor(autosync): rewire render_section_from_raw to web::render::package_section` (one-line import and call-site rename).
+12. `refactor(demo): rewire render_view to web::render::package_view` (one-line import and call-site rename).
+13. `chore: delete src/service.rs` (file disappears; `lib.rs` loses `pub mod service;`; the re-export stubs in `service.rs` go with it; the `pub use` lines that other modules may still carry are removed in this commit).
 
 `cargo test` and the pre-commit hook (fmt, clippy, doc -D warnings, accent test when assets or accent tests change) run on every commit.
 
