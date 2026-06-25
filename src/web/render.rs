@@ -1208,4 +1208,84 @@ mod tests {
         assert!(html.contains(r#"class="cover-files""#));
         assert!(html.contains(".no_ebook"));
     }
+
+    #[test]
+    fn index_renders_the_search_links() {
+        // Goodreads ships as a default link. The (Unabridged) suffix is stripped from
+        // the query, so the href ends in `q=Book`, and the links open in a new tab.
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf(
+                "Book (Unabridged)",
+                "Book (Unabridged)",
+                &["01.mp3"],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        assert!(html.contains(r#"target="_blank""#));
+        assert!(html.contains("https://www.goodreads.com/search?q=Book"));
+        assert!(html.contains("Goodreads"));
+    }
+
+    #[test]
+    fn index_renders_every_configured_link() {
+        // The defaults ship two links; both must render, not just the first.
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        assert!(html.contains("https://www.goodreads.com/search?q=Book"));
+        assert!(html.contains("https://oceanofpdf.com/?s=Book"));
+        assert!(html.contains("OceanofPDF"));
+    }
+
+    #[test]
+    fn index_omits_the_links_span_when_none_are_configured() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // No links means no `span.links` is emitted, and no search popover menu.
+        // The kebab still carries `popovertarget` and is the sheet trigger now.
+        assert!(!html.contains(r#"class="links""#));
+        assert!(!html.contains(r#"class="links-menu""#));
+        assert!(!html.contains(r#"title="Search links""#));
+    }
+
+    #[test]
+    fn search_links_render_inside_a_popover_menu() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        // A magnifying-glass button opens a popover that holds the links.
+        assert!(html.contains("popovertarget"));
+        assert!(html.contains(r#"class="links-menu""#));
+        // The link itself is unchanged, just relocated into the menu.
+        assert!(html.contains("https://www.goodreads.com/search?q=Book"));
+        assert!(html.contains(r#"target="_blank""#));
+    }
+
+    #[test]
+    fn search_link_query_percent_encodes_spaces() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf(
+                "Author Name",
+                "Author Name",
+                &["01.mp3"],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        // Spaces in the cleaned query are percent-encoded, so the href carries `%20`.
+        assert!(html.contains("q=Author%20Name"));
+    }
 }
