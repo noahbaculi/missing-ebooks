@@ -201,10 +201,11 @@ pub struct Applied {
     pub created: bool,
 }
 
-/// A failure performing a write action. The HTML surface renders it inline. A
-/// future JSON API would render it as an error body.
+/// A failure inside the write attempt: the row was looked up but the marker
+/// file could not be written or deleted. `RawViewStore` surfaces these via
+/// `WriteFailure::Failed` alongside the still-valid raw view.
 #[derive(Debug, thiserror::Error)]
-pub enum DomainError {
+pub enum WriteError {
     /// The resolved target sits outside every configured root.
     #[error("target is outside the configured library roots")]
     OutsideRoots,
@@ -234,7 +235,7 @@ pub enum WriteFailure {
     /// row without a second store hop.
     Failed {
         /// The underlying domain error that caused the write to fail.
-        error: DomainError,
+        error: WriteError,
         /// The still-valid raw view, fetched by the store on the failure path.
         raw: Arc<RawView>,
     },
@@ -261,7 +262,7 @@ impl RawViewStore {
             tokio::task::spawn_blocking(move || write_marker(&root_path, &rel_owned, marker))
                 .await
                 .map_err(|_| {
-                    DomainError::WriteFailed(std::io::Error::other("marker write task failed"))
+                    WriteError::WriteFailed(std::io::Error::other("marker write task failed"))
                 })
                 .and_then(|inner| inner);
         let (created, canonical_root) = match inner {
@@ -333,7 +334,7 @@ impl RawViewStore {
             tokio::task::spawn_blocking(move || delete_marker(&delete_path, &rel_owned, marker))
                 .await
                 .map_err(|_| {
-                    DomainError::WriteFailed(std::io::Error::other("marker delete task failed"))
+                    WriteError::WriteFailed(std::io::Error::other("marker delete task failed"))
                 })
                 .and_then(|inner| inner);
         let canonical_root = match inner {
@@ -377,21 +378,20 @@ impl RawViewStore {
 /// root. The open is create-only: `Ok(true)` when this call made the file,
 /// `Ok(false)` when it was already there, which keeps a re-mark a no-op and
 /// lets undo delete only files it created.
-fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(bool, PathBuf), DomainError> {
+fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(bool, PathBuf), WriteError> {
     let started = Instant::now();
-    let canonical_root = std::fs::canonicalize(root).map_err(|_| DomainError::TargetMissing)?;
+    let canonical_root = std::fs::canonicalize(root).map_err(|_| WriteError::TargetMissing)?;
     let target = if rel == "." {
         canonical_root.clone()
     } else {
         canonical_root.join(rel)
     };
-    let canonical_target =
-        std::fs::canonicalize(&target).map_err(|_| DomainError::TargetMissing)?;
+    let canonical_target = std::fs::canonicalize(&target).map_err(|_| WriteError::TargetMissing)?;
     if !canonical_target.starts_with(&canonical_root) {
-        return Err(DomainError::OutsideRoots);
+        return Err(WriteError::OutsideRoots);
     }
     if !canonical_target.is_dir() {
-        return Err(DomainError::NotADirectory);
+        return Err(WriteError::NotADirectory);
     }
     let created = match std::fs::OpenOptions::new()
         .write(true)
@@ -400,7 +400,7 @@ fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(bool, PathBuf
     {
         Ok(_) => true,
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => false,
-        Err(e) => return Err(DomainError::WriteFailed(e)),
+        Err(e) => return Err(WriteError::WriteFailed(e)),
     };
     tracing::debug!(
         rel,
@@ -417,12 +417,12 @@ fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(bool, PathBuf
 /// tolerant: a missing file or a folder that no longer exists is success,
 /// since the intended end state (no marker) already holds. Runs on a blocking
 /// task.
-fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<PathBuf, DomainError> {
+fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<PathBuf, WriteError> {
     let started = Instant::now();
     let canonical_root = match std::fs::canonicalize(root) {
         Ok(path) => path,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(root.to_path_buf()),
-        Err(_) => return Err(DomainError::TargetMissing),
+        Err(_) => return Err(WriteError::TargetMissing),
     };
     let target = if rel == "." {
         canonical_root.clone()
@@ -432,15 +432,15 @@ fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<PathBuf, Doma
     let canonical_target = match std::fs::canonicalize(&target) {
         Ok(path) => path,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(canonical_root),
-        Err(_) => return Err(DomainError::TargetMissing),
+        Err(_) => return Err(WriteError::TargetMissing),
     };
     if !canonical_target.starts_with(&canonical_root) {
-        return Err(DomainError::OutsideRoots);
+        return Err(WriteError::OutsideRoots);
     }
     let removed = match std::fs::remove_file(canonical_target.join(marker.filename())) {
         Ok(()) => true,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
-        Err(e) => return Err(DomainError::WriteFailed(e)),
+        Err(e) => return Err(WriteError::WriteFailed(e)),
     };
     tracing::debug!(
         rel,
@@ -656,14 +656,14 @@ mod tests {
     fn write_marker_rejects_an_escape() {
         let dir = tempfile::tempdir().unwrap();
         let err = write_marker(dir.path(), "..", Marker::NoEbook).unwrap_err();
-        assert!(matches!(err, DomainError::OutsideRoots));
+        assert!(matches!(err, WriteError::OutsideRoots));
     }
 
     #[test]
     fn write_marker_missing_target_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
         let err = write_marker(dir.path(), "Nope", Marker::NoEbook).unwrap_err();
-        assert!(matches!(err, DomainError::TargetMissing));
+        assert!(matches!(err, WriteError::TargetMissing));
     }
 
     #[test]
@@ -671,7 +671,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
         let err = write_marker(dir.path(), "Book/01.mp3", Marker::NoEbook).unwrap_err();
-        assert!(matches!(err, DomainError::NotADirectory));
+        assert!(matches!(err, WriteError::NotADirectory));
     }
 
     #[test]
@@ -690,7 +690,7 @@ mod tests {
     fn delete_marker_rejects_an_escape() {
         let dir = tempfile::tempdir().unwrap();
         let err = delete_marker(dir.path(), "..", Marker::NoEbook).unwrap_err();
-        assert!(matches!(err, DomainError::OutsideRoots));
+        assert!(matches!(err, WriteError::OutsideRoots));
     }
 
     #[test]
@@ -912,7 +912,7 @@ mod tests {
         assert!(matches!(
             err,
             WriteFailure::Failed {
-                error: DomainError::OutsideRoots,
+                error: WriteError::OutsideRoots,
                 ..
             }
         ));
@@ -944,7 +944,7 @@ mod tests {
             .unwrap_err();
         let raw = match err {
             WriteFailure::Failed {
-                error: DomainError::OutsideRoots,
+                error: WriteError::OutsideRoots,
                 raw,
             } => raw,
             other => panic!("expected Failed with OutsideRoots, got {other:?}"),
@@ -970,7 +970,7 @@ mod tests {
             .unwrap_err();
         let raw = match err {
             WriteFailure::Failed {
-                error: DomainError::OutsideRoots,
+                error: WriteError::OutsideRoots,
                 raw,
             } => raw,
             other => panic!("expected Failed with OutsideRoots, got {other:?}"),
