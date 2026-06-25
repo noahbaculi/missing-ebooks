@@ -1288,4 +1288,90 @@ mod tests {
         // Spaces in the cleaned query are percent-encoded, so the href carries `%20`.
         assert!(html.contains("q=Author%20Name"));
     }
+
+    #[test]
+    fn all_view_lists_the_covering_ebook_on_a_covered_row() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![covered_leaf("Covered", "Author/Covered", &["Covered.epub"])],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::All).into_string();
+        assert!(html.contains(r#"class="cover-files""#));
+        assert!(html.contains("Covered.epub"));
+    }
+
+    #[test]
+    fn gaps_only_view_lists_no_cover_files() {
+        // In gaps-only the cached view drops covered nodes entirely, so the
+        // tree feeds the renderer only the flagged leaf.
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![flagged_leaf("Gap", "Author/Gap", &["01.mp3"])],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        assert!(!html.contains(r#"class="cover-files""#));
+    }
+
+    #[test]
+    fn gaps_only_view_has_no_status_icons_or_covered_rows() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![flagged_leaf("Book", "Author/Book", &["01.mp3"])],
+            )]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        // No status markers and no covered rows in the gaps-only output.
+        assert!(!html.contains(r#"class="status""#));
+        assert!(!html.contains(r#" covered""#));
+        // The gap and its buttons are still there.
+        assert!(html.contains("Book"));
+        assert!(html.contains(r#"hx-post="/mark""#));
+    }
+
+    #[test]
+    fn all_view_renders_covered_folders_that_gaps_only_drops() {
+        // Gaps-only's cached view drops the covered book entirely.
+        let gaps_view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![flagged_leaf("Gap", "Author/Gap", &["01.mp3"])],
+            )]),
+            2,
+        )];
+        let gaps = render_view(&gaps_view, &[], ViewMode::GapsOnly).into_string();
+        assert!(!gaps.contains("Covered"));
+
+        // Show-all keeps the covered book beside the flagged one.
+        let all_view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![
+                    covered_leaf("Covered", "Author/Covered", &["Covered.epub"]),
+                    flagged_leaf("Gap", "Author/Gap", &["01.mp3"]),
+                ],
+            )]),
+            2,
+        )];
+        let all = render_view(&all_view, &[], ViewMode::All).into_string();
+        assert!(all.contains("Covered"));
+        assert!(all.contains("Gap"));
+    }
 }

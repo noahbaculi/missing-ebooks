@@ -783,41 +783,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn all_view_renders_covered_folders_that_gaps_only_drops() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Author/Gap/01.mp3"));
-        touch(&dir.path().join("Author/Covered/01.mp3"));
-        touch(&dir.path().join("Author/Covered/Covered.epub"));
-        let app = app_for(dir.path());
-
-        // Gaps-only drops the covered book.
-        let gaps = body_string(
-            app.clone()
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        assert!(!gaps.contains("Covered"));
-
-        // Show-all renders it.
-        let all = body_string(
-            app.clone()
-                .oneshot(
-                    Request::builder()
-                        .uri("/?view=all")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap(),
-        )
-        .await;
-        assert!(all.contains("Covered"));
-        assert!(all.contains("Gap"));
-    }
-
-    #[tokio::test]
     async fn mark_in_all_mode_keeps_the_covered_folder_visible() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Author/Book/01.mp3"));
@@ -961,60 +926,6 @@ mod tests {
         // Show-all is active; "Gaps only" links back to /.
         assert!(all.contains(r#"href="/""#));
         assert!(all.contains(r#"aria-current="page""#));
-    }
-
-    #[tokio::test]
-    async fn all_view_lists_the_covering_ebook_on_a_covered_row() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Author/Covered/01.mp3"));
-        touch(&dir.path().join("Author/Covered/Covered.epub"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(
-                    Request::builder()
-                        .uri("/?view=all")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
-                .await
-                .unwrap(),
-        )
-        .await;
-        assert!(body.contains(r#"class="cover-files""#));
-        assert!(body.contains("Covered.epub"));
-    }
-
-    #[tokio::test]
-    async fn gaps_only_view_lists_no_cover_files() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Author/Gap/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        assert!(!body.contains(r#"class="cover-files""#));
-    }
-
-    #[tokio::test]
-    async fn gaps_only_view_has_no_status_icons_or_covered_rows() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Author/Book/01.mp3"));
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // No status markers and no covered rows in the gaps-only output.
-        assert!(!body.contains(r#"class="status""#));
-        assert!(!body.contains(r#" covered""#));
-        // The gap and its buttons are still there.
-        assert!(body.contains("Book"));
-        assert!(body.contains(r#"hx-post="/mark""#));
     }
 
     #[tokio::test]
