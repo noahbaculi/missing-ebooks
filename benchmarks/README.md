@@ -117,3 +117,25 @@ Result (2026-06-21, jane-2 and jane-core): primary gate passed, warm scans becom
 ### Recording results
 
 For a lever that pays off, add a note to the README "Network shares" section and commit the matching server-configs change. Record a lever that does not move the numbers here as tested and rejected, so it is not retried.
+
+## Render regression bench
+
+`benches/render.rs` is a `criterion` bench that guards the ADR-0022 per-folder render claim. It seeds three sizes (1k, 10k, 50k folders) at one shape (`depth = 5`, `fanout = 10`, `gap_rate = 0.5`) via `missing_ebooks::synthetic::synthetic_root_scan`, then times `render_view` and the per-section OOB render across both view modes. The synthetic seeder is shared with `examples/tree_bench.rs`, which keeps its sweep-table role for ad hoc shape exploration. Audit `deep-dive/missing-ebooks-audit-2026-06-25.md` item #7 motivates the bench.
+
+Capture a baseline on `main` once:
+
+```bash
+cargo bench --bench render -- --save-baseline main
+```
+
+On a branch, compare against it:
+
+```bash
+cargo bench --bench render -- --baseline main
+```
+
+Criterion prints a `change: [-0.5% .. +0.3%]` delta per bench ID and flags meaningful regressions in red. The per-folder column (under `Throughput`) is the figure ADR-0022 cites.
+
+`cargo bench --bench render -- --quick` runs the whole grid in a few seconds at reduced sample count, for a smoke test or coarse iteration. JSON reports under `target/criterion/` are not committed; this directory holds only the long-lived `scan_bench` reports.
+
+The bench is excluded from `cargo test`. CI's `cargo clippy --all-targets` step in `.github/workflows/ci.yml` compile-checks `benches/render.rs` on every push, so a breaking change to the renderer surface fails CI before it reaches a developer's bench run.
