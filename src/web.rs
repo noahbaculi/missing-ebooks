@@ -377,28 +377,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn index_links_an_inline_favicon() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // An inline SVG data-URI favicon, so the browser stops requesting
-        // /favicon.ico and the tab gets an identity.
-        assert!(body.contains(r#"rel="icon""#));
-        assert!(body.contains("data:image/svg+xml,"));
-        // A backdrop-less audiobook glyph that recolors with the OS theme: indigo
-        // on light tab strips, lighter on dark. Pin the indigo and the
-        // prefers-color-scheme rule so a revert to the old glyph or a single static
-        // color is caught. The 22x22 rect was the dropped rounded tile.
-        assert!(body.contains("%23605dff"));
-        assert!(body.contains("prefers-color-scheme:dark"));
-        assert!(!body.contains("width='22'"));
-    }
-
-    #[tokio::test]
     async fn index_renders_the_menu_with_a_flagged_badge() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
@@ -412,48 +390,6 @@ mod tests {
         assert!(body.contains(r#"class="card root""#));
         // A flagged folder carries the warning badge.
         assert!(body.contains("needs ebook"));
-    }
-
-    #[tokio::test]
-    async fn index_links_the_stylesheet_and_inits_the_theme() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // The external stylesheet replaces the old inline <style> block.
-        assert!(body.contains(r#"href="/static/app.css""#));
-        // The pre-paint theme script is present and reads the OS preference.
-        assert!(body.contains("prefers-color-scheme"));
-        // The pre-paint bootstrap also resolves both depth preferences, so a reader
-        // who opted out of an effect never flashes it before app.js runs.
-        assert!(body.contains("boldTopFolder"));
-        assert!(body.contains("italicNestedFolders"));
-        assert!(body.contains("dataset.boldTop"));
-        assert!(body.contains("dataset.italicNested"));
-        // The theme toggle moved into the settings menu: a labelled cog, with the
-        // theme choices inside the panel.
-        assert!(body.contains(r#"aria-label="Settings""#));
-        assert!(body.contains(r#"data-theme-choice="system""#));
-    }
-
-    #[tokio::test]
-    async fn prepaint_bootstrap_handles_the_accent_preference() {
-        let dir = tempfile::tempdir().unwrap();
-        let response = app_for(dir.path())
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let body = body_string(response).await;
-        // The inline pre-paint script reads the accent key and derives the ink
-        // before first paint, so a custom accent never flashes the default ink.
-        assert!(body.contains("getItem('accent')"));
-        assert!(body.contains("deriveWarningInk"));
-        assert!(body.contains("--color-warning-text"));
-        // The default writes no override, so it must match the shipped amber.
-        assert!(body.contains("'#f5a524'"));
     }
 
     #[tokio::test]
@@ -633,23 +569,6 @@ mod tests {
         assert!(body.contains(r#"data-msg-reconnected="Reconnected.""#));
         // The message slot the JS fills.
         assert!(body.contains(r#"class="conn-banner-msg""#));
-    }
-
-    #[tokio::test]
-    async fn page_carries_a_noscript_notice() {
-        let dir = tempfile::tempdir().unwrap();
-        let body = body_string(
-            app_for(dir.path())
-                .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-                .await
-                .unwrap(),
-        )
-        .await;
-        // The UI requires JavaScript; a <noscript> strip is the one thing a
-        // scripting-disabled visitor sees.
-        assert!(body.contains("<noscript>"));
-        assert!(body.contains(r#"<div class="noscript-notice">"#));
-        assert!(body.contains("needs JavaScript to run"));
     }
 
     #[tokio::test]

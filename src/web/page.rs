@@ -310,14 +310,80 @@ pub(crate) fn page(mode: ViewMode, body: Markup) -> Markup {
 
 #[cfg(test)]
 mod tests {
-    #[allow(unused_imports)]
     use super::*;
     use maud::html;
 
     /// A stub body for tests that only care about the page shell, not what
     /// sits inside it.
-    #[allow(dead_code)]
     fn stub_body() -> maud::Markup {
         html! { div #stub {} }
+    }
+
+    #[test]
+    fn index_links_an_inline_favicon() {
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        // An inline SVG data-URI favicon, so the browser stops requesting
+        // /favicon.ico and the tab gets an identity.
+        assert!(html.contains(r#"rel="icon""#));
+        assert!(html.contains("data:image/svg+xml,"));
+        // A backdrop-less audiobook glyph that recolors with the OS theme: indigo
+        // on light tab strips, lighter on dark. Pin the indigo and the
+        // prefers-color-scheme rule so a revert to the old glyph or a single static
+        // color is caught. The 22x22 rect was the dropped rounded tile.
+        assert!(html.contains("%23605dff"));
+        assert!(html.contains("prefers-color-scheme:dark"));
+        assert!(!html.contains("width='22'"));
+    }
+
+    #[test]
+    fn index_links_the_stylesheet_and_inits_the_theme() {
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        // The external stylesheet replaces the old inline <style> block.
+        assert!(html.contains(r#"href="/static/app.css""#));
+        // The pre-paint theme script is present and reads the OS preference.
+        assert!(html.contains("prefers-color-scheme"));
+        // The pre-paint bootstrap also resolves both depth preferences, so a reader
+        // who opted out of an effect never flashes it before app.js runs.
+        assert!(html.contains("boldTopFolder"));
+        assert!(html.contains("italicNestedFolders"));
+        assert!(html.contains("dataset.boldTop"));
+        assert!(html.contains("dataset.italicNested"));
+        // The theme toggle moved into the settings menu: a labelled cog, with the
+        // theme choices inside the panel.
+        assert!(html.contains(r#"aria-label="Settings""#));
+        assert!(html.contains(r#"data-theme-choice="system""#));
+    }
+
+    #[test]
+    fn prepaint_bootstrap_handles_the_accent_preference() {
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        // The inline pre-paint script reads the accent key and derives the ink
+        // before first paint, so a custom accent never flashes the default ink.
+        assert!(html.contains("getItem('accent')"));
+        assert!(html.contains("deriveWarningInk"));
+        assert!(html.contains("--color-warning-text"));
+        // The default writes no override, so it must match the shipped amber.
+        assert!(html.contains("'#f5a524'"));
+    }
+
+    #[test]
+    fn page_carries_a_noscript_notice() {
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        // The UI requires JavaScript; a <noscript> strip is the one thing a
+        // scripting-disabled visitor sees.
+        assert!(html.contains("<noscript>"));
+        assert!(html.contains(r#"<div class="noscript-notice">"#));
+        assert!(html.contains("needs JavaScript to run"));
+    }
+
+    #[test]
+    fn page_loads_htmx_htmx_sse_and_app_scripts() {
+        // The body-end <script> half of the original
+        // `index_renders_the_marker_buttons_and_script` (the marker-button
+        // half landed in render::tests during the cluster E migration).
+        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        assert!(html.contains(r#"src="/static/htmx.min.js""#));
+        assert!(html.contains(r#"src="/static/htmx-sse.js""#));
+        assert!(html.contains(r#"src="/static/app.js""#));
     }
 }
