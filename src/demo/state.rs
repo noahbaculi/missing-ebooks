@@ -8,9 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config::{Config, SearchLink};
+use crate::raw_view::{RawView, build_view};
 use crate::scanner::{DirIndex, ScanSettings};
-use crate::state::RawView;
-use crate::state::build_view;
 
 use super::session::SessionStore;
 

@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
-use crate::state;
+use crate::raw_view;
 use crate::tree::ViewMode;
 
 /// Diff each rendered section against `last_hash` and return the list of pushes
@@ -25,7 +25,7 @@ use crate::tree::ViewMode;
 /// `has_subs[mode]` short-circuits modes nobody is listening to: their hashes
 /// stay untouched and they produce no pushes.
 fn compute_pushes(
-    raw: &state::RawView,
+    raw: &raw_view::RawView,
     last_hash: &mut EnumMap<ViewMode, Vec<Option<u64>>>,
     has_subs: EnumMap<ViewMode, bool>,
     links: &[crate::config::SearchLink],
@@ -96,7 +96,7 @@ fn rendered_oob_with_hash(
 /// `Autosync::subscribe` so the loop's first compute_pushes finds matching
 /// hashes and emits nothing until something actually changes.
 fn snapshot_and_seed(
-    raw: &state::RawView,
+    raw: &raw_view::RawView,
     mode: ViewMode,
     links: &[crate::config::SearchLink],
 ) -> (String, Vec<u64>) {
@@ -396,7 +396,7 @@ mod tests {
         }
     }
 
-    fn raw_view_of(roots: Vec<RootScan>) -> state::RawView {
+    fn raw_view_of(roots: Vec<RootScan>) -> raw_view::RawView {
         roots
     }
 

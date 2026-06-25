@@ -5,6 +5,7 @@ pub mod config;
 pub mod demo;
 pub mod marker;
 pub mod query;
+pub mod raw_view;
 pub mod scanner;
 pub mod scenarios;
 pub mod state;
