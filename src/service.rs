@@ -7,12 +7,13 @@ use std::sync::Arc;
 use std::path::Path;
 
 use serde::Serialize;
-use thiserror::Error;
 
 use crate::marker::Marker;
 use crate::scanner;
 use crate::state::{self, AppState};
 use crate::tree::{self, RootState, ViewMode};
+
+pub use crate::state::DomainError;
 
 /// The whole read view: one section per configured library root, in config order.
 pub type FlaggedView = Vec<RootSection>;
@@ -28,27 +29,6 @@ pub struct RootSection {
     /// `Error`. The web layer surfaces it as `data-total-audiobooks` on the
     /// section so the strip's library coverage stays current across swaps.
     pub total_audiobooks: usize,
-}
-
-/// A failure performing a write action. The HTML surface renders it inline. A
-/// future JSON API would render it as an error body.
-#[derive(Debug, Error)]
-pub enum DomainError {
-    /// The submitted root index does not name a configured root.
-    #[error("no such library root")]
-    RootIndex,
-    /// The resolved target sits outside every configured root.
-    #[error("target is outside the configured library roots")]
-    OutsideRoots,
-    /// The target folder does not exist, or could not be canonicalized.
-    #[error("target folder does not exist")]
-    TargetMissing,
-    /// The target resolved to a file rather than a directory.
-    #[error("target is not a directory")]
-    NotADirectory,
-    /// The marker file could not be written.
-    #[error("could not write the marker file: {0}")]
-    WriteFailed(std::io::Error),
 }
 
 /// Return the cached view if it is still fresh, otherwise scan and cache it.

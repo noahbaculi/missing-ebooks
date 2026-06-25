@@ -13,7 +13,6 @@ use tokio::sync::Mutex;
 use crate::config::Config;
 use crate::marker::Marker;
 use crate::scanner::{self, DirIndex, RootScan, ScanSettings};
-use crate::service::DomainError;
 
 /// Everything a request handler needs: the immutable config and settings, the
 /// scan cache, and the autosync registry. Shared as `Arc<AppState>`.
@@ -188,6 +187,27 @@ pub struct Applied {
     pub raw: Arc<RawView>,
     /// True when this call made the file; false for a re-mark of a marked folder.
     pub created: bool,
+}
+
+/// A failure performing a write action. The HTML surface renders it inline. A
+/// future JSON API would render it as an error body.
+#[derive(Debug, thiserror::Error)]
+pub enum DomainError {
+    /// The submitted root index does not name a configured root.
+    #[error("no such library root")]
+    RootIndex,
+    /// The resolved target sits outside every configured root.
+    #[error("target is outside the configured library roots")]
+    OutsideRoots,
+    /// The target folder does not exist, or could not be canonicalized.
+    #[error("target folder does not exist")]
+    TargetMissing,
+    /// The target resolved to a file rather than a directory.
+    #[error("target is not a directory")]
+    NotADirectory,
+    /// The marker file could not be written.
+    #[error("could not write the marker file: {0}")]
+    WriteFailed(std::io::Error),
 }
 
 impl RawViewStore {
