@@ -21,7 +21,7 @@ The fix is to express the property in its own terms: count how many fresh builds
 | `rebuild_count()` | New `#[cfg(test)] pub fn rebuild_count(&self) -> u64`. Sync, lock-free, returns `self.rebuild_count.load(Ordering::Relaxed)`. |
 | `peek_stored_arc()` | Removed. The only callers are the five tests rewritten below. |
 
-The four production call sites (`current`, `refresh`, `rescan`, `write_mark`'s cold path) change from `store_fresh(&mut slot, raw)` to `self.store_fresh(&mut slot, raw)`. No other production code changes. `Applied`, `DomainError`, `RawView`, the demo, autosync, and the web handlers are untouched.
+The five production call sites of `store_fresh` (`current`, `refresh`, `rescan`, plus `write_mark`'s cold path and `remove_mark`'s cold path) change from `store_fresh(&mut slot, raw)` to `self.store_fresh(&mut slot, raw)`. No other production code changes. `Applied`, `DomainError`, `RawView`, the demo, autosync, and the web handlers are untouched.
 
 Doc text for the new items follows the `writing-style-code-comments` skill (verb-first for the accessor, noun-phrase for the field, backticks around identifiers, no em dashes, no "This function" opener, terse):
 
@@ -73,7 +73,7 @@ No new files. No ADR. ADR-0022 (warm reads must not rebuild) and ADR-0027 (subst
 
 Granular, conventional, no squash. Build green at every commit.
 
-1. `refactor(state): add rebuild_count to RawViewStore`. New `AtomicU64` field, `store_fresh` becomes a method on `&RawViewStore` and bumps the counter, new `#[cfg(test)] pub fn rebuild_count(&self) -> u64`, four call sites of `store_fresh` rewired. `peek_stored_arc` and the five `Arc::ptr_eq` tests still compile and pass; no test changes yet.
+1. `refactor(state): add rebuild_count to RawViewStore`. New `AtomicU64` field, `store_fresh` becomes a method on `&RawViewStore` and bumps the counter, new `#[cfg(test)] pub fn rebuild_count(&self) -> u64`, five call sites of `store_fresh` rewired. `peek_stored_arc` and the five `Arc::ptr_eq` tests still compile and pass; no test changes yet.
 2. `chore(tests): assert via rebuild_count instead of Arc::ptr_eq`. Rewrite the five tests in `state.rs::tests` per the table above. `peek_stored_arc` still present; no production change.
 3. `refactor(state): drop peek_stored_arc`. Delete the `#[cfg(test)] pub async fn peek_stored_arc` method now that no caller remains. The `dir_index` test accessor stays.
 
