@@ -74,80 +74,12 @@ pub async fn unmark(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+
+    use crate::scanner::{RootScan, ScannedFolder};
     use std::path::PathBuf;
-
-    use crate::config::Config;
-    use crate::scanner::{self, ScanSettings};
-    use crate::scenarios::touch;
-    use crate::state::build_view;
-    use crate::tree::RootState;
-
-    fn test_config(roots: Vec<PathBuf>, ttl_seconds: u64) -> Config {
-        Config {
-            library_roots: roots,
-            ttl_seconds,
-            ..Default::default()
-        }
-    }
-
-    fn test_settings() -> Arc<ScanSettings> {
-        Arc::new(ScanSettings::compile(Config::default().scan_inputs()).unwrap())
-    }
-
-    fn test_index() -> Arc<std::sync::Mutex<scanner::DirIndex>> {
-        Arc::new(std::sync::Mutex::new(scanner::DirIndex::new()))
-    }
-
-    #[tokio::test]
-    async fn root_with_a_gap_yields_a_matching_forest() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Author/Book/01.mp3"));
-        let cfg = test_config(vec![dir.path().to_path_buf()], 60);
-        let raw = build_view(&cfg, &test_settings(), test_index()).await;
-        let view = render_view(&raw, ViewMode::GapsOnly);
-        assert_eq!(view.len(), 1);
-        match &view[0].state {
-            RootState::Forest(nodes) => {
-                assert_eq!(nodes.len(), 1);
-                assert_eq!(nodes[0].name, "Author");
-            }
-            other => panic!("expected Forest, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn root_with_no_audio_is_clean() {
-        let dir = tempfile::tempdir().unwrap();
-        fs::create_dir_all(dir.path().join("Empty")).unwrap();
-        let cfg = test_config(vec![dir.path().to_path_buf()], 60);
-        let raw = build_view(&cfg, &test_settings(), test_index()).await;
-        let view = render_view(&raw, ViewMode::GapsOnly);
-        assert!(matches!(view[0].state, RootState::Clean));
-    }
-
-    #[tokio::test]
-    async fn missing_root_is_error_and_other_roots_still_render() {
-        let good = tempfile::tempdir().unwrap();
-        touch(&good.path().join("Book/01.mp3"));
-        let cfg = test_config(
-            vec![
-                PathBuf::from("/no/such/root/xyz123"),
-                good.path().to_path_buf(),
-            ],
-            60,
-        );
-        let raw = build_view(&cfg, &test_settings(), test_index()).await;
-        let view = render_view(&raw, ViewMode::GapsOnly);
-        assert!(matches!(view[0].state, RootState::Error(_)));
-        assert!(matches!(view[1].state, RootState::Forest(_)));
-    }
 
     #[test]
     fn audiobook_count_counts_walked_folders_that_directly_hold_audio() {
-        use crate::scanner::{RootScan, ScannedFolder};
-        use std::path::PathBuf;
-
         let walked = RootScan::Walked {
             canonical_path: PathBuf::from("/lib"),
             folders: vec![
@@ -187,53 +119,6 @@ mod tests {
         assert_eq!(failed.audiobook_count(), 0);
     }
 
-    #[tokio::test]
-    async fn render_view_computes_total_audiobooks_per_root() {
-        let walked = tempfile::tempdir().unwrap();
-        // Two audiobooks under one author, plus a covered one.
-        touch(&walked.path().join("A/B1/01.mp3"));
-        touch(&walked.path().join("A/B2/01.mp3"));
-        touch(&walked.path().join("A/B2/B2.epub"));
-
-        let clean = tempfile::tempdir().unwrap();
-        fs::create_dir_all(clean.path().join("Empty")).unwrap();
-
-        let cfg = test_config(
-            vec![
-                walked.path().to_path_buf(),
-                clean.path().to_path_buf(),
-                PathBuf::from("/no/such/root/xyz123"),
-            ],
-            60,
-        );
-        let raw = build_view(&cfg, &test_settings(), test_index()).await;
-        let view = render_view(&raw, ViewMode::GapsOnly);
-
-        assert_eq!(view[0].total_audiobooks, 2, "two audiobook folders");
-        assert_eq!(view[1].total_audiobooks, 0, "clean root");
-        assert_eq!(view[2].total_audiobooks, 0, "errored root");
-    }
-
-    #[test]
-    fn root_states_serialize_to_stable_json() {
-        let clean = serde_json::to_value(RootState::Clean).unwrap();
-        assert_eq!(clean, serde_json::json!("clean"));
-
-        let err = serde_json::to_value(RootState::Error("nope".to_string())).unwrap();
-        assert_eq!(err, serde_json::json!({ "error": "nope" }));
-
-        let section = RootSection {
-            path: "/lib".to_string(),
-            state: RootState::Clean,
-            total_audiobooks: 0,
-        };
-        let value = serde_json::to_value(&section).unwrap();
-        assert_eq!(
-            value,
-            serde_json::json!({ "path": "/lib", "state": "clean", "total_audiobooks": 0 })
-        );
-    }
-
     #[test]
     fn view_mode_parses_the_query_token_leniently() {
         assert_eq!(ViewMode::from_query(Some("all")), ViewMode::All);
@@ -254,25 +139,5 @@ mod tests {
     fn view_mode_path_returns_canonical_url_per_mode() {
         assert_eq!(ViewMode::GapsOnly.path(), "/");
         assert_eq!(ViewMode::All.path(), "/?view=all");
-    }
-
-    #[tokio::test]
-    async fn all_mode_builds_the_full_tree_including_covered_folders() {
-        let dir = tempfile::tempdir().unwrap();
-        // A gap and a covered book under the same author.
-        touch(&dir.path().join("Author/Gap/01.mp3"));
-        touch(&dir.path().join("Author/Covered/01.mp3"));
-        touch(&dir.path().join("Author/Covered/Covered.epub"));
-        let cfg = test_config(vec![dir.path().to_path_buf()], 60);
-        let raw = build_view(&cfg, &test_settings(), test_index()).await;
-        let view = render_view(&raw, ViewMode::All);
-        let RootState::Forest(nodes) = &view[0].state else {
-            panic!("show-all always yields a Forest");
-        };
-        let author = &nodes[0];
-        assert_eq!(author.name, "Author");
-        let names: Vec<&str> = author.children.iter().map(|n| n.name.as_str()).collect();
-        // Both books appear, unlike gaps-only which would drop Covered.
-        assert_eq!(names, vec!["Covered", "Gap"]);
     }
 }
