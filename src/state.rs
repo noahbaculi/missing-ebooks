@@ -579,16 +579,53 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn store_rescan_clears_the_dir_index() {
+    async fn store_rescan_clears_the_dir_index_then_repopulates_it() {
         let dir = tempfile::tempdir().unwrap();
         crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
         let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        // Warm the index by reading once.
         let _ = store.current().await;
-        let before = store.dir_index.lock().unwrap().len();
-        assert!(before > 0);
+        let after_warm = store.dir_index.lock().unwrap().len();
+        assert!(after_warm > 0, "the warm read populated the dir index");
+
+        // Drop a synthetic entry into the index that no real walk could reach.
+        // A cold rescan must drop it; a warm rescan would preserve it.
+        let synthetic_path = std::path::PathBuf::from("/nonexistent/synthetic/marker/path");
+        store.dir_index.lock().unwrap().insert(
+            synthetic_path.clone(),
+            scanner::CachedDir {
+                mtime: std::time::UNIX_EPOCH,
+                subdirs: Vec::new(),
+                cover_files: Vec::new(),
+                audio_files: Vec::new(),
+            },
+        );
+        assert!(
+            store
+                .dir_index
+                .lock()
+                .unwrap()
+                .get(&synthetic_path)
+                .is_some()
+        );
+
+        // Rescan must drop every entry, then the rebuild repopulates it.
         let _ = store.rescan().await;
-        let after = store.dir_index.lock().unwrap().len();
-        assert!(after > 0, "rescan repopulates the index after clearing it");
+        assert!(
+            store
+                .dir_index
+                .lock()
+                .unwrap()
+                .get(&synthetic_path)
+                .is_none(),
+            "rescan must clear the dir index, dropping the synthetic entry"
+        );
+        let after_rescan = store.dir_index.lock().unwrap().len();
+        assert_eq!(
+            after_rescan, after_warm,
+            "rescan must clear and repopulate to the same count on an unchanged tree"
+        );
     }
 
     #[tokio::test]
@@ -729,5 +766,196 @@ mod tests {
             .find(|f| f.rel_path.to_str() == Some("Book"))
             .unwrap();
         assert!(book.missing_ebook, "remove_mark re-flagged the folder");
+    }
+
+    /// Helper: assert that `Book` under root 0 of `raw` has the expected
+    /// `missing_ebook` value. Used by ported tests that previously asserted on
+    /// the packaged `RootState`; the equivalent at the raw layer reads off the
+    /// matching `ScannedFolder` so the assertion stays at the store's layer.
+    fn book_missing(raw: &RawView) -> bool {
+        let RootScan::Walked { folders, .. } = &raw[0] else {
+            panic!("expected Walked root");
+        };
+        folders
+            .iter()
+            .find(|f| f.rel_path.as_os_str() == "Book")
+            .expect("Book folder in raw view")
+            .missing_ebook
+    }
+
+    #[tokio::test]
+    async fn store_warm_concurrent_reads_share_one_raw_slot() {
+        // Warm reads against a single slot must share the same `Arc<RawView>`,
+        // matching the property ADR-0022 documents for warm reads. The cold
+        // single-flight case is `store_current_single_flights_a_cold_slot`.
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = Arc::new(test_store(
+            Some(Duration::from_secs(600)),
+            dir.path().to_path_buf(),
+        ));
+
+        let _warm = store.current().await;
+        let before = store.peek_stored_arc().await.expect("warmed slot");
+
+        let s1 = Arc::clone(&store);
+        let s2 = Arc::clone(&store);
+        let (a, b) = tokio::join!(s1.current(), s2.current());
+        assert!(Arc::ptr_eq(&a, &b), "warm concurrent reads share one Arc");
+
+        let after = store.peek_stored_arc().await.expect("warmed slot");
+        assert!(
+            Arc::ptr_eq(&before, &after),
+            "warm concurrent reads must not rebuild the raw slot"
+        );
+    }
+
+    #[tokio::test]
+    async fn store_ttl_zero_rescans_every_call() {
+        use filetime::{FileTime, set_file_mtime};
+        let dir = tempfile::tempdir().unwrap();
+        let book = dir.path().join("Book");
+        crate::scenarios::touch(&book.join("01.mp3"));
+        let store = test_store(None, dir.path().to_path_buf());
+
+        let first = store.current().await;
+        assert!(book_missing(&first), "first read sees the gap");
+
+        // Cover the gap, then push the folder mtime forward so the rescan sees
+        // the change regardless of the filesystem's mtime resolution. The dir
+        // index keys off mtime equality; back-to-back touches inside one tick
+        // would otherwise reuse the pre-cover listing and hide the new ebook.
+        crate::scenarios::touch(&book.join("Book.epub"));
+        set_file_mtime(&book, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
+        let second = store.current().await;
+        assert!(!book_missing(&second), "ttl 0 rescanned and saw the cover");
+    }
+
+    #[tokio::test]
+    async fn store_rescan_refreshes_even_within_a_live_ttl() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        let first = store.current().await;
+        assert!(book_missing(&first));
+
+        crate::scenarios::touch(&dir.path().join("Book/Book.epub"));
+        let refreshed = store.rescan().await;
+        assert!(
+            !book_missing(&refreshed),
+            "rescan bypasses the live TTL and sees the cover"
+        );
+    }
+
+    #[tokio::test]
+    async fn store_ttl_zero_keeps_the_dir_index_warm() {
+        // ttl 0 rescans on every read, but the dir index survives across
+        // reads (ADR-0023). Two reads in a row should both see the gap and
+        // leave the index populated.
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Author/Book/01.mp3"));
+        let store = test_store(None, dir.path().to_path_buf());
+
+        let first = store.current().await;
+        let second = store.current().await;
+        let RootScan::Walked { folders: f1, .. } = &first[0] else {
+            panic!("expected Walked");
+        };
+        let RootScan::Walked { folders: f2, .. } = &second[0] else {
+            panic!("expected Walked");
+        };
+        assert!(f1.iter().any(|f| f.missing_ebook));
+        assert!(f2.iter().any(|f| f.missing_ebook));
+
+        let reused = store.dir_index.lock().unwrap().len();
+        assert!(reused > 0, "the index retained the walked directories");
+    }
+
+    #[tokio::test]
+    async fn store_write_mark_invalidates_the_marked_dir_in_the_index() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        // Warm the index by scanning once.
+        store.current().await;
+        let canonical = std::fs::canonicalize(dir.path()).unwrap();
+        let book = canonical.join("Book");
+        assert!(
+            store.dir_index.lock().unwrap().get(&book).is_some(),
+            "Book is indexed after the scan"
+        );
+
+        // Marking Book writes .no_ebook into it, so its index entry must be dropped
+        // and the next walk re-lists it rather than trusting a pre-write mtime.
+        store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        assert!(
+            store.dir_index.lock().unwrap().get(&book).is_none(),
+            "Book's index entry is invalidated by the marker write"
+        );
+    }
+
+    #[tokio::test]
+    async fn store_write_mark_warm_slot_survives_follow_up_read() {
+        // The in-place edit must persist across a follow-up read inside the
+        // live TTL: the slot is not rebuilt and the second read serves the
+        // edited Arc that the mark produced.
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        let _first = store.current().await;
+        let applied = store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        assert!(!book_missing(&applied.raw));
+        let raw_after_mark = store.peek_stored_arc().await.expect("warmed slot");
+
+        // A new gap appears on disk, but the warm TTL means the next read
+        // serves from the cached raw slot rather than rescanning.
+        crate::scenarios::touch(&dir.path().join("Other/01.mp3"));
+        let _again = store.current().await;
+        let raw_after_read = store.peek_stored_arc().await.expect("warmed slot");
+        assert!(
+            Arc::ptr_eq(&raw_after_mark, &raw_after_read),
+            "a warm raw slot must not have been rebuilt by the second read"
+        );
+    }
+
+    #[tokio::test]
+    async fn store_write_mark_on_a_cold_cache_scans_fresh() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        let applied = store
+            .write_mark(0, "Book", Marker::EbookElsewhere)
+            .await
+            .unwrap();
+        assert!(applied.created);
+        assert!(!book_missing(&applied.raw));
+        assert!(dir.path().join("Book/.ebook_elsewhere").exists());
+    }
+
+    #[tokio::test]
+    async fn store_write_mark_outside_a_root_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+        let err = store
+            .write_mark(0, "..", Marker::NoEbook)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::OutsideRoots));
+    }
+
+    #[tokio::test]
+    async fn store_remove_mark_bad_root_index_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+        let err = store
+            .remove_mark(9, ".", Marker::NoEbook)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::RootIndex));
     }
 }
