@@ -242,7 +242,7 @@ impl Autosync {
         sender: SseSender,
         seed_hashes: Option<Vec<u64>>,
     ) {
-        let mut guard = self.inner.lock().expect("autosync mutex poisoned");
+        let mut guard = lock_inner(&self.inner);
         guard.subs[mode].push(sender);
         if let Some(hashes) = seed_hashes
             && guard.last_hash[mode].is_empty()
@@ -271,7 +271,7 @@ impl Autosync {
     /// Production code does not.
     #[cfg(test)]
     pub(crate) fn subscriber_count(&self) -> usize {
-        let guard = self.inner.lock().expect("autosync mutex poisoned");
+        let guard = lock_inner(&self.inner);
         guard.subs.values().map(Vec::len).sum()
     }
 
@@ -280,11 +280,24 @@ impl Autosync {
     /// respawns.
     #[cfg(test)]
     pub(crate) fn abort_loop_for_test(&self) {
-        let mut guard = self.inner.lock().expect("autosync mutex poisoned");
+        let mut guard = lock_inner(&self.inner);
         if let Some(h) = guard.loop_task.take() {
             h.abort();
         }
     }
+}
+
+/// Lock the autosync inner mutex, recovering the guard when a previous
+/// holder panicked. The registry is insert/remove only and remains valid
+/// after a poisoned guard, so recovery beats wedging the SSE loop on a
+/// transient render panic. Mirrors `crate::raw_view::lock_index`; this
+/// variant logs a warn because a poisoned autosync registry typically
+/// indicates a render or sender bug worth surfacing.
+fn lock_inner(inner: &StdMutex<AutosyncInner>) -> std::sync::MutexGuard<'_, AutosyncInner> {
+    inner.lock().unwrap_or_else(|poisoned| {
+        tracing::warn!("autosync inner mutex poisoned; recovering");
+        poisoned.into_inner()
+    })
 }
 
 /// Atomically check whether the loop should exit (no subscribers in any mode)
@@ -292,7 +305,7 @@ impl Autosync {
 /// both the check and the clear means a subscriber arriving in the gap
 /// cannot strand its registration against a loop that is about to exit.
 fn try_exit_loop(inner: &StdMutex<AutosyncInner>) -> bool {
-    let mut guard = inner.lock().expect("autosync mutex poisoned");
+    let mut guard = lock_inner(inner);
     if guard.subs.values().all(Vec::is_empty) {
         guard.loop_task = None;
         return true;
@@ -329,7 +342,7 @@ async fn run_loop(
         // short: per-section render is microseconds (ADR-0022) and there is no
         // await between lock and unlock.
         let to_send: Vec<(ViewMode, usize, String)> = {
-            let mut guard = inner.lock().expect("autosync mutex poisoned");
+            let mut guard = lock_inner(&inner);
             let has_subs = EnumMap::from_fn(|mode| !guard.subs[mode].is_empty());
             compute_pushes(
                 &raw,
@@ -341,7 +354,7 @@ async fn run_loop(
 
         // Fan out and prune. A failed try_send drops that sender from the list.
         if !to_send.is_empty() {
-            let mut guard = inner.lock().expect("autosync mutex poisoned");
+            let mut guard = lock_inner(&inner);
             for (mode, _root_idx, html) in to_send {
                 let event = section_event(html);
                 guard.subs[mode].retain(|tx| tx.try_send(Ok(event.clone())).is_ok());
@@ -350,7 +363,7 @@ async fn run_loop(
             // Even with no pushes, prune any senders whose receiver already
             // dropped, so the loop notices a quiet client disappearing and
             // can exit on the next iteration when the last sub goes away.
-            let mut guard = inner.lock().expect("autosync mutex poisoned");
+            let mut guard = lock_inner(&inner);
             for mode in [ViewMode::GapsOnly, ViewMode::All] {
                 guard.subs[mode].retain(|tx| !tx.is_closed());
             }
@@ -402,6 +415,38 @@ mod tests {
 
     fn no_links() -> Vec<crate::config::SearchLink> {
         Vec::new()
+    }
+
+    #[test]
+    fn lock_inner_recovers_from_poisoning() {
+        // Build a minimal inner registry directly.
+        let inner = Arc::new(StdMutex::new(AutosyncInner {
+            subs: EnumMap::default(),
+            last_hash: EnumMap::default(),
+            loop_task: None,
+        }));
+
+        // Poison the mutex: take the guard on a worker thread, then panic.
+        let poisoner_inner = Arc::clone(&inner);
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoner_inner.lock().unwrap();
+            panic!("intentional poison for test");
+        })
+        .join();
+
+        // The mutex is now poisoned. The bare std API would panic on .expect(...).
+        assert!(
+            inner.lock().is_err(),
+            "test setup failed: mutex was not poisoned"
+        );
+
+        // lock_inner must recover and return a usable guard.
+        let guard = lock_inner(&inner);
+        assert!(
+            guard.loop_task.is_none(),
+            "recovered guard exposes the prior state"
+        );
+        drop(guard);
     }
 
     #[test]
