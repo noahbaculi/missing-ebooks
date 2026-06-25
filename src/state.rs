@@ -142,15 +142,6 @@ impl RawViewStore {
         .await
     }
 
-    /// Test accessor: returns a cloned `Arc<RawView>` of the stored slot, if any.
-    /// Used in tests to assert that a warm read did not reseat the slot
-    /// (`Arc::ptr_eq` against a prior snapshot).
-    #[cfg(test)]
-    pub async fn peek_stored_arc(&self) -> Option<Arc<RawView>> {
-        let slot = self.entries.lock().await;
-        slot.as_ref().map(|entry| Arc::clone(&entry.raw))
-    }
-
     /// Returns the count of fresh builds stored into the slot since this
     /// store was created.
     #[cfg(test)]
