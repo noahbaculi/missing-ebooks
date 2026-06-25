@@ -34,7 +34,7 @@ pub struct RootSection {
 /// directly from the raw folders. Both run on the request thread (the per-folder
 /// cost is bounded, see ADR-0022). Allocates a fresh `FlaggedView` per response
 /// and drops it after the response writes.
-pub(crate) fn package_view(raw: &RawView, mode: ViewMode) -> FlaggedView {
+pub fn package_view(raw: &RawView, mode: ViewMode) -> FlaggedView {
     raw.iter().map(|scan| package_section(scan, mode)).collect()
 }
 
@@ -43,7 +43,7 @@ pub(crate) fn package_view(raw: &RawView, mode: ViewMode) -> FlaggedView {
 /// The single owner of the raw-to-packaged step. `package_view` calls it on
 /// the snapshot path; `autosync::render_oob_section` calls it on the push
 /// path. Any future per-root field lands here once.
-pub(crate) fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
+pub fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
     RootSection {
         path: scan.display_path().to_string(),
         state: tree::build(scan, mode),
@@ -104,7 +104,7 @@ pub fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) ->
 /// The page entry point: assembles the body content (gap summary + roots
 /// block) and hands it to `page::page` for shell-wrapping. The single
 /// production caller is `web::index` in `src/web.rs`.
-pub(crate) fn render_view(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
+pub fn render_view(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     let body = html! {
         (gap_summary(view))
         div.roots-wrap {
