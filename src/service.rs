@@ -14,13 +14,6 @@ pub use crate::web::render::{FlaggedView, RootSection};
 pub(crate) use crate::web::render::package_section as render_section_from_raw;
 pub(crate) use crate::web::render::package_view as render_view;
 
-/// Return the cached view if it is still fresh, otherwise scan and cache it.
-/// Single-flight is enforced by `RawViewStore::current`.
-pub async fn current_view(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> {
-    let raw = state.store.current().await;
-    Arc::new(render_view(&raw, mode))
-}
-
 /// Force a fresh cold scan by clearing the dir index and rebuilding from
 /// scratch. Ignores the TTL. This is the explicit "fix any drift" path; the
 /// autosync loop keeps using warm scans (see ADR-0023).

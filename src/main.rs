@@ -88,11 +88,9 @@ async fn main() -> ExitCode {
     tokio::spawn({
         let state = Arc::clone(&state);
         async move {
-            let _ = missing_ebooks::service::current_view(
-                &state,
-                missing_ebooks::tree::ViewMode::GapsOnly,
-            )
-            .await;
+            // Warm the gaps-mode slot. The packaging is cheap; the cache
+            // slot side effect is what we want.
+            state.warm().await;
             tracing::debug!("startup cache warm complete");
         }
     });

@@ -66,7 +66,8 @@ pub fn router(state: Arc<AppState>) -> Router {
 async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery>) -> Html<String> {
     let started = Instant::now();
     let mode = ViewMode::from_query(query.view.as_deref());
-    let view = service::current_view(&state, mode).await;
+    let raw = state.store.current().await;
+    let view = render::package_view(&raw, mode);
     let render_started = Instant::now();
     let html = render::render_view(&view, &state.config.search_links, mode).into_string();
     tracing::debug!(
@@ -161,7 +162,8 @@ async fn failed_write_response(
     links: &[SearchLink],
     message: String,
 ) -> axum::response::Response {
-    let view = service::current_view(state, mode).await;
+    let raw = state.store.current().await;
+    let view = render::package_view(&raw, mode);
     let markup = match view.get(root) {
         Some(section) => render::render_section(section, root, Some(&message), links, mode),
         None => render::error_section(root, &message),

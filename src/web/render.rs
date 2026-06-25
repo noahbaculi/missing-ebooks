@@ -1777,4 +1777,108 @@ mod tests {
             serde_json::json!({ "path": "/lib", "state": "clean", "total_audiobooks": 0 })
         );
     }
+
+    /// Render byte-equality is a load-bearing invariant: two reads of the
+    /// same mode must serialize identically, a mode flip must change the
+    /// bytes, and a mark+undo round trip on the same folder must restore the
+    /// packaged view byte-for-byte. The OOB-wrapped snapshot for an unchanged
+    /// view must contain the same root fragment a direct `render_section`
+    /// would produce, so an SSE subscriber and a Rescan click see identical
+    /// bytes for that root (ADR-0024).
+    #[tokio::test]
+    async fn render_is_byte_equal_across_hits_and_a_mark_undo_round_trip() {
+        use crate::marker::Marker;
+        use crate::scenarios;
+        use crate::state::AppState;
+        use crate::tree::Node;
+
+        let dir = tempfile::tempdir().unwrap();
+        let scenario = scenarios::find_scenario("mixed-forest").expect("scenario exists");
+        let roots = scenarios::materialize(&(scenario.spec)(), dir.path());
+
+        let config = Config {
+            library_roots: roots,
+            ttl_seconds: 600,
+            ..Config::default()
+        };
+        let links = config.search_links.clone();
+        let settings = ScanSettings::compile(config.scan_inputs()).unwrap();
+        let state = std::sync::Arc::new(AppState::new(config, settings));
+
+        // Two reads of the same mode on a warm cache must serialize identically.
+        let raw_one = state.store.current().await;
+        let gaps_one = package_view(&raw_one, ViewMode::GapsOnly);
+        let raw_two = state.store.current().await;
+        let gaps_two = package_view(&raw_two, ViewMode::GapsOnly);
+        assert_eq!(
+            serde_json::to_vec(&gaps_one).unwrap(),
+            serde_json::to_vec(&gaps_two).unwrap(),
+            "two reads of the same mode must produce byte-equal renders",
+        );
+
+        // A mode flip on the same warm cache must produce a different shape.
+        let all_one = package_view(&raw_one, ViewMode::All);
+        assert_ne!(
+            serde_json::to_vec(&gaps_one).unwrap(),
+            serde_json::to_vec(&all_one).unwrap(),
+            "gaps and show-all must render to different bytes on a non-clean scenario",
+        );
+
+        // Pick the first flagged leaf the scenario exposes, mark it, then undo.
+        // After undo the gaps view must match the pre-mark gaps view byte-for-byte.
+        let (root_idx, rel) = first_flagged(&gaps_one).expect("scenario has at least one gap");
+        let applied = state
+            .store
+            .write_mark(root_idx, &rel, Marker::NoEbook)
+            .await
+            .expect("mark succeeds");
+        assert!(applied.created, "the picked leaf was not already marked");
+        let after_mark = package_view(&applied.raw, ViewMode::GapsOnly);
+        assert_ne!(
+            serde_json::to_vec(&gaps_one).unwrap(),
+            serde_json::to_vec(&after_mark).unwrap(),
+            "the mark must change the gaps view",
+        );
+
+        let restored_raw = state
+            .store
+            .remove_mark(root_idx, &rel, Marker::NoEbook)
+            .await
+            .expect("unmark succeeds");
+        let restored = package_view(&restored_raw, ViewMode::GapsOnly);
+        assert_eq!(
+            serde_json::to_vec(&gaps_one).unwrap(),
+            serde_json::to_vec(&restored).unwrap(),
+            "undoing the mark must restore the gaps view byte-for-byte",
+        );
+
+        // The OOB-wrapped snapshot payload must contain the byte-for-byte
+        // fragment a direct render_section produces.
+        let direct =
+            render_section(&restored[0], 0, None, &links, ViewMode::GapsOnly).into_string();
+        let snapshot = oob_sections(&restored, &links, ViewMode::GapsOnly).into_string();
+        assert!(
+            snapshot.contains(&direct),
+            "the OOB-wrapped snapshot must contain the same root-0 fragment as a direct render"
+        );
+
+        /// Walk the rendered gaps view for the first `(root, rel)` whose state
+        /// names a flagged leaf. Returns `None` if every root is clean.
+        fn first_flagged(view: &FlaggedView) -> Option<(usize, String)> {
+            fn first_leaf(node: &Node) -> Option<String> {
+                if node.directly_holds_audio && node.missing_ebook {
+                    return Some(node.rel_path.clone());
+                }
+                node.children.iter().find_map(first_leaf)
+            }
+            for (idx, section) in view.iter().enumerate() {
+                if let RootState::Forest(nodes) = &section.state
+                    && let Some(rel) = nodes.iter().find_map(first_leaf)
+                {
+                    return Some((idx, rel));
+                }
+            }
+            None
+        }
+    }
 }

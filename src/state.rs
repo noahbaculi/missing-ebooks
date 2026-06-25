@@ -176,6 +176,14 @@ impl AppState {
             autosync,
         }
     }
+
+    /// Warm the cache slot by reading the current raw view. Used by the binary
+    /// crate's startup spawn so the first viewer after a restart does not pay
+    /// the cold scan. The returned `Arc` is discarded by the caller; the
+    /// side effect on the cache slot is what we want.
+    pub async fn warm(&self) {
+        let _ = self.store.current().await;
+    }
 }
 
 /// The result of a successful `RawViewStore::write_mark`. `created` is false
