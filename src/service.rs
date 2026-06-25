@@ -14,14 +14,6 @@ pub use crate::web::render::{FlaggedView, RootSection};
 pub(crate) use crate::web::render::package_section as render_section_from_raw;
 pub(crate) use crate::web::render::package_view as render_view;
 
-/// Force a fresh cold scan by clearing the dir index and rebuilding from
-/// scratch. Ignores the TTL. This is the explicit "fix any drift" path; the
-/// autosync loop keeps using warm scans (see ADR-0023).
-pub async fn rescan(state: &AppState, mode: ViewMode) -> Arc<FlaggedView> {
-    let raw = state.store.rescan().await;
-    Arc::new(render_view(&raw, mode))
-}
-
 /// The result of a marker write: the refreshed view plus whether this call
 /// actually created the file. `created` is false for a re-mark of an
 /// already-marked folder, which the HTML surface uses to suppress the undo toast.

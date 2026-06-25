@@ -174,7 +174,8 @@ async fn failed_write_response(
 async fn rescan(State(state): State<Arc<AppState>>, Form(query): Form<ViewQuery>) -> Response {
     let started = Instant::now();
     let mode = ViewMode::from_query(query.view.as_deref());
-    let view = service::rescan(&state, mode).await;
+    let raw = state.store.rescan().await;
+    let view = render::package_view(&raw, mode);
     // Swap the fresh sections into #roots and push the mode path, so the address bar
     // tracks the view without ever showing the /rescan POST URL.
     let markup = render::roots(&view, &state.config.search_links, mode);
