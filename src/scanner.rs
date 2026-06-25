@@ -306,7 +306,7 @@ impl RootScan {
 /// `Failed` when canonicalize or the directory check rejected the path. Runs
 /// synchronously and assumes the caller has already taken the dir-index lock.
 ///
-/// Emits the same tracing events `service::scan_root` did before this move.
+/// Emits the same tracing events the previous caller did before this move.
 #[must_use]
 pub fn scan_root(root: &Path, settings: &ScanSettings, index: &mut DirIndex) -> RootScan {
     let canonical = match std::fs::canonicalize(root) {
