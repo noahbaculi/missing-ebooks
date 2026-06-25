@@ -222,6 +222,27 @@ pub enum DomainError {
     WriteFailed(std::io::Error),
 }
 
+/// The shape returned by `RawViewStore::write_mark` and `remove_mark`.
+/// `BadRoot` is the pre-write bail when the submitted root index is out
+/// of range. `Failed` carries the current raw view so the caller can
+/// render an inline alert by the affected row without a second store hop.
+#[derive(Debug)]
+pub enum WriteFailure {
+    /// Pre-write bail: the submitted root index does not name a configured
+    /// root. There is no section to render the alert into, so callers fall
+    /// back to a standalone error card.
+    BadRoot,
+    /// In-root write failure. The store fetched the still-valid view on the
+    /// failure path so the caller can render an inline alert by the affected
+    /// row without a second store hop.
+    Failed {
+        /// The underlying domain error that caused the write to fail.
+        error: DomainError,
+        /// The still-valid raw view, fetched by the store on the failure path.
+        raw: Arc<RawView>,
+    },
+}
+
 impl RawViewStore {
     /// Write a marker into a folder and update the cached raw view in place,
     /// without a rescan (ADR-0002). The guard and write run on a blocking task;
@@ -231,20 +252,30 @@ impl RawViewStore {
         root: usize,
         rel: &str,
         marker: Marker,
-    ) -> Result<Applied, DomainError> {
+    ) -> Result<Applied, WriteFailure> {
         let root_path = self
             .config
             .library_roots
             .get(root)
-            .ok_or(DomainError::RootIndex)?
+            .ok_or(WriteFailure::BadRoot)?
             .clone();
         let rel_owned = rel.to_string();
-        let (created, canonical_root) =
+        let inner =
             tokio::task::spawn_blocking(move || write_marker(&root_path, &rel_owned, marker))
                 .await
                 .map_err(|_| {
                     DomainError::WriteFailed(std::io::Error::other("marker write task failed"))
-                })??;
+                })
+                .and_then(|inner| inner);
+        let (created, canonical_root) = match inner {
+            Ok(pair) => pair,
+            Err(error) => {
+                // The write failed; hand back the still-valid view so the
+                // caller renders an inline alert without a second store hop.
+                let raw = self.current().await;
+                return Err(WriteFailure::Failed { error, raw });
+            }
+        };
 
         // A self-write may not bump the folder mtime, so force a re-list on rescan.
         self.invalidate_index(&canonical_root, rel);
@@ -292,21 +323,29 @@ impl RawViewStore {
         root: usize,
         rel: &str,
         marker: Marker,
-    ) -> Result<Arc<RawView>, DomainError> {
+    ) -> Result<Arc<RawView>, WriteFailure> {
         let root_path = self
             .config
             .library_roots
             .get(root)
-            .ok_or(DomainError::RootIndex)?
+            .ok_or(WriteFailure::BadRoot)?
             .clone();
         let rel_owned = rel.to_string();
         let delete_path = root_path.clone();
-        let canonical_root =
+        let inner =
             tokio::task::spawn_blocking(move || delete_marker(&delete_path, &rel_owned, marker))
                 .await
                 .map_err(|_| {
                     DomainError::WriteFailed(std::io::Error::other("marker delete task failed"))
-                })??;
+                })
+                .and_then(|inner| inner);
+        let canonical_root = match inner {
+            Ok(path) => path,
+            Err(error) => {
+                let raw = self.current().await;
+                return Err(WriteFailure::Failed { error, raw });
+            }
+        };
 
         // A self-delete may not bump the folder mtime, so force a re-list.
         self.invalidate_index(&canonical_root, rel);
@@ -584,7 +623,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
         let err = store.write_mark(9, ".", Marker::NoEbook).await.unwrap_err();
-        assert!(matches!(err, DomainError::RootIndex));
+        assert!(matches!(err, WriteFailure::BadRoot));
     }
 
     // Direct unit tests for the private `write_marker` helper. They live here
@@ -873,7 +912,13 @@ mod tests {
             .write_mark(0, "..", Marker::NoEbook)
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::OutsideRoots));
+        assert!(matches!(
+            err,
+            WriteFailure::Failed {
+                error: DomainError::OutsideRoots,
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -884,6 +929,68 @@ mod tests {
             .remove_mark(9, ".", Marker::NoEbook)
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::RootIndex));
+        assert!(matches!(err, WriteFailure::BadRoot));
+    }
+
+    #[tokio::test]
+    async fn store_write_mark_failure_returns_current_raw_view() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        let _warm = store.current().await;
+        let rebuilds_before = store.rebuild_count();
+
+        let err = store
+            .write_mark(0, "..", Marker::NoEbook)
+            .await
+            .unwrap_err();
+        let raw = match err {
+            WriteFailure::Failed {
+                error: DomainError::OutsideRoots,
+                raw,
+            } => raw,
+            other => panic!("expected Failed with OutsideRoots, got {other:?}"),
+        };
+
+        assert_eq!(
+            store.rebuild_count(),
+            rebuilds_before,
+            "warm failure path must not rebuild",
+        );
+        assert_eq!(raw.len(), 1, "raw carries one section per library root");
+    }
+
+    #[tokio::test]
+    async fn store_write_mark_failure_on_cold_cache_warms_the_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        let err = store
+            .write_mark(0, "..", Marker::NoEbook)
+            .await
+            .unwrap_err();
+        let raw = match err {
+            WriteFailure::Failed {
+                error: DomainError::OutsideRoots,
+                raw,
+            } => raw,
+            other => panic!("expected Failed with OutsideRoots, got {other:?}"),
+        };
+
+        assert_eq!(
+            store.rebuild_count(),
+            1,
+            "cold-cache failure path builds once",
+        );
+        assert_eq!(raw.len(), 1, "freshly built view has one section per root");
+
+        let _follow_up = store.current().await;
+        assert_eq!(
+            store.rebuild_count(),
+            1,
+            "follow-up current() reuses the warmed slot",
+        );
     }
 }

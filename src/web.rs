@@ -20,7 +20,8 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::config::SearchLink;
 use crate::marker::Marker;
-use crate::state::AppState;
+use crate::raw_view::RawView;
+use crate::state::{AppState, WriteFailure};
 use crate::tree::ViewMode;
 
 pub(crate) mod assets;
@@ -96,16 +97,14 @@ async fn mark(
             });
             section_response(markup, trigger)
         }
-        Err(err) => {
-            failed_write_response(
-                &state,
-                req.root,
-                mode,
-                links,
-                format!("Could not mark {}: {err}", req.rel),
-            )
-            .await
-        }
+        Err(WriteFailure::BadRoot) => bad_root_response(req.root, &req.rel, "mark"),
+        Err(WriteFailure::Failed { error, raw }) => in_section_alert(
+            &raw,
+            req.root,
+            mode,
+            links,
+            format!("Could not mark {}: {error}", req.rel),
+        ),
     };
     tracing::debug!(
         op = "mark",
@@ -132,16 +131,14 @@ async fn unmark(
                 None,
             )
         }
-        Err(err) => {
-            failed_write_response(
-                &state,
-                req.root,
-                mode,
-                links,
-                format!("Could not undo {}: {err}", req.rel),
-            )
-            .await
-        }
+        Err(WriteFailure::BadRoot) => bad_root_response(req.root, &req.rel, "undo"),
+        Err(WriteFailure::Failed { error, raw }) => in_section_alert(
+            &raw,
+            req.root,
+            mode,
+            links,
+            format!("Could not undo {}: {error}", req.rel),
+        ),
     };
     tracing::debug!(
         op = "unmark",
@@ -153,23 +150,26 @@ async fn unmark(
     resp
 }
 
-/// Re-render the affected root's section with an inline alert naming the folder,
-/// so a failed write stays by the row rather than in a toast. The view is
-/// re-fetched (a cache hit) since the failed call returned no view. An out-of-range
-/// root falls back to a standalone error card.
-async fn failed_write_response(
-    state: &AppState,
+/// Render the standalone error card. Used by `mark` and `unmark` for the
+/// `WriteFailure::BadRoot` arm, where the submitted root index is out of
+/// range and there is no section to render the alert into.
+fn bad_root_response(root: usize, rel: &str, op: &str) -> axum::response::Response {
+    let message = format!("Could not {op} {rel}: no such library root");
+    section_response(render::error_section(root, &message), None)
+}
+
+/// Re-render the affected root's section with the message inline by its row.
+/// `WriteFailure::Failed` guarantees `root` is in range, so `view[root]` is
+/// always valid.
+fn in_section_alert(
+    raw: &RawView,
     root: usize,
     mode: ViewMode,
     links: &[SearchLink],
     message: String,
 ) -> axum::response::Response {
-    let raw = state.store.current().await;
-    let view = render::package_view(&raw, mode);
-    let markup = match view.get(root) {
-        Some(section) => render::render_section(section, root, Some(&message), links, mode),
-        None => render::error_section(root, &message),
-    };
+    let view = render::package_view(raw, mode);
+    let markup = render::render_section(&view[root], root, Some(&message), links, mode);
     section_response(markup, None)
 }
 
