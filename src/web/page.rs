@@ -583,4 +583,51 @@ mod tests {
         // It carries a thin-× glyph, not a circle: two diagonal strokes.
         assert!(html.contains(r#"d="M6 6l12 12M18 6L6 18""#));
     }
+
+    #[test]
+    fn index_renders_the_hidden_connection_banner() {
+        let html = conn_banner().into_string();
+        // A polite live region, hidden until the connection JS reveals it. The
+        // `hidden` check is anchored to the banner's own attributes so it can't pass
+        // on an unrelated `aria-hidden` elsewhere on the page.
+        assert!(html.contains(r#"id="conn-banner""#));
+        assert!(html.contains(r#"role="status""#));
+        assert!(html.contains(r#"role="status" aria-live="polite" hidden"#));
+        // Copy lives in data attributes so it is locked here and read by app.js.
+        assert!(html.contains(r#"data-msg-offline="You're offline. Changes can't be saved.""#));
+        assert!(html.contains(r#"data-msg-retrying="Lost connection. Retrying…""#));
+        assert!(
+            html.contains(
+                r#"data-msg-failed="Couldn't reach the server. Your change wasn't saved.""#
+            )
+        );
+        assert!(html.contains(
+            r#"data-msg-failed-rescan="Couldn't reach the server. The library wasn't rescanned.""#
+        ));
+        assert!(html.contains(r#"data-msg-reconnected="Reconnected.""#));
+        // The message slot the JS fills.
+        assert!(html.contains(r#"class="conn-banner-msg""#));
+    }
+
+    #[test]
+    fn index_renders_the_confirm_dialog() {
+        let html = confirm_dialog().into_string();
+        // A single page-level dialog the confirm flow fills and opens.
+        assert!(html.contains(r#"id="confirm-mark""#));
+        assert!(html.contains("Don't ask again"));
+        assert!(html.contains(r#"id="confirm-accept""#));
+        assert!(html.contains(r#"id="confirm-cancel""#));
+    }
+
+    #[test]
+    fn index_renders_the_toast_stack_and_template() {
+        let html = toast().into_string();
+        // An empty stack container plus a template the script clones per toast, so
+        // up to three coexist and survive the htmx section swaps.
+        assert!(html.contains(r#"id="toast-stack""#));
+        assert!(html.contains(r#"id="toast-template""#));
+        // The template toast carries the undo button and the message slot.
+        assert!(html.contains("toast-undo"));
+        assert!(html.contains(r#"class="toast-msg""#));
+    }
 }
