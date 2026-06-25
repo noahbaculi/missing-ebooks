@@ -205,9 +205,6 @@ pub struct Applied {
 /// future JSON API would render it as an error body.
 #[derive(Debug, thiserror::Error)]
 pub enum DomainError {
-    /// The submitted root index does not name a configured root.
-    #[error("no such library root")]
-    RootIndex,
     /// The resolved target sits outside every configured root.
     #[error("target is outside the configured library roots")]
     OutsideRoots,
