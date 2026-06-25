@@ -5,6 +5,7 @@
 //! than rewalking (see docs/adr/0002-marker-writes-edit-cache-in-place.md).
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
@@ -33,19 +34,6 @@ struct CacheEntry {
     raw: Arc<RawView>,
 }
 
-/// Stamp and store a freshly built raw view. The single place that sets
-/// `stored_at = now`: a fresh build refreshes the freshness clock (ADR-0002).
-/// `write_mark` uses `Arc::make_mut` for in-place edits and intentionally
-/// bypasses this function, leaving `stored_at` unchanged.
-fn store_fresh(slot: &mut Option<CacheEntry>, raw: RawView) -> Arc<RawView> {
-    let raw = Arc::new(raw);
-    *slot = Some(CacheEntry {
-        stored_at: Instant::now(),
-        raw: Arc::clone(&raw),
-    });
-    raw
-}
-
 /// Whether a stored entry is still within the staleness window. `ttl == None`
 /// disables the cache (every read rescans), so any stored entry is treated as
 /// stale.
@@ -60,6 +48,10 @@ pub struct RawViewStore {
     /// The cache slot. Held briefly for in-place edits; held across the
     /// per-root rescan in `remove_mark` (matching today's `rebuild_root`).
     entries: Mutex<Option<CacheEntry>>,
+    /// Monotonic count of fresh builds stored into the slot. Bumped inside
+    /// `store_fresh`. Test-only observation; tests diff before vs. after to
+    /// assert that a warm operation did not rebuild. See ADR-0022.
+    rebuild_count: AtomicU64,
     /// `None` disables caching: every read rescans.
     ttl: Option<Duration>,
     /// Scan substrate: the compiled settings and the shared mtime index.
@@ -82,11 +74,27 @@ impl RawViewStore {
     ) -> RawViewStore {
         RawViewStore {
             entries: Mutex::new(None),
+            rebuild_count: AtomicU64::new(0),
             ttl,
             settings,
             dir_index,
             config,
         }
+    }
+
+    /// Stamp and store a freshly built raw view, bumping `rebuild_count`.
+    /// The single place that sets `stored_at = now`: a fresh build refreshes
+    /// the freshness clock (ADR-0002). `write_mark` uses `Arc::make_mut` for
+    /// in-place edits and intentionally bypasses this method, leaving both
+    /// `stored_at` and `rebuild_count` unchanged.
+    fn store_fresh(&self, slot: &mut Option<CacheEntry>, raw: RawView) -> Arc<RawView> {
+        let raw = Arc::new(raw);
+        *slot = Some(CacheEntry {
+            stored_at: Instant::now(),
+            raw: Arc::clone(&raw),
+        });
+        self.rebuild_count.fetch_add(1, Ordering::Relaxed);
+        raw
     }
 
     /// Return the cached raw view if still fresh, otherwise build one under the
@@ -102,7 +110,7 @@ impl RawViewStore {
         }
         tracing::debug!("cache miss");
         let raw = self.build_view().await;
-        store_fresh(&mut slot, raw)
+        self.store_fresh(&mut slot, raw)
     }
 
     /// Rebuild under the lock and store, ignoring the TTL but keeping the dir
@@ -111,7 +119,7 @@ impl RawViewStore {
     pub async fn refresh(&self) -> Arc<RawView> {
         let mut slot = self.entries.lock().await;
         let raw = self.build_view().await;
-        store_fresh(&mut slot, raw)
+        self.store_fresh(&mut slot, raw)
     }
 
     /// Force a fresh cold scan: clear the dir index, build under the lock,
@@ -121,7 +129,7 @@ impl RawViewStore {
         lock_index(&self.dir_index).clear();
         let mut slot = self.entries.lock().await;
         let raw = self.build_view().await;
-        store_fresh(&mut slot, raw)
+        self.store_fresh(&mut slot, raw)
     }
 
     /// Build the raw view for every configured root, in config order.
@@ -141,6 +149,13 @@ impl RawViewStore {
     pub async fn peek_stored_arc(&self) -> Option<Arc<RawView>> {
         let slot = self.entries.lock().await;
         slot.as_ref().map(|entry| Arc::clone(&entry.raw))
+    }
+
+    /// Returns the count of fresh builds stored into the slot since this
+    /// store was created.
+    #[cfg(test)]
+    pub fn rebuild_count(&self) -> u64 {
+        self.rebuild_count.load(Ordering::Relaxed)
     }
 
     /// Test accessor: returns the shared dir index. Used in tests that need
@@ -254,7 +269,7 @@ impl RawViewStore {
                 Arc::clone(&entry.raw)
             } else {
                 let raw = self.build_view().await;
-                store_fresh(&mut slot, raw)
+                self.store_fresh(&mut slot, raw)
             }
         };
         Ok(Applied { raw, created })
@@ -322,7 +337,7 @@ impl RawViewStore {
                 Arc::clone(&entry.raw)
             } else {
                 let raw = self.build_view().await;
-                store_fresh(&mut slot, raw)
+                self.store_fresh(&mut slot, raw)
             }
         };
         Ok(raw)
