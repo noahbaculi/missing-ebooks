@@ -6,30 +6,16 @@ use std::sync::Arc;
 #[cfg(test)]
 use std::path::Path;
 
-use serde::Serialize;
-
 use crate::marker::Marker;
-use crate::scanner;
-use crate::state::{self, AppState};
-use crate::tree::{self, RootState, ViewMode};
+use crate::state::AppState;
+use crate::tree::ViewMode;
 
 pub use crate::state::DomainError;
-
-/// The whole read view: one section per configured library root, in config order.
-pub type FlaggedView = Vec<RootSection>;
-
-/// One library root's outcome, labeled with the path the scanner walked.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct RootSection {
-    /// The canonical root path when it resolved, else the configured path.
-    pub path: String,
-    /// What the scan found for this root.
-    pub state: RootState,
-    /// Folders under this root that directly hold audio. Zero for `Clean` and
-    /// `Error`. The web layer surfaces it as `data-total-audiobooks` on the
-    /// section so the strip's library coverage stays current across swaps.
-    pub total_audiobooks: usize,
-}
+pub use crate::web::render::{FlaggedView, RootSection};
+// Pre-fold helper names. The new homes are package_view and package_section in
+// web::render. These re-exports go away with service.rs itself.
+pub(crate) use crate::web::render::package_section as render_section_from_raw;
+pub(crate) use crate::web::render::package_view as render_view;
 
 /// Return the cached view if it is still fresh, otherwise scan and cache it.
 /// Single-flight is enforced by `RawViewStore::current`.
@@ -88,30 +74,6 @@ pub async fn unmark(
     Ok(Arc::new(render_view(&raw, mode)))
 }
 
-/// Render the cached raw view into the requested `ViewMode`'s `FlaggedView`. The
-/// gaps path filters with `reduce_to_flagged` and builds the forest. Show-all
-/// builds directly from the raw folders. Both run on the request thread (the
-/// per-folder cost is bounded, see ADR-0022). The render allocates a fresh
-/// `FlaggedView` per response and drops it after the response writes.
-pub(crate) fn render_view(raw: &state::RawView, mode: ViewMode) -> FlaggedView {
-    raw.iter()
-        .map(|scan| render_section_from_raw(scan, mode))
-        .collect()
-}
-
-/// Build one `RootSection` from a raw `RootScan` for the requested mode.
-///
-/// The single owner of the raw-to-rendered packaging. `render_view` calls it on
-/// the snapshot path; `autosync::render_oob_section` calls it on the push path.
-/// Any future per-root field lands here once.
-pub(crate) fn render_section_from_raw(scan: &scanner::RootScan, mode: ViewMode) -> RootSection {
-    RootSection {
-        path: scan.display_path().to_string(),
-        state: tree::build(scan, mode),
-        total_audiobooks: scan.audiobook_count(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,9 +81,10 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::config::Config;
-    use crate::scanner::ScanSettings;
+    use crate::scanner::{self, ScanSettings};
     use crate::scenarios::touch;
     use crate::state::build_view;
+    use crate::tree::RootState;
 
     fn test_config(roots: Vec<PathBuf>, ttl_seconds: u64) -> Config {
         Config {

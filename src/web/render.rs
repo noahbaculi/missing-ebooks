@@ -3,12 +3,53 @@
 //! the test surface and `web.rs` stays handlers and glue.
 
 use maud::{Markup, PreEscaped, html};
+use serde::Serialize;
 
 use crate::config::SearchLink;
 use crate::query::clean_query;
-use crate::service::{FlaggedView, RootSection};
+use crate::scanner::RootScan;
+use crate::state::RawView;
+use crate::tree;
 use crate::tree::Node;
 use crate::tree::{RootState, ViewMode};
+
+/// The whole read view: one section per configured library root, in config order.
+pub type FlaggedView = Vec<RootSection>;
+
+/// One library root's outcome, labeled with the path the scanner walked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RootSection {
+    /// The canonical root path when it resolved, else the configured path.
+    pub path: String,
+    /// What the scan found for this root.
+    pub state: RootState,
+    /// Folders under this root that directly hold audio. Zero for `Clean` and
+    /// `Error`. The web layer surfaces it as `data-total-audiobooks` on the
+    /// section so the strip's library coverage stays current across swaps.
+    pub total_audiobooks: usize,
+}
+
+/// Build the per-mode `FlaggedView` from the cached raw scan output. The gaps
+/// path filters with `reduce_to_flagged` and builds the forest. Show-all builds
+/// directly from the raw folders. Both run on the request thread (the per-folder
+/// cost is bounded, see ADR-0022). Allocates a fresh `FlaggedView` per response
+/// and drops it after the response writes.
+pub(crate) fn package_view(raw: &RawView, mode: ViewMode) -> FlaggedView {
+    raw.iter().map(|scan| package_section(scan, mode)).collect()
+}
+
+/// Build one `RootSection` from a raw `RootScan` for the requested mode.
+///
+/// The single owner of the raw-to-packaged step. `package_view` calls it on
+/// the snapshot path; `autosync::render_oob_section` calls it on the push
+/// path. Any future per-root field lands here once.
+pub(crate) fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
+    RootSection {
+        path: scan.display_path().to_string(),
+        state: tree::build(scan, mode),
+        total_audiobooks: scan.audiobook_count(),
+    }
+}
 
 /// The rotating folder caret used on collapsible rows.
 fn chevron() -> Markup {
