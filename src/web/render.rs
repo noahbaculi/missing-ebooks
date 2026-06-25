@@ -638,7 +638,6 @@ mod tests {
         Some(&html[start..end])
     }
 
-    #[allow(dead_code)]
     /// A directly-flagged leaf: holds audio, missing an ebook, audio filenames
     /// as given. Cover files empty.
     fn flagged_leaf(name: &str, rel: &str, audio: &[&str]) -> Node {
@@ -653,7 +652,6 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
     /// A covered leaf: holds audio AND has at least one cover file, so it is
     /// not flagged. Used by all-view tests that pin cover-file rendering.
     fn covered_leaf(name: &str, rel: &str, cover_files: &[&str]) -> Node {
@@ -668,7 +666,6 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
     /// A container row: no audio of its own, holds children.
     fn container(name: &str, rel: &str, children: Vec<Node>) -> Node {
         Node {
@@ -682,13 +679,11 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
     /// Wrap a forest of root-level nodes into the `RootState::Forest` arm.
     fn forest(roots: Vec<Node>) -> RootState {
         RootState::Forest(roots)
     }
 
-    #[allow(dead_code)]
     /// One library root labeled with its display path, the given state, and
     /// the audiobook count `render_section` emits as `data-total-audiobooks`.
     fn section(path: &str, state: RootState, total: usize) -> RootSection {
@@ -699,13 +694,11 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
     /// A root the scanner walked and found nothing missing in.
     fn clean(path: &str, total: usize) -> RootSection {
         section(path, RootState::Clean, total)
     }
 
-    #[allow(dead_code)]
     /// A root that errored at canonicalization or walk time.
     fn errored(path: &str, message: &str) -> RootSection {
         section(path, RootState::Error(message.into()), 0)

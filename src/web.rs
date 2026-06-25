@@ -286,29 +286,13 @@ mod tests {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
 
-    use crate::config::{Config, SearchLink};
+    use crate::config::Config;
     use crate::scanner::ScanSettings;
     use crate::scenarios::touch;
 
     fn app_for(root: &Path) -> Router {
-        app_for_with_links(root, Config::default().search_links)
-    }
-
-    fn app_for_with_links(root: &Path, search_links: Vec<SearchLink>) -> Router {
         let cfg = Config {
             library_roots: vec![root.to_path_buf()],
-            ttl_seconds: 60,
-            search_links,
-            ..Default::default()
-        };
-        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
-        router(Arc::new(AppState::new(cfg, settings)))
-    }
-
-    #[allow(dead_code)]
-    fn app_for_roots(roots: &[&Path]) -> Router {
-        let cfg = Config {
-            library_roots: roots.iter().map(|r| r.to_path_buf()).collect(),
             ttl_seconds: 60,
             ..Default::default()
         };
