@@ -87,12 +87,12 @@ async fn mark(
     let started = Instant::now();
     let links = &state.config.search_links;
     let mode = req.view;
-    let resp = match service::mark(&state, req.root, &req.rel, req.kind, mode).await {
-        Ok(outcome) => {
-            let markup =
-                render::render_section(&outcome.view[req.root], req.root, None, links, mode);
-            let trigger = outcome.created.then(|| {
-                let name = display_name(&outcome.view[req.root].path, &req.rel);
+    let resp = match state.store.write_mark(req.root, &req.rel, req.kind).await {
+        Ok(applied) => {
+            let view = render::package_view(&applied.raw, mode);
+            let markup = render::render_section(&view[req.root], req.root, None, links, mode);
+            let trigger = applied.created.then(|| {
+                let name = display_name(&view[req.root].path, &req.rel);
                 marked_trigger(&req, &name)
             });
             section_response(markup, trigger)
