@@ -6,9 +6,8 @@
 
 pub use crate::state::DomainError;
 pub use crate::web::render::{FlaggedView, RootSection};
-// Pre-fold helper names. The new homes are package_view and package_section in
-// web::render. These re-exports go away with service.rs itself.
-pub(crate) use crate::web::render::package_section as render_section_from_raw;
+// Pre-fold helper name. Demo still reaches through it; the re-export goes
+// away with service.rs itself in Task 13.
 pub(crate) use crate::web::render::package_view as render_view;
 
 #[cfg(test)]

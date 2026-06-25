@@ -62,8 +62,8 @@ fn stable_hash(s: &str) -> u64 {
 
 /// Render one raw section as the OOB-swap string the autosync stream pushes.
 /// Renders the raw section into a `RootSection` for the requested mode through
-/// `service::render_section_from_raw` (one place owns the raw → rendered
-/// packaging), then delegates to `web::render::single_oob_section` so the OOB
+/// `web::render::package_section` (one place owns the raw → packaged
+/// step), then delegates to `web::render::single_oob_section` so the OOB
 /// wrapping uses one renderer shared with the page-level snapshot path (see
 /// ADR-0024).
 fn render_oob_section(
@@ -72,7 +72,7 @@ fn render_oob_section(
     mode: ViewMode,
     links: &[crate::config::SearchLink],
 ) -> String {
-    let rendered_section = crate::service::render_section_from_raw(raw_section, mode);
+    let rendered_section = crate::web::render::package_section(raw_section, mode);
     crate::web::render::single_oob_section(&rendered_section, root_idx, links, mode).into_string()
 }
 
@@ -682,7 +682,7 @@ mod tests {
         // root equal the bytes a Rescan click would render for the same root.
         // After consolidation both paths share single_oob_section; this test
         // pins that fact so a future divergence fails loudly. Derive the
-        // rendered section through service::render_section_from_raw — the
+        // rendered section through web::render::package_section — the
         // helper render_oob_section itself uses — so a drift in that helper
         // fails this test rather than getting silently re-applied here.
         let raw = RootScan::Walked {
@@ -693,7 +693,7 @@ mod tests {
 
         let via_autosync = render_oob_section(&raw, 7, ViewMode::GapsOnly, &links);
 
-        let rendered_section = crate::service::render_section_from_raw(&raw, ViewMode::GapsOnly);
+        let rendered_section = crate::web::render::package_section(&raw, ViewMode::GapsOnly);
         let via_render = crate::web::render::single_oob_section(
             &rendered_section,
             7,
