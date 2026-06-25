@@ -116,6 +116,16 @@ pub enum ConfigError {
          `library_roots` to config.toml (run with --print-config for a template)."
     )]
     MissingLibraryRoots,
+    /// An environment variable was set but its value did not parse.
+    #[error("environment variable {var}={value:?} is invalid: {source}")]
+    InvalidEnv {
+        /// Variable name (e.g. "MISSING_EBOOKS_PORT").
+        var: String,
+        /// The raw value that failed to parse.
+        value: String,
+        /// Underlying parse error.
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 }
 
 impl Config {
@@ -126,7 +136,7 @@ impl Config {
             Some(path) => Self::from_file(path)?,
             None => Config::default(),
         };
-        apply_env_overrides(&mut cfg, &|key| std::env::var(key).ok());
+        apply_env_overrides(&mut cfg, &|key| std::env::var(key).ok())?;
         cfg.validate()?;
         Ok(cfg)
     }
@@ -162,28 +172,65 @@ impl Config {
     }
 }
 
+/// Parse an environment variable value with a typed `FromStr`. Returns
+/// `Ok(None)` when the variable is unset; returns `ConfigError::InvalidEnv`
+/// when it is set but does not parse. Empty string counts as set and fails
+/// to parse, which is the intended behavior: an empty env value is operator
+/// error, not a request to fall back.
+fn parse_env<T: std::str::FromStr>(
+    name: &str,
+    raw: Option<String>,
+) -> Result<Option<T>, ConfigError>
+where
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    let Some(value) = raw else {
+        return Ok(None);
+    };
+    value
+        .parse()
+        .map(Some)
+        .map_err(|err: T::Err| ConfigError::InvalidEnv {
+            var: name.to_string(),
+            value,
+            source: Box::new(err),
+        })
+}
+
 /// Layer environment variables over `cfg`. The getter is injected so tests can
 /// drive it without touching the real process environment.
-fn apply_env_overrides(cfg: &mut Config, getenv: &dyn Fn(&str) -> Option<String>) {
+fn apply_env_overrides(
+    cfg: &mut Config,
+    getenv: &dyn Fn(&str) -> Option<String>,
+) -> Result<(), ConfigError> {
     if let Some(raw) = getenv("MISSING_EBOOKS_LIBRARY_ROOTS") {
         cfg.library_roots = std::env::split_paths(&raw).collect();
     }
     if let Some(bind) = getenv("MISSING_EBOOKS_BIND") {
         cfg.bind = bind;
     }
-    if let Some(port) = getenv("MISSING_EBOOKS_PORT").and_then(|v| v.parse().ok()) {
+    if let Some(port) = parse_env::<u16>("MISSING_EBOOKS_PORT", getenv("MISSING_EBOOKS_PORT"))? {
         cfg.port = port;
     }
-    if let Some(ttl) = getenv("MISSING_EBOOKS_TTL_SECONDS").and_then(|v| v.parse().ok()) {
+    if let Some(ttl) = parse_env::<u64>(
+        "MISSING_EBOOKS_TTL_SECONDS",
+        getenv("MISSING_EBOOKS_TTL_SECONDS"),
+    )? {
         cfg.ttl_seconds = ttl;
     }
-    if let Some(n) = getenv("MISSING_EBOOKS_SCAN_CONCURRENCY").and_then(|v| v.parse().ok()) {
+    if let Some(n) = parse_env::<usize>(
+        "MISSING_EBOOKS_SCAN_CONCURRENCY",
+        getenv("MISSING_EBOOKS_SCAN_CONCURRENCY"),
+    )? {
         cfg.scan_concurrency = n;
     }
-    if let Some(v) = getenv("MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS").and_then(|v| v.parse().ok())
-    {
+    if let Some(v) = parse_env::<u64>(
+        "MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS",
+        getenv("MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS"),
+    )? {
         cfg.autosync_interval_seconds = v;
     }
+    Ok(())
 }
 
 /// The commented template. It must stay parseable into `Config`;
@@ -340,7 +387,7 @@ mod tests {
             ("MISSING_EBOOKS_PORT", "1234"),
             ("MISSING_EBOOKS_BIND", "0.0.0.0"),
         ]);
-        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned());
+        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
         assert_eq!(cfg.port, 1234);
         assert_eq!(cfg.bind, "0.0.0.0");
         assert_eq!(cfg.ttl_seconds, 60); // unset env leaves the default
@@ -350,7 +397,7 @@ mod tests {
     fn env_overrides_scan_concurrency() {
         let mut cfg = Config::default();
         let env = fake_env(&[("MISSING_EBOOKS_SCAN_CONCURRENCY", "32")]);
-        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned());
+        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
         assert_eq!(cfg.scan_concurrency, 32);
     }
 
@@ -363,7 +410,7 @@ mod tests {
     fn env_overrides_autosync_interval_seconds() {
         let mut cfg = Config::default();
         let env = fake_env(&[("MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS", "0")]);
-        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned());
+        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
         assert_eq!(cfg.autosync_interval_seconds, 0);
     }
 
@@ -376,7 +423,7 @@ mod tests {
                 .unwrap();
         let mut cfg = Config::default();
         let env = fake_env(&[("MISSING_EBOOKS_LIBRARY_ROOTS", &joined)]);
-        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned());
+        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
         assert_eq!(
             cfg.library_roots,
             vec![
@@ -405,6 +452,45 @@ mod tests {
         assert_eq!(inputs.ebook_exts, cfg.ebook_exts.as_slice());
         assert_eq!(inputs.excluded_dirs, cfg.excluded_dirs.as_slice());
         assert_eq!(inputs.exclude_globs, cfg.exclude_globs.as_slice());
+    }
+
+    #[test]
+    fn env_invalid_port_fails_with_named_variable_error() {
+        let mut cfg = Config::default();
+        let env = fake_env(&[("MISSING_EBOOKS_PORT", "garbage")]);
+        let err = apply_env_overrides(&mut cfg, &|k| env.get(k).cloned())
+            .expect_err("invalid env value must error");
+        match err {
+            ConfigError::InvalidEnv { var, value, .. } => {
+                assert_eq!(var, "MISSING_EBOOKS_PORT");
+                assert_eq!(value, "garbage");
+            }
+            other => panic!("expected InvalidEnv, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn env_empty_value_fails() {
+        let mut cfg = Config::default();
+        let env = fake_env(&[("MISSING_EBOOKS_TTL_SECONDS", "")]);
+        let err = apply_env_overrides(&mut cfg, &|k| env.get(k).cloned())
+            .expect_err("empty env value must error");
+        assert!(
+            matches!(err, ConfigError::InvalidEnv { ref var, .. } if var == "MISSING_EBOOKS_TTL_SECONDS")
+        );
+    }
+
+    #[test]
+    fn env_valid_value_still_applies() {
+        // Regression guard: the happy path is unchanged by the new signature.
+        let mut cfg = Config::default();
+        let env = fake_env(&[
+            ("MISSING_EBOOKS_PORT", "9000"),
+            ("MISSING_EBOOKS_TTL_SECONDS", "120"),
+        ]);
+        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
+        assert_eq!(cfg.port, 9000);
+        assert_eq!(cfg.ttl_seconds, 120);
     }
 
     #[test]
