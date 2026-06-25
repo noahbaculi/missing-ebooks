@@ -20,7 +20,6 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::config::SearchLink;
 use crate::marker::Marker;
-use crate::service;
 use crate::state::AppState;
 use crate::tree::ViewMode;
 
@@ -125,11 +124,14 @@ async fn unmark(
     let started = Instant::now();
     let links = &state.config.search_links;
     let mode = req.view;
-    let resp = match service::unmark(&state, req.root, &req.rel, req.kind, mode).await {
-        Ok(view) => section_response(
-            render::render_section(&view[req.root], req.root, None, links, mode),
-            None,
-        ),
+    let resp = match state.store.remove_mark(req.root, &req.rel, req.kind).await {
+        Ok(raw) => {
+            let view = render::package_view(&raw, mode);
+            section_response(
+                render::render_section(&view[req.root], req.root, None, links, mode),
+                None,
+            )
+        }
         Err(err) => {
             failed_write_response(
                 &state,
