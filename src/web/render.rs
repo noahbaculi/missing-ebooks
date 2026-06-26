@@ -17,7 +17,7 @@ use crate::tree::{RootState, ViewMode};
 pub type FlaggedView = Vec<RootSection>;
 
 /// One library root's outcome, labeled with the path the scanner walked.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct RootSection {
     /// The canonical root path when it resolved, else the configured path.
     pub path: String,

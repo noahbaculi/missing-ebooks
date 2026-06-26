@@ -18,46 +18,48 @@ use tokio::time::{Duration, sleep};
 use crate::raw_view;
 use crate::tree::ViewMode;
 
-/// Diff each rendered section against `last_hash` and return the list of pushes
-/// to fan out, mutating `last_hash` in place to reflect what is about to be
-/// sent. Each `(mode, root)` is rendered through `render_oob_section`.
+/// Diff each section's content hash against `last_content_hash` and return the
+/// list of pushes, mutating `last_content_hash` in place. On a hash match the
+/// loop skips the maud OOB-wrap render entirely; on a miss it wraps the
+/// already-packaged section, updates the cache, and pushes. The hash is
+/// per-mode (see `section_content_hash`) so mode-specific render-discarding
+/// (e.g. show-all-only `cover_files` changes that the gaps view drops) does
+/// not propagate as a push to the wrong mode.
 ///
 /// `has_subs[mode]` short-circuits modes nobody is listening to: their hashes
 /// stay untouched and they produce no pushes.
 fn compute_pushes(
     raw: &raw_view::RawView,
-    last_hash: &mut EnumMap<ViewMode, Vec<Option<u64>>>,
+    last_content_hash: &mut EnumMap<ViewMode, Vec<Option<u64>>>,
     has_subs: EnumMap<ViewMode, bool>,
     links: &[crate::config::SearchLink],
 ) -> Vec<(ViewMode, usize, String)> {
     let mut pushes = Vec::new();
-    for mode in [ViewMode::GapsOnly, ViewMode::All] {
-        if !has_subs[mode] {
-            continue;
-        }
-        // Resize the per-mode hash vec to match the current root count: roots
-        // are config-fixed for a process, but the first call has empty vecs.
-        if last_hash[mode].len() != raw.len() {
-            last_hash[mode].resize(raw.len(), None);
-        }
-        for (root_idx, section) in raw.iter().enumerate() {
-            let (html, h) = rendered_oob_with_hash(section, root_idx, mode, links);
-            if last_hash[mode][root_idx] != Some(h) {
-                last_hash[mode][root_idx] = Some(h);
-                pushes.push((mode, root_idx, html));
+    for (root_idx, scan) in raw.iter().enumerate() {
+        for mode in [ViewMode::GapsOnly, ViewMode::All] {
+            if !has_subs[mode] {
+                continue;
             }
+            // Roots are config-fixed for a process, but the first call has
+            // empty vecs.
+            if last_content_hash[mode].len() != raw.len() {
+                last_content_hash[mode].resize(raw.len(), None);
+            }
+            // Package once per (root, mode): the hash needs the packaged
+            // section, and a cache miss reuses the same `section` to wrap
+            // without paying for a second `package_section` call.
+            let section = crate::web::render::package_section(scan, mode);
+            let content_hash = section_content_hash(&section);
+            if last_content_hash[mode][root_idx] == Some(content_hash) {
+                continue;
+            }
+            let html = crate::web::render::single_oob_section(&section, root_idx, links, mode)
+                .into_string();
+            last_content_hash[mode][root_idx] = Some(content_hash);
+            pushes.push((mode, root_idx, html));
         }
     }
     pushes
-}
-
-/// A fixed seed-less hash of the rendered HTML. `DefaultHasher` is fine because
-/// the comparison is equal/not-equal within one process. The hash never crosses
-/// a process boundary and never seeds a security-sensitive table.
-fn stable_hash(s: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    s.hash(&mut hasher);
-    hasher.finish()
 }
 
 /// Render one raw section as the OOB-swap string the autosync stream pushes.
@@ -66,6 +68,13 @@ fn stable_hash(s: &str) -> u64 {
 /// step), then delegates to `web::render::single_oob_section` so the OOB
 /// wrapping uses one renderer shared with the page-level snapshot path (see
 /// ADR-0024).
+///
+/// Now only used by tests: `compute_pushes` and `snapshot_and_seed` inline the
+/// two-step (package, then OOB-wrap) so a cache miss reuses the already
+/// packaged section. The helper survives as the byte-equality contract the
+/// `render_oob_section_bytes_match_a_direct_single_oob_section_render` test
+/// pins.
+#[cfg(test)]
 fn render_oob_section(
     raw_section: &crate::scanner::RootScan,
     root_idx: usize,
@@ -76,25 +85,28 @@ fn render_oob_section(
     crate::web::render::single_oob_section(&rendered_section, root_idx, links, mode).into_string()
 }
 
-/// Render one section's OOB-swap bytes and hash them. Shared by
-/// `snapshot_and_seed` and `compute_pushes` so the seed hash and the loop's
-/// first-tick hash agree by construction (ADR-0024).
-fn rendered_oob_with_hash(
-    scan: &crate::scanner::RootScan,
-    root_idx: usize,
-    mode: ViewMode,
-    links: &[crate::config::SearchLink],
-) -> (String, u64) {
-    let oob = render_oob_section(scan, root_idx, mode, links);
-    let hash = stable_hash(&oob);
-    (oob, hash)
+/// Hashes one packaged `RootSection` for the autosync dedup compare. The hash
+/// is per-mode because the packaging discards inputs the mode does not render
+/// (e.g. show-all-only `cover_files` on a covered audiobook collapse out of
+/// the gaps `RootState`), so two modes can see different hashes for the same
+/// `RootScan`. Shared by `snapshot_and_seed` (the seed hash a new subscriber
+/// carries) and `compute_pushes` (the per-tick compare), so the seed and the
+/// first-tick hash agree by construction (ADR-0024). Match implies equal
+/// rendered HTML; the `content_hash_equals_render_parity` test pins that
+/// contract, and `gaps_hash_unchanged_when_show_all_only_change_lands` pins
+/// the per-mode isolation that lets the cache match for the gaps subscriber
+/// when only show-all-relevant state shifts.
+fn section_content_hash(section: &crate::web::render::RootSection) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    section.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Build the concatenated OOB-swap payload for an SSE `snapshot` event and the
-/// per-root hashes the autosync loop will use to suppress redundant first-tick
-/// section events. The handler sends the payload, then passes the hashes to
-/// `Autosync::subscribe` so the loop's first compute_pushes finds matching
-/// hashes and emits nothing until something actually changes.
+/// per-root content hashes the autosync loop will use to suppress redundant
+/// first-tick section events. The handler sends the payload, then passes the
+/// hashes to `Autosync::subscribe` so the loop's first compute_pushes finds
+/// matching hashes and emits nothing until something actually changes.
 fn snapshot_and_seed(
     raw: &raw_view::RawView,
     mode: ViewMode,
@@ -102,9 +114,14 @@ fn snapshot_and_seed(
 ) -> (String, Vec<u64>) {
     let mut payload = String::with_capacity(raw.len() * 512);
     let mut hashes = Vec::with_capacity(raw.len());
-    for (root_idx, section) in raw.iter().enumerate() {
-        let (oob, hash) = rendered_oob_with_hash(section, root_idx, mode, links);
-        hashes.push(hash);
+    for (root_idx, scan) in raw.iter().enumerate() {
+        // Package once and reuse for both the rendered OOB fragment and the
+        // seed hash, so the seed agrees byte-for-byte with what
+        // `compute_pushes` will hash on the first tick.
+        let section = crate::web::render::package_section(scan, mode);
+        hashes.push(section_content_hash(&section));
+        let oob =
+            crate::web::render::single_oob_section(&section, root_idx, links, mode).into_string();
         payload.push_str(&oob);
     }
     (payload, hashes)
@@ -165,7 +182,7 @@ pub struct Autosync {
 /// last-broadcast hashes, and the active loop task's handle.
 struct AutosyncInner {
     subs: EnumMap<ViewMode, Vec<SseSender>>,
-    last_hash: EnumMap<ViewMode, Vec<Option<u64>>>,
+    last_content_hash: EnumMap<ViewMode, Vec<Option<u64>>>,
     /// Set while the loop is running; cleared by the loop on exit.
     loop_task: Option<JoinHandle<()>>,
 }
@@ -177,7 +194,7 @@ impl Autosync {
     pub fn new(autosync_interval_seconds: u64) -> Self {
         let inner = AutosyncInner {
             subs: EnumMap::default(),
-            last_hash: EnumMap::default(),
+            last_content_hash: EnumMap::default(),
             loop_task: None,
         };
         Self {
@@ -245,9 +262,9 @@ impl Autosync {
         let mut guard = lock_inner(&self.inner);
         guard.subs[mode].push(sender);
         if let Some(hashes) = seed_hashes
-            && guard.last_hash[mode].is_empty()
+            && guard.last_content_hash[mode].is_empty()
         {
-            guard.last_hash[mode] = hashes.into_iter().map(Some).collect();
+            guard.last_content_hash[mode] = hashes.into_iter().map(Some).collect();
         }
 
         let should_spawn = self.interval > Duration::ZERO
@@ -346,7 +363,7 @@ async fn run_loop(
             let has_subs = EnumMap::from_fn(|mode| !guard.subs[mode].is_empty());
             compute_pushes(
                 &raw,
-                &mut guard.last_hash,
+                &mut guard.last_content_hash,
                 has_subs,
                 &state.config.search_links,
             )
@@ -422,7 +439,7 @@ mod tests {
         // Build a minimal inner registry directly.
         let inner = Arc::new(StdMutex::new(AutosyncInner {
             subs: EnumMap::default(),
-            last_hash: EnumMap::default(),
+            last_content_hash: EnumMap::default(),
             loop_task: None,
         }));
 
@@ -635,7 +652,8 @@ mod tests {
 
         // The per-mode baseline was seeded so the loop's first tick would
         // suppress redundant section events for unchanged roots.
-        let baseline = state.autosync.inner.lock().unwrap().last_hash[ViewMode::GapsOnly].clone();
+        let baseline =
+            state.autosync.inner.lock().unwrap().last_content_hash[ViewMode::GapsOnly].clone();
         assert!(
             !baseline.is_empty(),
             "attach seeded the GapsOnly baseline hashes",
@@ -657,7 +675,8 @@ mod tests {
         state
             .autosync
             .subscribe_and_seed(&state, ViewMode::GapsOnly, tx1, initial_hashes.clone());
-        let before = state.autosync.inner.lock().unwrap().last_hash[ViewMode::GapsOnly].clone();
+        let before =
+            state.autosync.inner.lock().unwrap().last_content_hash[ViewMode::GapsOnly].clone();
         assert_eq!(
             before,
             vec![Some(111), Some(222), Some(333)],
@@ -669,7 +688,8 @@ mod tests {
         state
             .autosync
             .subscribe_and_seed(&state, ViewMode::GapsOnly, tx2, later_hashes);
-        let after = state.autosync.inner.lock().unwrap().last_hash[ViewMode::GapsOnly].clone();
+        let after =
+            state.autosync.inner.lock().unwrap().last_content_hash[ViewMode::GapsOnly].clone();
         assert_eq!(
             after, before,
             "second subscribe must not overwrite the baseline a prior subscriber set",
@@ -689,7 +709,7 @@ mod tests {
         });
         let inner = Arc::new(StdMutex::new(AutosyncInner {
             subs,
-            last_hash: EnumMap::default(),
+            last_content_hash: EnumMap::default(),
             loop_task: Some(task),
         }));
 
@@ -710,7 +730,7 @@ mod tests {
         });
         let inner = Arc::new(StdMutex::new(AutosyncInner {
             subs: EnumMap::default(),
-            last_hash: EnumMap::default(),
+            last_content_hash: EnumMap::default(),
             loop_task: Some(task),
         }));
 
@@ -781,29 +801,88 @@ mod tests {
     }
 
     #[test]
-    fn rendered_oob_with_hash_returns_render_oob_section_paired_with_its_stable_hash() {
-        use crate::scanner::ScannedFolder;
+    fn content_hash_equals_render_parity() {
+        // Equality of section_content_hash must imply equality of rendered HTML
+        // for the same mode, so compute_pushes can skip the OOB wrap on a hash
+        // match without dropping a real diff. Fails closed if a future
+        // renderer input lands outside the packaged section.
+        let a = walked_root_with_folder(0, true);
+        let b = walked_root_with_folder(0, true);
+        let links = no_links();
+
+        let section_a = crate::web::render::package_section(&a, ViewMode::GapsOnly);
+        let section_b = crate::web::render::package_section(&b, ViewMode::GapsOnly);
+        assert_eq!(
+            section_content_hash(&section_a),
+            section_content_hash(&section_b),
+        );
+        assert_eq!(
+            render_oob_section(&a, 0, ViewMode::GapsOnly, &links),
+            render_oob_section(&b, 0, ViewMode::GapsOnly, &links),
+        );
+
+        // Flip one bit of content
+        let c = walked_root_with_folder(0, false);
+        let section_c = crate::web::render::package_section(&c, ViewMode::GapsOnly);
+        assert_ne!(
+            section_content_hash(&section_a),
+            section_content_hash(&section_c),
+        );
+        assert_ne!(
+            render_oob_section(&a, 0, ViewMode::GapsOnly, &links),
+            render_oob_section(&c, 0, ViewMode::GapsOnly, &links),
+        );
+    }
+
+    #[test]
+    fn gaps_hash_unchanged_when_show_all_only_change_lands() {
+        // Per-mode dedup property: a change that only the show-all renderer
+        // sees (here, adding a second cover file on a covered audiobook) must
+        // leave the gaps-mode content hash equal, so the gaps subscriber
+        // receives no push. tests/sse.rs::two_modes_isolated is the end-to-end
+        // version of this contract; this test pins the underlying invariant
+        // at the hash level.
+        use crate::scanner::{RootScan, ScannedFolder};
         use std::path::PathBuf;
 
-        // Mirror the walked-RootScan setup from
-        // `render_oob_section_html_carries_total_audiobooks_for_a_walked_root`.
-        let raw = RootScan::Walked {
+        let covered = |cover_files: Vec<String>| RootScan::Walked {
             canonical_path: PathBuf::from("/lib"),
             folders: vec![ScannedFolder {
                 rel_path: PathBuf::from("Book"),
                 directly_holds_audio: true,
-                missing_ebook: true,
-                cover_files: Vec::new(),
+                missing_ebook: false,
+                cover_files,
                 audio_files: vec!["01.mp3".to_string()],
             }],
         };
-        let links: Vec<crate::config::SearchLink> = Vec::new();
+        let before = covered(vec!["Book.epub".to_string()]);
+        let after = covered(vec![
+            "Book.epub".to_string(),
+            "Book.companion.epub".to_string(),
+        ]);
 
-        let (oob, hash) = rendered_oob_with_hash(&raw, 0, ViewMode::GapsOnly, &links);
-        let direct_oob = render_oob_section(&raw, 0, ViewMode::GapsOnly, &links);
-        let direct_hash = stable_hash(&direct_oob);
+        let gaps_before = section_content_hash(&crate::web::render::package_section(
+            &before,
+            ViewMode::GapsOnly,
+        ));
+        let gaps_after = section_content_hash(&crate::web::render::package_section(
+            &after,
+            ViewMode::GapsOnly,
+        ));
+        assert_eq!(
+            gaps_before, gaps_after,
+            "gaps mode discards cover_files; hash must be stable across this change",
+        );
 
-        assert_eq!(oob, direct_oob);
-        assert_eq!(hash, direct_hash);
+        // The same change does flip the show-all hash, otherwise show-all
+        // would never see the push it must see.
+        let all_before =
+            section_content_hash(&crate::web::render::package_section(&before, ViewMode::All));
+        let all_after =
+            section_content_hash(&crate::web::render::package_section(&after, ViewMode::All));
+        assert_ne!(
+            all_before, all_after,
+            "show-all carries cover_files; hash must change so the push fires",
+        );
     }
 }
