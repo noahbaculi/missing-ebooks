@@ -230,7 +230,7 @@ pub fn reduce_to_flagged(folders: &[ScannedFolder]) -> Vec<ScannedFolder> {
 /// a `Vec<ScannedFolder>` (with `WalkStats`) that `tree::build`
 /// consumes. The root walked is the empty relative path (see ADR-0005),
 /// the loose-root case.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ScannedFolder {
     /// The folder's path relative to the walked root.
     pub rel_path: PathBuf,
@@ -252,7 +252,7 @@ pub struct ScannedFolder {
 /// Single owner of the "one root produced one of two outcomes" split: the cache
 /// stores a `Vec<RootScan>` (see `state::RawView`), and the renderer consumes
 /// it directly.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub enum RootScan {
     /// The walk completed. `folders` may be empty when no entry qualified.
     Walked {
