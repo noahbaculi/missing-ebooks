@@ -22,6 +22,7 @@ fixtures = []
 name = "explore"
 path = "examples/explore.rs"
 test = true
+required-features = ["fixtures"]
 
 [[example]]
 name = "scan_bench"
@@ -32,6 +33,7 @@ test = true
 name = "tree_bench"
 path = "examples/tree_bench.rs"
 test = true
+required-features = ["fixtures"]
 
 [[bin]]
 name = "missing-ebooks"
@@ -49,6 +51,7 @@ required-features = ["fixtures"]
 name = "render"
 path = "benches/render.rs"
 harness = false
+required-features = ["fixtures"]
 
 [dependencies]
 anyhow = "1.0.102"
