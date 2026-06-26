@@ -6,6 +6,7 @@ rust-version = "1.96"
 description = "Surface audiobook folders that hold audio but no matching ebook"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/noahbaculi/missing-ebooks"
+publish = false
 
 [features]
 # Defined empty here so the demo binary can require it; spec B will gate

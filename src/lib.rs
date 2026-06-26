@@ -1,4 +1,10 @@
-//! missing-ebooks: surface audiobook folders that hold audio but no ebook.
+//! Internal scaffolding shared by the `missing-ebooks` and
+//! `missing-ebooks-demo` binaries, the examples, the benches, and the
+//! integration tests. This crate is binary-by-construction: every `pub`
+//! item exists so a Cargo-built target in the same workspace can reach
+//! it. There is no semver promise, no external consumer, and the
+//! published artifact (`publish = false`) is the binary.
+#![doc(hidden)]
 
 pub mod autosync;
 pub mod config;
