@@ -14,7 +14,7 @@ The hash is computed from the render output, so the render runs on every tick re
 
 The audit's recommendation is to flip the hash basis: compute the hash from the raw section content, not the rendered HTML. On a content-hash match the loop skips the render entirely and pushes nothing. Equality of content hash implies equality of rendered HTML because the renderer is pure on `(section, root_idx, mode, links)` and `root_idx`, `mode`, and `links` are loop-stable. The audit phrases this as "bigger impact than moving render to `spawn_blocking`".
 
-The size of the win is bounded by the renderer cost itself, which is unmeasured in this codebase (the audit flagged its own render-risk language as speculation without a benchmark). Item #7 in the same audit asks for a `criterion` bench on `render_view`. That bench is the right place to quantify the savings and protect them. This spec deliberately ships #5 without #7: the worst case is a wash and the test discipline below catches behavioral regressions. The bench is a separate item.
+The size of the win is now measured. Item #7 (a `criterion` bench on `render_view`) shipped in commit `68a5ac4`; its `render_oob_section` group reports per-section means of 2.6 ms / 3.4 ms (1k gaps / all), 25.9 ms / 41.7 ms (10k), and 199 ms / 244 ms (50k) on synthetic depth=3 trees with `gap_rate=0.5`. With both modes subscribed and one root, that is roughly 6 ms / tick at 1k, 67 ms at 10k, and 440 ms at 50k. The 50k number is real for the audit's stated multi-root NAS target, the 1k number is not. The win is paid per tick, not per rebuild, and accrues for as long as a tab stays open.
 
 ## End state
 
@@ -31,7 +31,7 @@ The helper `rendered_oob_with_hash` is deleted. Its two callers split:
 
 The scanner types `RootScan` and `ScannedFolder` gain `Hash` in their derive lists. `PathBuf`, `bool`, `String`, and `Vec<T: Hash>` all implement `Hash` already, so the derive compiles without further changes. The two types are simple data so the public-API commitment of adding a `Hash` bound is minor.
 
-A `#[cfg(test)] render_count: AtomicU64` is added to `AutosyncInner` alongside `loop_task`, with a `#[cfg(test)] pub fn render_count(&self) -> u64` accessor. The render path increments it inside a thin test-only wrapper around `render_oob_section` (mirroring the `rebuild_count` pattern added in commit `7e5254e` for `RawViewStore`).
+A `render_count: AtomicU64` is added to `AutosyncInner` alongside `loop_task`, with a `#[cfg(test)] pub fn render_count(&self) -> u64` accessor on `Autosync`. The field is unconditional and the accessor is `cfg(test)`, mirroring the `rebuild_count` shape introduced for `RawViewStore` in commit `7e5254e`. Both autosync render paths bump the counter at the call site by the known render count after the helper returns: `run_loop` bumps by `pushes.len()` after `compute_pushes` (the new body renders exactly once per pushed pair), and the `attach`/snapshot path bumps by `hashes.len()` after `snapshot_and_seed`. Keeping the bump at the call site avoids threading `&AtomicU64` into both helpers.
 
 ## Data flow
 
@@ -78,8 +78,8 @@ No change to `run_loop`, `subscribe_and_seed`, `attach`, `try_exit_loop`, `lock_
 
 Three new tests in `src/autosync.rs::tests`, all leveraging the existing `abort_loop_for_test` plumbing and the curated scenario fixtures the module already uses:
 
-- **`no_change_tick_does_not_render`**: build a deterministic raw view, attach a subscriber, drive N additional ticks against an unchanged scan, assert `render_count` is exactly `roots * subscribed_modes` (the seed renders only) after the loop settles. The seed comes from `snapshot_and_seed`, which renders for the payload; the per-tick path renders zero times.
-- **`content_change_re_renders_only_changed_root`**: same setup, then mutate one section's content (e.g., flip a `missing_ebook` flag on one folder), drive one tick, assert `render_count` grew by exactly `subscribed_modes` (one render per subscribed mode for the one changed root) and untouched roots produced no render.
+- **`no_change_tick_does_not_render`**: subscribe to both modes against the curated `test_state_with_interval` scan (which triggers `snapshot_and_seed` and renders one section per root per subscribed mode for the snapshot payload). Read `render_count` to capture the snapshot floor. Drive several ticks against the unchanged scan via `tokio::time::sleep`. Assert `render_count` did not grow: the seed populated `last_content_hash`, the per-tick `compute_pushes` finds matching hashes, and the loop emits zero pushes and zero renders.
+- **`content_change_targets_only_changed_root`**: stays at the `compute_pushes` direct-call level (the existing autosync test infrastructure does not support filesystem mutation through `run_loop`). Two roots, both modes subscribed. Seed `last_content_hash` with one `compute_pushes` call against the unchanged scan, flip `missing_ebook` on root 0, call `compute_pushes` again against the mutated scan, and assert the returned `pushes` touch root 0 only (one push per subscribed mode). This is the new content-hash basis applied to the existing `changed_root_produces_pushes_only_for_that_root` shape; fold the new assertions into that existing test if the duplication does not earn its keep.
 - **`content_hash_equals_render_parity`**: pure unit test, no loop. Build two `RootScan` values with structurally-equal content, assert `section_content_hash(a) == section_content_hash(b)` and `render_oob_section(a, ..) == render_oob_section(b, ..)`. Mutate one field in `b`, assert both hashes differ and the rendered HTML differs. This is the contract that lets `compute_pushes` skip the render safely; if the renderer ever gains an input outside the section, this test fails before the cache silently goes stale.
 
 The existing autosync test surface (`first_tick_suppresses_seeded_sections`, `later_subscriber_does_not_overwrite_baseline`, `oob_byte_equality_snapshot_vs_tick`, the abort-and-respawn cases) continues to pass without modification: it asserts on user-visible behavior (which events arrive on which channels), not on the hash basis.
@@ -98,7 +98,7 @@ Each of these is its own audit item or its own deferred item; none belongs in th
 
 - Moving `render_oob_section` to `spawn_blocking` (a separate flag in the audit, mentioned by item #5 only as a comparison; deferred because the cache skip removes the need on no-change ticks and the per-section render on change ticks is bounded).
 - Teaching `RawViewStore::refresh()` to return the existing `Arc<RawView>` on no-op rebuilds (option A in the brainstorm; deferred because it crosses ADR-0027's tripwire and the section-content cache captures the same savings).
-- A `criterion` bench on `render_view` (audit #7; its own work item, the right place to quantify this change's win).
+- A `criterion` bench on `render_view` (audit #7; shipped in `68a5ac4`. Its numbers are folded into the Why section above; this spec consumes them but does not change the bench).
 - Sharding the `DirIndex` per root (audit #9; strategic, deferred).
 - Replacing `strip_prefix(root).ok()` at `scanner.rs:454,564` with `debug_assert!` (audit #6; small, independent, its own work item).
 
