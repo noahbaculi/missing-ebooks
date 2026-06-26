@@ -232,13 +232,27 @@ pub(crate) fn section_event(html: String) -> Event {
     Event::default().event("section").id("r").data(html)
 }
 
-/// SSE endpoint. The first event is `snapshot`, an OOB-swap payload byte-
-/// identical to what `GET /?view=…` renders for those sections. Subsequent
-/// events are `section` events from the autosync loop. `ping` events come from
+/// SSE endpoint. The first event is always `ack`, an id-stamped sentinel that
+/// seeds the browser's `lastEventId` so a future reconnect carries
+/// `Last-Event-ID`. The second event is `snapshot` only when the request
+/// already carries `Last-Event-ID`: presence means the browser is reconnecting
+/// after a drop and the snapshot fills the gap; absence means first connect,
+/// when the page just rendered the same state inline. Subsequent events are
+/// `section` events from the autosync loop. `ping` events come from
 /// `KeepAlive` every 15 seconds to survive idle TCP drops by reverse proxies.
-async fn events(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery>) -> Response {
+/// See ADR-0030.
+async fn events(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Query(query): Query<ViewQuery>,
+) -> Response {
     let mode = ViewMode::from_query(query.view.as_deref());
-    let rx = crate::autosync::attach(&state, mode, true).await;
+    // Last-Event-ID is set by the browser's EventSource on any reconnect after
+    // it has received at least one id'd event. Presence means reconnect, so
+    // the snapshot is needed to catch the client up. Absence means first
+    // connect; the page just rendered the same state inline.
+    let send_snapshot = headers.contains_key("last-event-id");
+    let rx = crate::autosync::attach(&state, mode, send_snapshot).await;
     events_response(rx)
 }
 

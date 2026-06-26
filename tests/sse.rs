@@ -59,10 +59,13 @@ async fn snapshot() {
     let index_html = body_to_string(index_response.into_body()).await;
 
     // The SSE snapshot must carry every section id the index page does.
+    // Last-Event-ID is set so the handler treats this as a reconnect and
+    // sends the snapshot; first-connect skips it (ADR-0030).
     let sse_response = app
         .oneshot(
             Request::builder()
                 .uri("/events?view=gaps")
+                .header("last-event-id", "r")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -114,11 +117,14 @@ async fn change_pushes() {
     let first_root = roots[0].clone();
     let (app, _state) = setup(roots, 1);
 
-    // Subscribe; the snapshot arrives first.
+    // Subscribe; ack arrives first, then the snapshot. Last-Event-ID is sent
+    // so the handler treats this as a reconnect and emits the snapshot
+    // (ADR-0030).
     let response = app
         .oneshot(
             Request::builder()
                 .uri("/events?view=gaps")
+                .header("last-event-id", "r")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -178,6 +184,7 @@ async fn no_change_silent() {
         .oneshot(
             Request::builder()
                 .uri("/events?view=gaps")
+                .header("last-event-id", "r")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -223,12 +230,14 @@ async fn two_modes_isolated() {
 
     let (app, _state) = setup(vec![dir.path().to_path_buf()], 1);
 
-    // Subscribe two streams, one per mode.
+    // Subscribe two streams, one per mode. Last-Event-ID is sent on both so
+    // the handler emits the snapshot for each (ADR-0030).
     let gaps_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .uri("/events?view=gaps")
+                .header("last-event-id", "r")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -240,6 +249,7 @@ async fn two_modes_isolated() {
         .oneshot(
             Request::builder()
                 .uri("/events?view=all")
+                .header("last-event-id", "r")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -321,4 +331,41 @@ async fn two_modes_isolated() {
             "gaps subscriber must not receive a section event for a show-all-only change; got: {name}"
         );
     }
+}
+
+#[tokio::test]
+async fn first_connect_skips_snapshot() {
+    // On first connect the browser has no Last-Event-ID. The page just
+    // rendered the same state inline, so the handler must skip the
+    // snapshot to avoid redundant work. The ack still lands first to seed
+    // the browser's lastEventId for any future reconnect (ADR-0030).
+    let dir = tempfile::tempdir().unwrap();
+    let scenario = scenarios::find_scenario("mixed-forest").expect("scenario exists");
+    let roots = scenarios::materialize(&(scenario.spec)(), dir.path());
+    let (app, _state) = setup(roots, 60);
+
+    let sse_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/events?view=gaps")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let mut stream = BodyStream::new(sse_response.into_body());
+
+    let (first_name, _first_data) = next_event(&mut stream, Duration::from_secs(2))
+        .await
+        .expect("ack arrives first");
+    assert_eq!(first_name, "ack", "first SSE event is the ack sentinel");
+
+    // No second event within a brief window: the snapshot was skipped.
+    let arrived = next_event(&mut stream, Duration::from_millis(200))
+        .await
+        .map(|(name, _)| name);
+    assert!(
+        arrived.is_none(),
+        "first connect must not receive a snapshot; got {arrived:?}"
+    );
 }
