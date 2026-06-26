@@ -19,7 +19,7 @@ use tokio::sync::mpsc;
 
 use crate::raw_view::{RawView, apply_mark_raw};
 use crate::tree::ViewMode;
-use crate::web::assets::{app_css, htmx_script, htmx_sse_script};
+use crate::web::assets::{app_css, app_js, htmx_script, htmx_sse_script};
 use crate::web::render::render_view as render_view_html;
 use crate::web::render::{FlaggedView, oob_sections, package_view, render_section};
 use crate::web::{MarkRequest, ViewQuery, events_response};
@@ -54,6 +54,7 @@ pub fn router(state: Arc<DemoState>) -> Router {
         .route("/static/htmx.min.js", get(htmx_script))
         .route("/static/htmx-sse.js", get(htmx_sse_script))
         .route("/static/app.css", get(app_css))
+        .route("/static/app.js", get(app_js))
         .with_state(state)
 }
 
@@ -689,5 +690,24 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("cookie", HeaderValue::from_static("me_demo_sid="));
         assert_eq!(read_cookie(&headers, "me_demo_sid"), None);
+    }
+
+    #[tokio::test]
+    async fn static_app_js_route_serves_the_app_script() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.js")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let content_type = response.headers().get("content-type").unwrap();
+        assert!(content_type.to_str().unwrap().contains("javascript"));
     }
 }
