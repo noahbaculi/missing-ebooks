@@ -6,22 +6,50 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use clap::Parser;
+
 use missing_ebooks::config::{CONFIG_TEMPLATE, Config, ConfigError};
 use missing_ebooks::scanner::ScanSettings;
 use missing_ebooks::state::AppState;
 use missing_ebooks::web;
 
+/// Command-line surface. Environment variables remain the primary
+/// configuration path. Flags layer on top per `Config::load`'s precedence.
+#[derive(Parser, Debug)]
+#[command(
+    name = "missing-ebooks",
+    version,
+    about = "Surface audiobook folders that hold audio but no matching ebook.",
+    after_help = "Environment variables:\n  \
+        MISSING_EBOOKS_LIBRARY_ROOTS  Colon-separated paths to scan.\n  \
+        MISSING_EBOOKS_BIND           IP to bind, e.g. 127.0.0.1.\n  \
+        MISSING_EBOOKS_PORT           TCP port, e.g. 8080.\n  \
+        MISSING_EBOOKS_CONFIG         Optional config file path (same as --config).\n  \
+        MISSING_EBOOKS_LOG            Tracing filter, e.g. info,missing_ebooks=debug.\n\
+        \nSee README for the full env-var list."
+)]
+struct Cli {
+    /// Print the bundled configuration template as TOML and exit.
+    #[arg(long)]
+    print_config: bool,
+
+    /// Path to a configuration file. Defaults to MISSING_EBOOKS_CONFIG or none.
+    #[arg(long, value_name = "PATH", env = "MISSING_EBOOKS_CONFIG")]
+    config: Option<PathBuf>,
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     missing_ebooks::telemetry::init();
 
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.iter().any(|a| a == "--print-config") {
+    let cli = Cli::parse();
+
+    if cli.print_config {
         print!("{CONFIG_TEMPLATE}");
         return ExitCode::SUCCESS;
     }
 
-    let config = match Config::load(parse_config_path(&args).as_deref()) {
+    let config = match Config::load(cli.config.as_deref()) {
         Ok(cfg) => cfg,
         Err(err @ ConfigError::MissingLibraryRoots) => {
             eprintln!("{err}");
@@ -104,33 +132,57 @@ async fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn parse_config_path(args: &[String]) -> Option<PathBuf> {
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        if arg == "--config" {
-            return iter.next().map(PathBuf::from);
-        }
-        if let Some(value) = arg.strip_prefix("--config=") {
-            return Some(PathBuf::from(value));
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
 
     #[test]
-    fn parses_config_path_in_both_forms() {
+    fn help_flag_displays_help() {
+        let err = Cli::try_parse_from(["missing-ebooks", "--help"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp);
+    }
+
+    #[test]
+    fn version_flag_displays_version() {
+        let err = Cli::try_parse_from(["missing-ebooks", "--version"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayVersion);
+    }
+
+    #[test]
+    fn print_config_is_a_bool_flag() {
+        let cli = Cli::try_parse_from(["missing-ebooks", "--print-config"]).unwrap();
+        assert!(cli.print_config);
+        assert!(cli.config.is_none());
+    }
+
+    #[test]
+    fn config_path_accepts_both_forms() {
+        let cli = Cli::try_parse_from(["missing-ebooks", "--config", "/a/b.toml"]).unwrap();
         assert_eq!(
-            parse_config_path(&["--config".to_string(), "/a/b.toml".to_string()]),
-            Some(PathBuf::from("/a/b.toml"))
+            cli.config.as_deref(),
+            Some(std::path::Path::new("/a/b.toml"))
         );
+        let cli = Cli::try_parse_from(["missing-ebooks", "--config=/c/d.toml"]).unwrap();
         assert_eq!(
-            parse_config_path(&["--config=/c/d.toml".to_string()]),
-            Some(PathBuf::from("/c/d.toml"))
+            cli.config.as_deref(),
+            Some(std::path::Path::new("/c/d.toml"))
         );
-        assert_eq!(parse_config_path(&["--print-config".to_string()]), None);
+    }
+
+    #[test]
+    fn after_help_lists_env_vars() {
+        // Pins the env-var enumeration so a future change that adds a var here
+        // does not silently leave the after_help out of date.
+        let help = Cli::command().render_help().to_string();
+        for var in [
+            "MISSING_EBOOKS_LIBRARY_ROOTS",
+            "MISSING_EBOOKS_BIND",
+            "MISSING_EBOOKS_PORT",
+            "MISSING_EBOOKS_CONFIG",
+            "MISSING_EBOOKS_LOG",
+        ] {
+            assert!(help.contains(var), "{var} missing from --help");
+        }
     }
 }
