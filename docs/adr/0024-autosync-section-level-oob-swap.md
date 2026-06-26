@@ -20,6 +20,8 @@ A change deep inside a section (one new folder in a large author) re-renders the
 
 The byte-equal invariant tested by `tests/cache_render_byte_equal.rs` extends to cover SSE payloads: the section a tab receives via SSE equals the section it would get from clicking Rescan.
 
+The per-broadcast dedup is computed from the packaged section (`web::render::RootSection` via its derived `Hash`), not the rendered HTML. The hash is per-mode because `package_section` discards inputs the mode does not render (e.g. show-all-only `cover_files` on a covered audiobook collapse out of the gaps `RootState`), and a mode-independent hash on the raw `RootScan` would push to subscribers whose view is byte-equal across the change. Equality of the per-mode content hash implies equality of the rendered HTML for that mode because the renderer is pure on `(packaged_section, root_idx, mode, links)` and the three non-section inputs are loop-stable for one autosync registry. The `content_hash_equals_render_parity` test in `src/autosync.rs::tests` pins this contract; `gaps_hash_unchanged_when_show_all_only_change_lands` pins the per-mode isolation; `no_change_tick_does_not_render` pins the loop-level render-avoidance using a test-only `render_count` accessor on `Autosync`.
+
 ## Alternatives considered
 
 - **Per-row OOB swap**: minimal DOM churn but a real refactor; revisit if real workloads show section-level swaps cause noticeable jank.
