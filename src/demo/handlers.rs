@@ -160,7 +160,7 @@ async fn index(
     let now = Instant::now();
     let existing = read_cookie(&headers, &state.config.cookie_name);
     let resolved = {
-        let mut store = state.sessions.lock().expect("session lock");
+        let mut store = state.lock_sessions();
         resolve_in_store(&mut store, &state.config, existing, now)
             .map(|(sid, set_cookie)| (set_cookie, store.marks(&sid).to_vec()))
     };
@@ -190,7 +190,7 @@ async fn mark(
     let now = Instant::now();
     let existing = read_cookie(&headers, &state.config.cookie_name);
     let resolved = {
-        let mut store = state.sessions.lock().expect("session lock");
+        let mut store = state.lock_sessions();
         match resolve_in_store(&mut store, &state.config, existing, now) {
             Some((sid, set_cookie)) => {
                 store.append_mark(
@@ -234,7 +234,7 @@ async fn reset(
     let now = Instant::now();
     let existing = read_cookie(&headers, &state.config.cookie_name);
     let set_cookie = {
-        let mut store = state.sessions.lock().expect("session lock");
+        let mut store = state.lock_sessions();
         match resolve_in_store(&mut store, &state.config, existing, now) {
             Some((sid, set_cookie)) => {
                 store.clear_marks(&sid);
@@ -277,7 +277,7 @@ async fn events(
     let now = Instant::now();
     let existing = read_cookie(&headers, &state.config.cookie_name);
     let resolved = {
-        let mut store = state.sessions.lock().expect("session lock");
+        let mut store = state.lock_sessions();
         resolve_in_store(&mut store, &state.config, existing, now)
             .map(|(sid, set_cookie)| (set_cookie, store.marks(&sid).to_vec()))
     };

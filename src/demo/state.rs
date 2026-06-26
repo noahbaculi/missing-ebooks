@@ -45,13 +45,23 @@ impl DemoState {
         self.base_raw.len()
     }
 
+    /// Acquire the session store lock, recovering on poison.
+    ///
+    /// Poison means a previous thread panicked while holding the lock. The
+    /// session table itself is intact as far as the surviving thread can
+    /// tell, so we proceed with a `tracing::warn` rather than propagate the
+    /// panic. Mirrors `raw_view::lock_index` and `autosync::lock_inner`.
+    pub(crate) fn lock_sessions(&self) -> std::sync::MutexGuard<'_, SessionStore> {
+        self.sessions.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("demo session mutex poisoned; recovering");
+            poisoned.into_inner()
+        })
+    }
+
     /// Drop every session idle past the configured window as of `now`. Returns the
     /// number reaped. Called on a timer by the binary's reaper task.
     pub fn reap_idle(&self, now: Instant) -> usize {
-        self.sessions
-            .lock()
-            .expect("session lock")
-            .reap_idle(now, self.config.idle)
+        self.lock_sessions().reap_idle(now, self.config.idle)
     }
 }
 
@@ -73,5 +83,52 @@ pub async fn build_state(
         sessions: Mutex::new(SessionStore::new(demo_config.max_sessions)),
         search_links: config.search_links,
         config: demo_config,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::raw_view::RawView;
+
+    /// Build a minimal DemoState whose base_raw is empty (no roots). Enough
+    /// to exercise the session-store lock. No scan runs.
+    fn test_state() -> DemoState {
+        DemoState {
+            base_raw: Arc::new(RawView::new()),
+            sessions: Mutex::new(SessionStore::new(8)),
+            config: DemoConfig {
+                bind: "127.0.0.1:0".to_string(),
+                scenario: "test".to_string(),
+                max_sessions: 8,
+                idle: Duration::from_secs(60),
+                cookie_name: "me_demo_sid".to_string(),
+            },
+            search_links: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn lock_sessions_recovers_from_poisoning() {
+        let state = Arc::new(test_state());
+
+        // Poison the mutex: take the guard on a worker thread, then panic.
+        let poisoner = Arc::clone(&state);
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoner.sessions.lock().unwrap();
+            panic!("intentional poison for test");
+        })
+        .join();
+
+        // The bare std API would now panic on .expect(...).
+        assert!(
+            state.sessions.lock().is_err(),
+            "test setup failed: mutex was not poisoned"
+        );
+
+        // lock_sessions must recover and return a usable guard.
+        let guard = state.lock_sessions();
+        assert_eq!(guard.len(), 0, "recovered guard exposes the prior state");
+        drop(guard);
     }
 }
