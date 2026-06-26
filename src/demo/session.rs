@@ -9,7 +9,17 @@ use crate::marker::Marker;
 
 /// An opaque session id carried in the visitor's cookie.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SessionId(pub String);
+pub struct SessionId(String);
+
+impl SessionId {
+    pub(crate) fn new(value: String) -> SessionId {
+        SessionId(value)
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
 
 /// One mark in the session's set: the library root index, the folder path
 /// relative to that root (or "." for the root itself, per ADR-0005), and the
@@ -151,9 +161,13 @@ mod tests {
     #[test]
     fn create_rejects_at_capacity() {
         let mut store = SessionStore::new(1);
-        assert!(store.create(SessionId("a".into()), Instant::now()).is_ok());
+        assert!(
+            store
+                .create(SessionId::new("a".into()), Instant::now())
+                .is_ok()
+        );
         assert_eq!(
-            store.create(SessionId("b".into()), Instant::now()),
+            store.create(SessionId::new("b".into()), Instant::now()),
             Err(AtCapacity)
         );
         assert_eq!(store.len(), 1);
@@ -163,10 +177,10 @@ mod tests {
     fn touch_reports_presence_and_refreshes_last_seen() {
         let mut store = SessionStore::new(10);
         let old = Instant::now() - Duration::from_secs(3600);
-        store.create(SessionId("a".into()), old).unwrap();
-        assert!(!store.touch(&SessionId("missing".into()), Instant::now()));
+        store.create(SessionId::new("a".into()), old).unwrap();
+        assert!(!store.touch(&SessionId::new("missing".into()), Instant::now()));
         let now = Instant::now();
-        assert!(store.touch(&SessionId("a".into()), now));
+        assert!(store.touch(&SessionId::new("a".into()), now));
         assert_eq!(store.reap_idle(now, Duration::from_secs(60)), 0);
         assert_eq!(store.len(), 1);
     }
@@ -174,29 +188,32 @@ mod tests {
     #[test]
     fn marks_for_an_unknown_session_is_empty() {
         let store = SessionStore::new(10);
-        assert!(store.marks(&SessionId("nope".into())).is_empty());
+        assert!(store.marks(&SessionId::new("nope".into())).is_empty());
     }
 
     #[test]
     fn reap_drops_only_idle_sessions() {
         let mut store = SessionStore::new(10);
         let now = Instant::now();
-        store.create(SessionId("fresh".into()), now).unwrap();
+        store.create(SessionId::new("fresh".into()), now).unwrap();
         store
-            .create(SessionId("stale".into()), now - Duration::from_secs(3600))
+            .create(
+                SessionId::new("stale".into()),
+                now - Duration::from_secs(3600),
+            )
             .unwrap();
         let reaped = store.reap_idle(now, Duration::from_secs(1200));
         assert_eq!(reaped, 1);
         assert_eq!(store.len(), 1);
-        assert!(store.touch(&SessionId("fresh".into()), now));
-        assert!(!store.touch(&SessionId("stale".into()), now));
+        assert!(store.touch(&SessionId::new("fresh".into()), now));
+        assert!(!store.touch(&SessionId::new("stale".into()), now));
     }
 
     #[test]
     fn clear_marks_empties_a_session_and_leaves_others() {
         let mut store = SessionStore::new(10);
-        let a = SessionId("a".into());
-        let b = SessionId("b".into());
+        let a = SessionId::new("a".into());
+        let b = SessionId::new("b".into());
         store.create(a.clone(), Instant::now()).unwrap();
         store.create(b.clone(), Instant::now()).unwrap();
         store.insert_mark(&a, key(0, "Book"));
@@ -208,14 +225,14 @@ mod tests {
         assert!(store.marks(&b).contains(&key(1, "Other")));
 
         // Clearing an unknown id is a no-op and does not create a session.
-        store.clear_marks(&SessionId("missing".into()));
+        store.clear_marks(&SessionId::new("missing".into()));
         assert_eq!(store.len(), 2);
     }
 
     #[test]
     fn insert_mark_dedupes() {
         let mut store = SessionStore::new(8);
-        let sid = SessionId("s1".to_string());
+        let sid = SessionId::new("s1".to_string());
         let now = Instant::now();
         store.create(sid.clone(), now).unwrap();
 
@@ -231,8 +248,8 @@ mod tests {
     #[test]
     fn marks_set_is_per_session() {
         let mut store = SessionStore::new(8);
-        let s1 = SessionId("s1".to_string());
-        let s2 = SessionId("s2".to_string());
+        let s1 = SessionId::new("s1".to_string());
+        let s2 = SessionId::new("s2".to_string());
         let now = Instant::now();
         store.create(s1.clone(), now).unwrap();
         store.create(s2.clone(), now).unwrap();
@@ -245,7 +262,7 @@ mod tests {
     #[test]
     fn clear_marks_empties_the_set() {
         let mut store = SessionStore::new(8);
-        let sid = SessionId("s1".to_string());
+        let sid = SessionId::new("s1".to_string());
         let now = Instant::now();
         store.create(sid.clone(), now).unwrap();
         store.insert_mark(&sid, (0, "A".to_string(), Marker::NoEbook));
@@ -259,7 +276,7 @@ mod tests {
     #[test]
     fn remove_mark_returns_whether_present() {
         let mut store = SessionStore::new(8);
-        let sid = SessionId("s1".to_string());
+        let sid = SessionId::new("s1".to_string());
         let now = Instant::now();
         store.create(sid.clone(), now).unwrap();
         let k = (0_usize, "A".to_string(), Marker::NoEbook);

@@ -73,7 +73,7 @@ fn read_cookie(headers: &HeaderMap, cookie_name: &str) -> Option<SessionId> {
             && let Some(value) = rest.strip_prefix('=')
             && !value.is_empty()
         {
-            return Some(SessionId(value.to_string()));
+            return Some(SessionId::new(value.to_string()));
         }
     }
     None
@@ -91,7 +91,7 @@ fn new_session_id() -> SessionId {
         out.push(HEX[(b >> 4) as usize] as char);
         out.push(HEX[(b & 0x0f) as usize] as char);
     }
-    SessionId(out)
+    SessionId::new(out)
 }
 
 /// Build the `Set-Cookie` value for a new session, scoped to the whole site and
@@ -100,7 +100,7 @@ fn new_session_id() -> SessionId {
 fn cookie_header(cookie_name: &str, sid: &SessionId, max_age_secs: u64) -> HeaderValue {
     let value = format!(
         "{cookie_name}={}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={max_age_secs}",
-        sid.0
+        sid.as_str()
     );
     HeaderValue::from_str(&value).expect("ascii cookie")
 }
@@ -713,7 +713,8 @@ mod tests {
 
     #[test]
     fn new_session_id_is_32_lowercase_hex_chars() {
-        let id = new_session_id().0;
+        let sid = new_session_id();
+        let id = sid.as_str();
         assert_eq!(id.len(), 32);
         assert!(
             id.bytes()
@@ -731,7 +732,7 @@ mod tests {
         );
         assert_eq!(
             read_cookie(&headers, "me_demo_sid"),
-            Some(SessionId("abc123".to_string()))
+            Some(SessionId::new("abc123".to_string()))
         );
     }
 
