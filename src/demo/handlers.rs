@@ -260,11 +260,14 @@ async fn rescan(Form(query): Form<ViewQuery>) -> Redirect {
     redirect_to_view(mode)
 }
 
-/// The demo's `/events` endpoint. Serves the per-session snapshot once, then
-/// keeps the connection alive with pings so the page's SSE listener never 404s
-/// and never reconnects in a loop. The demo runs no autosync loop (its library
-/// is static and its marks are in-process), so no `section` events are ever
-/// emitted (ADR-0023). A follow-up captures showcasing autosync in the demo.
+/// The demo's `/events` endpoint. Every connection emits an `ack` sentinel
+/// first so the browser's `lastEventId` is seeded for any future reconnect.
+/// The `snapshot` event only follows when the request carries
+/// `Last-Event-ID`, since first connect just rendered the same state inline
+/// via `index`. The demo runs no autosync loop (its library is static and its
+/// marks are in-process), so no `section` events are ever emitted
+/// (ADR-0023). Session cookies are minted on both branches so a visitor who
+/// arrived via the SSE handshake still gets one. See ADR-0030.
 async fn events(
     State(state): State<Arc<DemoState>>,
     headers: HeaderMap,
@@ -273,24 +276,31 @@ async fn events(
     let mode = ViewMode::from_query(query.view.as_deref());
     let now = Instant::now();
     let existing = read_cookie(&headers, &state.config.cookie_name);
-    let marks = {
+    let resolved = {
         let mut store = state.sessions.lock().expect("session lock");
-        // resolve_in_store may fail under capacity. The SSE channel just sends
-        // an empty snapshot in that case, since the page's other GET would
-        // already have shown the capacity response.
         resolve_in_store(&mut store, &state.config, existing, now)
-            .map(|(sid, _set_cookie)| store.marks(&sid).to_vec())
-            .unwrap_or_default()
+            .map(|(sid, set_cookie)| (set_cookie, store.marks(&sid).to_vec()))
     };
-    let view = derive_view(&state.base_raw, &marks, mode);
-    let snapshot = oob_sections(&view, &state.search_links, mode).into_string();
+    let Some((set_cookie, marks)) = resolved else {
+        return capacity_response();
+    };
 
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(4);
-    let _ = tx
-        .send(Ok(Event::default().event("snapshot").data(snapshot)))
-        .await;
+    // Ack first on every connect, before any session-specific work, so the
+    // browser's lastEventId is seeded even if the snapshot is skipped.
+    let _ = tx.send(crate::web::ack_event()).await;
 
-    events_response(rx)
+    if headers.contains_key("last-event-id") {
+        let view = derive_view(&state.base_raw, &marks, mode);
+        let snapshot = oob_sections(&view, &state.search_links, mode).into_string();
+        let _ = tx.send(crate::web::snapshot_event(snapshot)).await;
+    }
+
+    let mut response = events_response(rx);
+    if let Some(cookie) = set_cookie {
+        response.headers_mut().append(header::SET_COOKIE, cookie);
+    }
+    response
 }
 
 /// Liveness probe for the container healthcheck. Answers without minting a
@@ -709,5 +719,60 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let content_type = response.headers().get("content-type").unwrap();
         assert!(content_type.to_str().unwrap().contains("javascript"));
+    }
+
+    #[tokio::test]
+    async fn demo_events_first_connect_emits_only_ack() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/events?view=gaps")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            response.headers().get(header::SET_COOKIE).is_some(),
+            "demo /events must mint a session cookie even on first connect",
+        );
+
+        let body = body_string(response).await;
+        assert!(body.contains("event: ack"), "ack must appear in the stream");
+        assert!(
+            !body.contains("event: snapshot"),
+            "first connect must skip the snapshot, got body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn demo_events_reconnect_emits_ack_then_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/events?view=gaps")
+                    .header("last-event-id", "r")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response).await;
+        let ack_at = body.find("event: ack").expect("ack must appear");
+        let snapshot_at = body
+            .find("event: snapshot")
+            .expect("snapshot must follow ack on reconnect");
+        assert!(ack_at < snapshot_at, "ack must come before snapshot");
     }
 }

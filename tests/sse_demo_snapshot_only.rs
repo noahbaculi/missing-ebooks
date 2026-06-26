@@ -47,6 +47,7 @@ async fn demo_events_emits_one_snapshot_then_stays_silent() {
         .oneshot(
             Request::builder()
                 .uri("/events?view=gaps")
+                .header("last-event-id", "r")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -54,10 +55,17 @@ async fn demo_events_emits_one_snapshot_then_stays_silent() {
         .unwrap();
     let mut stream = BodyStream::new(response.into_body());
 
+    // The ack sentinel lands first on every SSE connection (ADR-0030).
+    // Drain it so the snapshot assertion below still reads the second event.
+    let (ack_name, _) = next_event(&mut stream, Duration::from_secs(2))
+        .await
+        .expect("ack arrives first");
+    assert_eq!(ack_name, "ack", "first SSE event is the ack sentinel");
+
     let (name, data) = next_event(&mut stream, Duration::from_secs(2))
         .await
         .expect("snapshot arrives");
-    assert_eq!(name, "snapshot", "first event is the snapshot");
+    assert_eq!(name, "snapshot", "second event is the snapshot");
     assert!(
         data.contains("id=\"root-0-section\""),
         "snapshot carries the seeded root's section",
