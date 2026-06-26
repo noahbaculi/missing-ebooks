@@ -53,6 +53,11 @@ path = "benches/render.rs"
 harness = false
 required-features = ["fixtures"]
 
+[[test]]
+name = "sse"
+path = "tests/sse.rs"
+required-features = ["fixtures"]
+
 [dependencies]
 anyhow = "1.0.102"
 axum = "0.8.9"
