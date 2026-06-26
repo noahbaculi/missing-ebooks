@@ -1,7 +1,7 @@
 //! The demo's axum router and handlers. Handlers reuse the production `page`,
-//! `render_section`, `apply_mark_raw`, and `package_view` from the library, plus
-//! the static-asset handlers. A visitor is pinned to an in-memory session by a
-//! cookie; their marks are replayed on top of the shared raw view per request,
+//! `render_section`, and `package_view` from the library, plus the static-asset
+//! handlers. A visitor is pinned to an in-memory session by a cookie; their
+//! marks are applied via a `MarkOverlay` over the shared raw view per request,
 //! then rendered for the requested mode. The full index page carries the demo
 //! banner; the `/mark` partial does not.
 
@@ -18,26 +18,18 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use tokio::sync::mpsc;
 
-use crate::marker::Marker;
-use crate::raw_view::{RawView, apply_mark_raw};
+use crate::raw_view::RawView;
 use crate::scanner;
 use crate::tree::ViewMode;
 use crate::web::assets::{app_css, app_js, htmx_script, htmx_sse_script};
 use crate::web::render::render_view as render_view_html;
-use crate::web::render::{FlaggedView, oob_sections, package_view, render_section};
+use crate::web::render::{oob_sections, render_section};
 use crate::web::{MarkRequest, ViewQuery, events_response};
 
 use super::banner;
-use super::session::{AtCapacity, MarkKey, SessionId, SessionStore};
+use super::overlay::{MarkOverlay, package_view_with_overlay};
+use super::session::{AtCapacity, SessionId, SessionStore};
 use super::state::{DemoConfig, DemoState};
-
-/// Transient legacy mark shape used to feed `derive_view` during the storage
-/// migration. Task 5 deletes this together with `derive_view`.
-struct Mark {
-    root: usize,
-    rel: String,
-    kind: Marker,
-}
 
 /// The page shown when the global session cap is reached. Served with HTTP 503 so
 /// bots and monitors read it as a soft, retryable refusal. Self-contained so it
@@ -58,6 +50,7 @@ pub fn router(state: Arc<DemoState>) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/mark", post(mark))
+        .route("/unmark", post(unmark))
         .route("/reset", post(reset))
         .route("/rescan", post(rescan))
         .route("/events", get(events))
@@ -157,52 +150,6 @@ fn folder_exists_in_base(base: &RawView, root: usize, rel: &str) -> bool {
     folders.iter().any(|f| f.rel_path == target)
 }
 
-/// Adapt the session's set to the legacy `Vec<Mark>` shape that
-/// `derive_view` still consumes. Iterates `Marker::ALL` in declaration order
-/// so the resulting cover_files order is deterministic. Task 5 deletes this
-/// helper when the overlay path replaces `derive_view`.
-fn marks_for_render(store: &SessionStore, sid: &SessionId) -> Vec<Mark> {
-    let mut keys: Vec<&MarkKey> = store.marks(sid).iter().collect();
-    // Stable order: by (root, rel, Marker::ALL index). Keeps the legacy
-    // derive_view output deterministic across this commit.
-    keys.sort_by(|a, b| {
-        a.0.cmp(&b.0)
-            .then_with(|| a.1.cmp(&b.1))
-            .then_with(|| marker_order(a.2).cmp(&marker_order(b.2)))
-    });
-    keys.into_iter()
-        .map(|(root, rel, kind)| Mark {
-            root: *root,
-            rel: rel.clone(),
-            kind: *kind,
-        })
-        .collect()
-}
-
-fn marker_order(m: Marker) -> usize {
-    Marker::ALL.iter().position(|x| *x == m).unwrap_or(0)
-}
-
-/// Derive one session's rendered view for a mode: clone the shared raw view,
-/// replay every session mark via `apply_mark_raw`, then render. With no marks
-/// the clone-and-render still runs because per-request rendering is the new
-/// baseline. The per-request cost is bounded (see ADR-0022). A mark naming an
-/// out-of-range root is skipped defensively. An unmatched `rel` is a no-op
-/// inside `apply_mark_raw`.
-fn derive_view(base: &RawView, marks: &[Mark], mode: ViewMode) -> FlaggedView {
-    if marks.is_empty() {
-        return package_view(base, mode);
-    }
-    let mut raw = base.clone();
-    for mark in marks {
-        if mark.root >= raw.len() {
-            continue;
-        }
-        apply_mark_raw(&mut raw, mark.root, &mark.rel, mark.kind);
-    }
-    package_view(&raw, mode)
-}
-
 /// The 503 at-capacity response.
 fn capacity_response() -> Response {
     (StatusCode::SERVICE_UNAVAILABLE, Html(CAPACITY_HTML)).into_response()
@@ -219,12 +166,13 @@ async fn index(
     let resolved = {
         let mut store = state.lock_sessions();
         resolve_in_store(&mut store, &state.config, existing, now)
-            .map(|(sid, set_cookie)| (set_cookie, marks_for_render(&store, &sid)))
+            .map(|(sid, set_cookie)| (set_cookie, store.marks(&sid).clone()))
     };
     let Some((set_cookie, marks)) = resolved else {
         return capacity_response();
     };
-    let view = derive_view(&state.base_raw, &marks, mode);
+    let overlay = MarkOverlay::new(&marks);
+    let view = package_view_with_overlay(&state.base_raw, &overlay, mode);
     let html = render_view_html(&view, &state.search_links, mode).into_string();
     let mut response = Html(banner::inject(&html, mode)).into_response();
     if let Some(cookie) = set_cookie {
@@ -257,8 +205,7 @@ async fn mark(
         match resolve_in_store(&mut store, &state.config, existing, now) {
             Some((sid, set_cookie)) => {
                 store.insert_mark(&sid, (req.root, req.rel.clone(), req.kind));
-                // Transient Vec<Mark> for derive_view. Task 5 deletes this.
-                let marks = marks_for_render(&store, &sid);
+                let marks = store.marks(&sid).clone();
                 Some((set_cookie, marks))
             }
             None => None,
@@ -267,7 +214,46 @@ async fn mark(
     let Some((set_cookie, marks)) = resolved else {
         return capacity_response();
     };
-    let view = derive_view(&state.base_raw, &marks, mode);
+    let overlay = MarkOverlay::new(&marks);
+    let view = package_view_with_overlay(&state.base_raw, &overlay, mode);
+    let markup = render_section(&view[req.root], req.root, None, &state.search_links, mode);
+    let mut response = Html(markup.into_string()).into_response();
+    if let Some(cookie) = set_cookie {
+        response.headers_mut().append(header::SET_COOKIE, cookie);
+    }
+    response
+}
+
+async fn unmark(
+    State(state): State<Arc<DemoState>>,
+    headers: HeaderMap,
+    Form(req): Form<MarkRequest>,
+) -> Response {
+    let mode = req.view;
+    if req.root >= state.num_roots() {
+        return (StatusCode::BAD_REQUEST, "unknown library root").into_response();
+    }
+    if !folder_exists_in_base(&state.base_raw, req.root, &req.rel) {
+        return (StatusCode::BAD_REQUEST, "unknown folder").into_response();
+    }
+    let now = Instant::now();
+    let existing = read_cookie(&headers, &state.config.cookie_name);
+    let resolved = {
+        let mut store = state.lock_sessions();
+        match resolve_in_store(&mut store, &state.config, existing, now) {
+            Some((sid, set_cookie)) => {
+                store.remove_mark(&sid, &(req.root, req.rel.clone(), req.kind));
+                let marks = store.marks(&sid).clone();
+                Some((set_cookie, marks))
+            }
+            None => None,
+        }
+    };
+    let Some((set_cookie, marks)) = resolved else {
+        return capacity_response();
+    };
+    let overlay = MarkOverlay::new(&marks);
+    let view = package_view_with_overlay(&state.base_raw, &overlay, mode);
     let markup = render_section(&view[req.root], req.root, None, &state.search_links, mode);
     let mut response = Html(markup.into_string()).into_response();
     if let Some(cookie) = set_cookie {
@@ -337,7 +323,7 @@ async fn events(
     let resolved = {
         let mut store = state.lock_sessions();
         resolve_in_store(&mut store, &state.config, existing, now)
-            .map(|(sid, set_cookie)| (set_cookie, marks_for_render(&store, &sid)))
+            .map(|(sid, set_cookie)| (set_cookie, store.marks(&sid).clone()))
     };
     let Some((set_cookie, marks)) = resolved else {
         return capacity_response();
@@ -349,7 +335,8 @@ async fn events(
     let _ = tx.send(crate::web::ack_event()).await;
 
     if headers.contains_key("last-event-id") {
-        let view = derive_view(&state.base_raw, &marks, mode);
+        let overlay = MarkOverlay::new(&marks);
+        let view = package_view_with_overlay(&state.base_raw, &overlay, mode);
         let snapshot = oob_sections(&view, &state.search_links, mode).into_string();
         let _ = tx.send(crate::web::snapshot_event(snapshot)).await;
     }
@@ -694,25 +681,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn derive_view_with_no_marks_matches_package_view_of_the_base() {
+    async fn overlay_with_no_marks_matches_package_view_of_the_base() {
+        use crate::web::render::package_view;
+        use std::collections::HashSet;
+
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
 
         let plain = package_view(&state.base_raw, ViewMode::GapsOnly);
-        let derived = derive_view(&state.base_raw, &[], ViewMode::GapsOnly);
+        let empty: HashSet<crate::demo::session::MarkKey> = HashSet::new();
+        let overlay = MarkOverlay::new(&empty);
+        let derived = package_view_with_overlay(&state.base_raw, &overlay, ViewMode::GapsOnly);
         assert_eq!(
             serde_json::to_value(&plain).unwrap(),
             serde_json::to_value(&derived).unwrap(),
-            "with no marks, derive_view must match a direct render"
+            "with no marks, overlay must match a direct render"
         );
 
-        let marks = [Mark {
-            root: 0,
-            rel: "Book".to_string(),
-            kind: Marker::NoEbook,
-        }];
-        let after = derive_view(&state.base_raw, &marks, ViewMode::GapsOnly);
+        let mut marks: HashSet<crate::demo::session::MarkKey> = HashSet::new();
+        marks.insert((0, "Book".to_string(), Marker::NoEbook));
+        let overlay = MarkOverlay::new(&marks);
+        let after = package_view_with_overlay(&state.base_raw, &overlay, ViewMode::GapsOnly);
         let after_json = serde_json::to_value(&after).unwrap();
         let plain_json = serde_json::to_value(&plain).unwrap();
         assert_ne!(
@@ -896,5 +886,136 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn unmark_rejects_unknown_root() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/unmark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=99&rel=Book&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn unmark_rejects_unknown_rel() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/unmark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from(
+                        "root=0&rel=Not/A/Real/Folder&kind=no_ebook&view=gaps",
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn unmark_no_op_when_not_marked() {
+        // Hitting /unmark on a real folder that was never marked returns
+        // 200 with the section re-rendered as if no marks existed.
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/unmark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    /// POST /mark then POST /unmark on the same folder must produce a section
+    /// that is byte-equal to a fresh render with no marks at all. Mirrors
+    /// the production `render.rs` round-trip pin.
+    #[tokio::test]
+    async fn mark_then_unmark_round_trip_renders_pre_mark_state() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+        let app = router(state.clone());
+
+        let cookie = "me_demo_sid=roundtripsession00000000000000".to_string();
+
+        // /mark establishes the session and applies one mark.
+        let marked = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("cookie", &cookie)
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(marked.status(), StatusCode::OK);
+
+        // /unmark removes it.
+        let unmarked = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/unmark")
+                    .header("cookie", &cookie)
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unmarked.status(), StatusCode::OK);
+        let unmarked_body = body_string(unmarked).await;
+
+        // Baseline: on the same state, a fresh session's /unmark on the same
+        // (never-marked) folder renders the section identically to the pristine
+        // state. Same state means same tempdir path in the rendered header, so
+        // any divergence is in the actual mark plumbing.
+        let baseline = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/unmark")
+                    .header("cookie", "me_demo_sid=baselinesession0000000000000000")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(baseline.status(), StatusCode::OK);
+        let baseline_body = body_string(baseline).await;
+
+        assert_eq!(
+            unmarked_body, baseline_body,
+            "round-trip section diverges from pristine render"
+        );
     }
 }
