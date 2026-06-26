@@ -129,40 +129,51 @@ fn snapshot_and_seed(
 }
 
 /// Establish one SSE subscription and return the receiver the handler will
-/// stream to the client. Owns the four-step handshake (channel construction,
-/// raw read, snapshot send, registry subscription with seed hashes) so the
-/// "snapshot before subscribe" ordering invariant lives in one place. See
-/// ADR-0023 and ADR-0024.
+/// stream to the client. Owns the handshake (channel construction, ack send,
+/// raw read, conditional snapshot send, registry subscription with seed
+/// hashes) so the "ack before subscribe, snapshot before subscribe when sent"
+/// ordering invariant lives in one place. See ADR-0023, ADR-0024, ADR-0030.
+///
+/// When `send_snapshot` is true, the channel sees `ack` then `snapshot`. When
+/// false, only `ack`. In both cases the subscriber is registered with
+/// `subscribe_and_seed` so the autosync loop's first tick suppresses
+/// redundant section events for sections the inline render or the snapshot
+/// already covered.
 pub(crate) async fn attach(
     state: &Arc<crate::state::AppState>,
     mode: ViewMode,
+    send_snapshot: bool,
 ) -> mpsc::Receiver<Result<Event, Infallible>> {
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(16);
 
+    // Ack first on every connect: seeds the browser's lastEventId so a future
+    // reconnect carries Last-Event-ID, regardless of whether a snapshot
+    // follows now. See ADR-0030.
+    let _ = tx.send(crate::web::ack_event()).await;
+
     // Build the snapshot payload and per-root seed hashes from the same raw
     // view, so the loop's first tick suppresses redundant section events for
-    // sections the snapshot already carried (ADR-0024).
+    // sections the snapshot already carried (ADR-0024). The snapshot HTML is
+    // computed even when send_snapshot is false; the cost is one render per
+    // root off the user's critical path. A future split into a seed-only
+    // path can reclaim it if profiling shows it matters.
     let raw = state.store.current().await;
     let (snapshot, seed_hashes) = snapshot_and_seed(&raw, mode, &state.config.search_links);
-    // `snapshot_and_seed` renders one section per root, so `seed_hashes.len()`
-    // is the exact render count for this snapshot. Bumped here (not inside
-    // the helper) so the helper itself stays a pure function.
-    lock_inner(&state.autosync.inner)
-        .render_count
-        .fetch_add(seed_hashes.len() as u64, Ordering::Relaxed);
 
-    // Send the snapshot before subscribing so a tick that fires immediately
-    // after the registry insert cannot interleave a section event ahead of
-    // the snapshot on the channel. The channel is unread at this point and
-    // has capacity 16, so the send returns immediately. A send error means
-    // the receiver was dropped between channel construction and here, which
-    // cannot happen in practice; matches today's web::events behavior.
-    let _ = tx
-        .send(Ok(Event::default().event("snapshot").data(snapshot)))
-        .await;
+    if send_snapshot {
+        // Bumping the render count here keeps it consistent with the
+        // snapshot_and_seed render the autosync loop's accounting expects.
+        // Only the snapshot path bumps the counter, since that is the only
+        // branch whose render reaches a subscriber.
+        lock_inner(&state.autosync.inner)
+            .render_count
+            .fetch_add(seed_hashes.len() as u64, Ordering::Relaxed);
+        let _ = tx.send(crate::web::snapshot_event(snapshot)).await;
+    }
 
-    // Register with the autosync registry. Spawns the loop if this is the
-    // first subscriber for any mode and the interval is non-zero.
+    // Subscribe in both branches so the loop's first tick suppresses
+    // redundant section events for sections the inline render or the
+    // snapshot already covered. See ADR-0024.
     state
         .autosync
         .subscribe_and_seed(state, mode, tx, seed_hashes);
@@ -305,6 +316,15 @@ impl Autosync {
     pub(crate) fn subscriber_count(&self) -> usize {
         let guard = lock_inner(&self.inner);
         guard.subs.values().map(Vec::len).sum()
+    }
+
+    /// Whether `last_content_hash[mode]` carries any entries. Tests use this
+    /// to assert that `attach` seeded the baseline in both branches, since
+    /// `subscribe_and_seed` runs whether or not a snapshot was sent.
+    #[cfg(test)]
+    pub(crate) fn has_seeded_baseline_for_test(&self, mode: ViewMode) -> bool {
+        let guard = lock_inner(&self.inner);
+        !guard.last_content_hash[mode].is_empty()
     }
 
     /// Monotonic render count: every `single_oob_section` produced by either
@@ -661,8 +681,8 @@ mod tests {
         // the OOB-wrap render and the push.
         let state = test_state_with_interval(1);
 
-        let _rx_gaps = attach(&state, ViewMode::GapsOnly).await;
-        let _rx_all = attach(&state, ViewMode::All).await;
+        let _rx_gaps = attach(&state, ViewMode::GapsOnly, true).await;
+        let _rx_all = attach(&state, ViewMode::All, true).await;
 
         let snapshot_floor = state.autosync.render_count();
         assert!(
@@ -682,27 +702,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn attach_sends_snapshot_first_and_registers_subscriber() {
+    async fn attach_with_send_snapshot_true_emits_ack_then_snapshot_and_registers_subscriber() {
         // Interval high enough that the autosync loop will not tick during the
         // test, so we observe the post-attach state without races.
         let state = test_state_with_interval(60);
 
-        let mut rx = attach(&state, ViewMode::GapsOnly).await;
+        let mut rx = attach(&state, ViewMode::GapsOnly, true).await;
 
-        // The first event off the channel is the snapshot. Axum's `Event` does
-        // not expose its name or data via getters, so we match a substring of
-        // its Debug output. TODO(axum): switch to a structural check (or an
-        // on-the-wire SSE-frame check) when axum exposes accessors; the Debug
-        // format is not part of axum's public contract.
-        let evt = rx
-            .recv()
+        // Two events land on the channel: ack first, snapshot second. Axum's
+        // `Event` does not expose its name or data via getters, so we match a
+        // substring of its Debug output. TODO(axum): switch to a structural
+        // check (or an on-the-wire SSE-frame check) when axum exposes
+        // accessors; the Debug format is not part of axum's public contract.
+        let first = tokio::time::timeout(Duration::from_millis(200), rx.recv())
             .await
-            .expect("attach must place at least one event on the channel")
-            .expect("Result<Event, Infallible> is always Ok");
-        let serialized = format!("{evt:?}");
+            .expect("attach must send the ack before returning")
+            .expect("the channel must yield an Ok(Event)")
+            .expect("the inner Result must be Ok");
         assert!(
-            serialized.contains("snapshot"),
-            "first event must be the snapshot, got: {serialized}",
+            format!("{first:?}").contains("event: ack"),
+            "first event must be the ack, got: {first:?}"
+        );
+
+        let second = tokio::time::timeout(Duration::from_millis(200), rx.recv())
+            .await
+            .expect("snapshot follows the ack when send_snapshot is true")
+            .expect("Ok")
+            .expect("Ok");
+        assert!(
+            format!("{second:?}").contains("event: snapshot"),
+            "second event must be the snapshot, got: {second:?}"
         );
 
         // The subscriber landed in the registry under GapsOnly.
@@ -723,6 +752,56 @@ mod tests {
         assert!(
             baseline.iter().all(Option::is_some),
             "every root got a seeded hash, not None",
+        );
+    }
+
+    #[tokio::test]
+    async fn attach_without_snapshot_emits_only_ack_and_registers_subscriber() {
+        let state = test_state_with_interval(0);
+        let mut rx = attach(&state, ViewMode::GapsOnly, false).await;
+
+        // First event is the ack.
+        let event = tokio::time::timeout(Duration::from_millis(200), rx.recv())
+            .await
+            .expect("attach must send the ack before returning")
+            .expect("the channel must yield an Ok(Event)")
+            .expect("the inner Result must be Ok");
+        let serialized = format!("{event:?}");
+        assert!(
+            serialized.contains("event: ack"),
+            "first event must be ack, got {serialized}",
+        );
+
+        // No second event arrives within a brief window: no snapshot was sent.
+        let next = tokio::time::timeout(Duration::from_millis(100), rx.recv()).await;
+        assert!(
+            next.is_err(),
+            "no snapshot should follow the ack on first connect",
+        );
+
+        assert_eq!(
+            state.autosync.subscriber_count(),
+            1,
+            "attach registers exactly one subscriber regardless of snapshot",
+        );
+        assert_eq!(
+            state.autosync.render_count(),
+            0,
+            "no snapshot path means no render bumps",
+        );
+    }
+
+    #[tokio::test]
+    async fn attach_seeds_baseline_hashes_in_both_branches() {
+        // send_snapshot: false still seeds last_content_hash so the loop's
+        // first tick does not redundantly broadcast the inline-rendered state.
+        let state = test_state_with_interval(0);
+        let _rx = attach(&state, ViewMode::GapsOnly, false).await;
+        assert!(
+            state
+                .autosync
+                .has_seeded_baseline_for_test(ViewMode::GapsOnly),
+            "attach must seed last_content_hash even when it skipped the snapshot",
         );
     }
 

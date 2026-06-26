@@ -214,7 +214,6 @@ pub(crate) fn events_response(rx: mpsc::Receiver<Result<Event, Infallible>>) -> 
 /// seed the browser's `lastEventId` so any reconnect carries `Last-Event-ID`,
 /// which `events` uses to discriminate first connect from reconnect. See
 /// ADR-0030.
-#[allow(dead_code)] // Caller wires up in the next commit (autosync::attach).
 pub(crate) fn ack_event() -> Result<Event, Infallible> {
     Ok(Event::default().event("ack").id("r"))
 }
@@ -222,7 +221,6 @@ pub(crate) fn ack_event() -> Result<Event, Infallible> {
 /// The SSE `snapshot` event. The `id: r` stamp is identical to every other
 /// event on the channel; the server only checks header presence on reconnect,
 /// not the id value. See ADR-0030.
-#[allow(dead_code)] // Caller wires up in the next commit (autosync::attach).
 pub(crate) fn snapshot_event(payload: String) -> Result<Event, Infallible> {
     Ok(Event::default().event("snapshot").id("r").data(payload))
 }
@@ -240,7 +238,7 @@ pub(crate) fn section_event(html: String) -> Event {
 /// `KeepAlive` every 15 seconds to survive idle TCP drops by reverse proxies.
 async fn events(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery>) -> Response {
     let mode = ViewMode::from_query(query.view.as_deref());
-    let rx = crate::autosync::attach(&state, mode).await;
+    let rx = crate::autosync::attach(&state, mode, true).await;
     events_response(rx)
 }
 

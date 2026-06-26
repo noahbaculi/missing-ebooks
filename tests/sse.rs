@@ -80,10 +80,16 @@ async fn snapshot() {
         "X-Accel-Buffering: no must be set so nginx does not buffer SSE",
     );
     let mut stream = BodyStream::new(sse_response.into_body());
+    // The first event on every SSE connection is the ack sentinel (ADR-0030).
+    // Drain it so the snapshot assertion below still reads the second event.
+    let (ack_name, _) = next_event(&mut stream, Duration::from_secs(2))
+        .await
+        .expect("ack arrives first");
+    assert_eq!(ack_name, "ack", "first SSE event is the ack sentinel");
     let (name, data) = next_event(&mut stream, Duration::from_secs(2))
         .await
-        .expect("first event arrives");
-    assert_eq!(name, "snapshot", "first SSE event is the snapshot");
+        .expect("snapshot arrives after the ack");
+    assert_eq!(name, "snapshot", "second SSE event is the snapshot");
 
     // Each `id="root-N-section"` appearing in the index page must appear in
     // the snapshot too. Walk root indices until one is absent from the index.
@@ -120,7 +126,13 @@ async fn change_pushes() {
         .unwrap();
     let mut stream = BodyStream::new(response.into_body());
 
-    // Drain the snapshot so the next read is the loop's first scan diff.
+    // Drain the ack sentinel that lands first on every SSE connection
+    // (ADR-0030), then the snapshot, so the next read is the loop's first
+    // scan diff.
+    let (ack_name, _) = next_event(&mut stream, Duration::from_secs(2))
+        .await
+        .expect("ack arrives first");
+    assert_eq!(ack_name, "ack");
     let (snapshot_name, _) = next_event(&mut stream, Duration::from_secs(2))
         .await
         .expect("snapshot arrives");
@@ -173,7 +185,11 @@ async fn no_change_silent() {
         .unwrap();
     let mut stream = BodyStream::new(response.into_body());
 
-    // Drain the snapshot.
+    // Drain the ack sentinel and then the snapshot.
+    let (ack_name, _) = next_event(&mut stream, Duration::from_secs(2))
+        .await
+        .expect("ack arrives first");
+    assert_eq!(ack_name, "ack");
     let (snapshot_name, _) = next_event(&mut stream, Duration::from_secs(2))
         .await
         .expect("snapshot arrives");
@@ -231,7 +247,15 @@ async fn two_modes_isolated() {
         .unwrap();
     let mut all_stream = BodyStream::new(all_response.into_body());
 
-    // Drain the snapshot off both streams.
+    // Drain the ack sentinel and then the snapshot off both streams.
+    let (gaps_ack, _) = next_event(&mut gaps_stream, Duration::from_secs(2))
+        .await
+        .expect("gaps ack");
+    let (all_ack, _) = next_event(&mut all_stream, Duration::from_secs(2))
+        .await
+        .expect("all ack");
+    assert_eq!(gaps_ack, "ack");
+    assert_eq!(all_ack, "ack");
     let (gaps_snap, _) = next_event(&mut gaps_stream, Duration::from_secs(2))
         .await
         .expect("gaps snapshot");
