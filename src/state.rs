@@ -44,7 +44,7 @@ fn is_fresh(entry: &CacheEntry, ttl: Option<Duration>) -> bool {
 /// Owns the scan substrate, the TTL-bounded cache slot, and the marker file
 /// IO. The single place where raw scan output is produced, memoized, and
 /// edited. See ADR-0027.
-pub struct RawViewStore {
+pub(crate) struct RawViewStore {
     /// The cache slot. Held briefly for in-place edits; held across the
     /// per-root rescan in `remove_mark` (matching today's `rebuild_root`).
     entries: Mutex<Option<CacheEntry>>,
@@ -148,13 +148,6 @@ impl RawViewStore {
     pub fn rebuild_count(&self) -> u64 {
         self.rebuild_count.load(Ordering::Relaxed)
     }
-
-    /// Test accessor: returns the shared dir index. Used in tests that need
-    /// to insert synthetic entries or assert on the index's content.
-    #[cfg(test)]
-    pub fn dir_index(&self) -> &Arc<StdMutex<DirIndex>> {
-        &self.dir_index
-    }
 }
 
 impl AppState {
@@ -194,7 +187,7 @@ impl AppState {
 /// for a re-mark of an already-marked folder; callers use it to suppress the
 /// undo toast for no-op marks.
 #[derive(Debug)]
-pub struct Applied {
+pub(crate) struct Applied {
     /// The refreshed raw view after the in-place edit (or rebuild on a cold slot).
     pub raw: Arc<RawView>,
     /// True when this call made the file; false for a re-mark of a marked folder.
@@ -205,7 +198,7 @@ pub struct Applied {
 /// file could not be written or deleted. `RawViewStore` surfaces these via
 /// `WriteFailure::Failed` alongside the still-valid raw view.
 #[derive(Debug, thiserror::Error)]
-pub enum WriteError {
+pub(crate) enum WriteError {
     /// The resolved target sits outside every configured root.
     #[error("target is outside the configured library roots")]
     OutsideRoots,
@@ -225,7 +218,7 @@ pub enum WriteError {
 /// of range. `Failed` carries the current raw view so the caller can
 /// render an inline alert by the affected row without a second store hop.
 #[derive(Debug)]
-pub enum WriteFailure {
+pub(crate) enum WriteFailure {
     /// Pre-write bail: the submitted root index does not name a configured
     /// root. There is no section to render the alert into, so callers fall
     /// back to a standalone error card.
