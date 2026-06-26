@@ -7,6 +7,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::convert::Infallible;
 use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, Weak};
 
 use axum::response::sse::Event;
@@ -143,6 +144,12 @@ pub(crate) async fn attach(
     // sections the snapshot already carried (ADR-0024).
     let raw = state.store.current().await;
     let (snapshot, seed_hashes) = snapshot_and_seed(&raw, mode, &state.config.search_links);
+    // `snapshot_and_seed` renders one section per root, so `seed_hashes.len()`
+    // is the exact render count for this snapshot. Bumped here (not inside
+    // the helper) so the helper itself stays a pure function.
+    lock_inner(&state.autosync.inner)
+        .render_count
+        .fetch_add(seed_hashes.len() as u64, Ordering::Relaxed);
 
     // Send the snapshot before subscribing so a tick that fires immediately
     // after the registry insert cannot interleave a section event ahead of
@@ -185,6 +192,13 @@ struct AutosyncInner {
     last_content_hash: EnumMap<ViewMode, Vec<Option<u64>>>,
     /// Set while the loop is running; cleared by the loop on exit.
     loop_task: Option<JoinHandle<()>>,
+    /// Monotonic count of every `single_oob_section` render observed by the
+    /// autosync paths (snapshot seed and per-tick loop). Tests diff before
+    /// vs. after to assert that no-change ticks skip the render. Mirrors
+    /// `RawViewStore::rebuild_count` (`src/state.rs:54`). The field stays
+    /// unconditional and the accessor is `#[cfg(test)]`; the runtime cost
+    /// is one relaxed `fetch_add` per render path.
+    render_count: AtomicU64,
 }
 
 impl Autosync {
@@ -196,6 +210,7 @@ impl Autosync {
             subs: EnumMap::default(),
             last_content_hash: EnumMap::default(),
             loop_task: None,
+            render_count: AtomicU64::new(0),
         };
         Self {
             inner: Arc::new(StdMutex::new(inner)),
@@ -292,6 +307,14 @@ impl Autosync {
         guard.subs.values().map(Vec::len).sum()
     }
 
+    /// Monotonic render count: every `single_oob_section` produced by either
+    /// the snapshot seed path or the per-tick loop. Tests diff before vs.
+    /// after to assert that no-change ticks skip the render.
+    #[cfg(test)]
+    pub(crate) fn render_count(&self) -> u64 {
+        lock_inner(&self.inner).render_count.load(Ordering::Relaxed)
+    }
+
     /// Abort the loop task without removing subscribers. Tests use this to
     /// simulate a panic inside the loop and confirm the next subscribe
     /// respawns.
@@ -357,16 +380,24 @@ async fn run_loop(
 
         // Render and diff under the registry lock. The critical section is
         // short: per-section render is microseconds (ADR-0022) and there is no
-        // await between lock and unlock.
+        // await between lock and unlock. The render-count bump folds into the
+        // same guard so it stays atomic with the slot writes that produced it.
         let to_send: Vec<(ViewMode, usize, String)> = {
             let mut guard = lock_inner(&inner);
             let has_subs = EnumMap::from_fn(|mode| !guard.subs[mode].is_empty());
-            compute_pushes(
+            let pushes = compute_pushes(
                 &raw,
                 &mut guard.last_content_hash,
                 has_subs,
                 &state.config.search_links,
-            )
+            );
+            // `compute_pushes` calls `single_oob_section` exactly once per
+            // returned push, so `pushes.len()` is the exact render count for
+            // this tick.
+            guard
+                .render_count
+                .fetch_add(pushes.len() as u64, Ordering::Relaxed);
+            pushes
         };
 
         // Fan out and prune. A failed try_send drops that sender from the list.
@@ -441,6 +472,7 @@ mod tests {
             subs: EnumMap::default(),
             last_content_hash: EnumMap::default(),
             loop_task: None,
+            render_count: AtomicU64::new(0),
         }));
 
         // Poison the mutex: take the guard on a worker thread, then panic.
@@ -620,6 +652,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn no_change_tick_does_not_render() {
+        // Attach both modes, capture the post-snapshot render floor, sleep
+        // long enough for several loop ticks, and assert the counter did not
+        // grow. `attach` renders one section per root for the snapshot, then
+        // seeds the per-mode baseline hashes; with a stable filesystem the
+        // loop's subsequent ticks must find matching hashes and skip both
+        // the OOB-wrap render and the push.
+        let state = test_state_with_interval(1);
+
+        let _rx_gaps = attach(&state, ViewMode::GapsOnly).await;
+        let _rx_all = attach(&state, ViewMode::All).await;
+
+        let snapshot_floor = state.autosync.render_count();
+        assert!(
+            snapshot_floor > 0,
+            "snapshot path must have rendered at least one section",
+        );
+
+        // 2.5 s on a 1 s interval is long enough for at least two ticks
+        // without making the test painfully slow.
+        tokio::time::sleep(Duration::from_millis(2500)).await;
+
+        assert_eq!(
+            state.autosync.render_count(),
+            snapshot_floor,
+            "no-change ticks must not render",
+        );
+    }
+
+    #[tokio::test]
     async fn attach_sends_snapshot_first_and_registers_subscriber() {
         // Interval high enough that the autosync loop will not tick during the
         // test, so we observe the post-attach state without races.
@@ -711,6 +773,7 @@ mod tests {
             subs,
             last_content_hash: EnumMap::default(),
             loop_task: Some(task),
+            render_count: AtomicU64::new(0),
         }));
 
         assert!(
@@ -732,6 +795,7 @@ mod tests {
             subs: EnumMap::default(),
             last_content_hash: EnumMap::default(),
             loop_task: Some(task),
+            render_count: AtomicU64::new(0),
         }));
 
         assert!(try_exit_loop(&inner), "no subscribers means exit");
