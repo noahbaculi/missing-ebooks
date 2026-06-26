@@ -2,7 +2,7 @@
 //! and when each session was last seen. Bounded by a global cap; idle sessions
 //! are reaped on a timer. Nothing here touches disk.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use crate::marker::Marker;
@@ -11,22 +11,17 @@ use crate::marker::Marker;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SessionId(pub String);
 
-/// One mark a visitor applied: which root, which folder (root-relative), and the
-/// marker kind. Replayed on top of the base view to derive the visitor's view.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Mark {
-    /// Index of the library root the mark targets.
-    pub root: usize,
-    /// Folder path relative to that root, or "." for the root itself.
-    pub rel: String,
-    /// Which marker the visitor chose.
-    pub kind: Marker,
-}
+/// One mark in the session's set: the library root index, the folder path
+/// relative to that root (or "." for the root itself, per ADR-0005), and the
+/// marker kind. The set is keyed on this tuple, so repeated identical marks
+/// are no-ops at insert time and per-session size is structurally bounded by
+/// the scenario's `|markable folders x marker kinds|`.
+pub type MarkKey = (usize, String, Marker);
 
-/// One visitor's private state: the marks they have applied, in submission order,
-/// and when the session was last touched.
+/// One visitor's private state: the marks they have applied as a set, and when
+/// the session was last touched.
 struct Session {
-    marks: Vec<Mark>,
+    marks: HashSet<MarkKey>,
     last_seen: Instant,
 }
 
@@ -81,17 +76,31 @@ impl SessionStore {
         self.sessions.insert(
             sid,
             Session {
-                marks: Vec::new(),
+                marks: HashSet::new(),
                 last_seen: now,
             },
         );
         Ok(())
     }
 
-    /// Append a mark to a session. A no-op when the session is gone.
-    pub fn append_mark(&mut self, sid: &SessionId, mark: Mark) {
-        if let Some(session) = self.sessions.get_mut(sid) {
-            session.marks.push(mark);
+    /// Insert a mark into a session. Returns `true` when newly added,
+    /// `false` when the mark was already present or the session is gone.
+    /// Silent no-op on unknown sessions matches today's `append_mark` shape.
+    /// Handlers always call this immediately after `resolve_in_store`, so
+    /// the session-gone branch is a logic-bug guard, not a user-reachable path.
+    pub fn insert_mark(&mut self, sid: &SessionId, key: MarkKey) -> bool {
+        match self.sessions.get_mut(sid) {
+            Some(session) => session.marks.insert(key),
+            None => false,
+        }
+    }
+
+    /// Remove a mark from a session. Returns `true` when the mark was
+    /// present and removed, `false` when absent or the session is gone.
+    pub fn remove_mark(&mut self, sid: &SessionId, key: &MarkKey) -> bool {
+        match self.sessions.get_mut(sid) {
+            Some(session) => session.marks.remove(key),
+            None => false,
         }
     }
 
@@ -103,13 +112,19 @@ impl SessionStore {
         }
     }
 
-    /// The marks a session has applied, in submission order. Empty when the
-    /// session is unknown.
-    pub fn marks(&self, sid: &SessionId) -> &[Mark] {
+    /// The marks a session has applied as a set. Empty when the session is
+    /// unknown. Borrowed for the duration of the caller's lock guard. The
+    /// render path consumes this reference directly without copying.
+    pub fn marks(&self, sid: &SessionId) -> &HashSet<MarkKey> {
+        // A static empty set so the unknown-session path can return a
+        // `&HashSet` without a per-call allocation. `OnceLock` keeps it
+        // const-eval-free without an unsafe `static mut` or a per-call
+        // `Box::leak`.
+        static EMPTY: std::sync::OnceLock<HashSet<MarkKey>> = std::sync::OnceLock::new();
         self.sessions
             .get(sid)
-            .map(|session| session.marks.as_slice())
-            .unwrap_or(&[])
+            .map(|session| &session.marks)
+            .unwrap_or_else(|| EMPTY.get_or_init(HashSet::new))
     }
 
     /// Drop every session idle for at least `idle` as of `now`; returns how many
@@ -129,12 +144,8 @@ mod tests {
 
     use crate::marker::Marker;
 
-    fn mark(root: usize, rel: &str) -> Mark {
-        Mark {
-            root,
-            rel: rel.to_string(),
-            kind: Marker::NoEbook,
-        }
+    fn key(root: usize, rel: &str) -> MarkKey {
+        (root, rel.to_string(), Marker::NoEbook)
     }
 
     #[test]
@@ -153,27 +164,11 @@ mod tests {
         let mut store = SessionStore::new(10);
         let old = Instant::now() - Duration::from_secs(3600);
         store.create(SessionId("a".into()), old).unwrap();
-        // An unknown id is not present.
         assert!(!store.touch(&SessionId("missing".into()), Instant::now()));
-        // Touching refreshes last_seen, so a reap that would have caught the
-        // stale entry now spares it.
         let now = Instant::now();
         assert!(store.touch(&SessionId("a".into()), now));
         assert_eq!(store.reap_idle(now, Duration::from_secs(60)), 0);
         assert_eq!(store.len(), 1);
-    }
-
-    #[test]
-    fn append_accumulates_marks_in_order() {
-        let mut store = SessionStore::new(10);
-        let sid = SessionId("a".into());
-        store.create(sid.clone(), Instant::now()).unwrap();
-        store.append_mark(&sid, mark(0, "Book"));
-        store.append_mark(&sid, mark(1, "Author/Other"));
-        assert_eq!(
-            store.marks(&sid).to_vec(),
-            vec![mark(0, "Book"), mark(1, "Author/Other")]
-        );
     }
 
     #[test]
@@ -204,16 +199,74 @@ mod tests {
         let b = SessionId("b".into());
         store.create(a.clone(), Instant::now()).unwrap();
         store.create(b.clone(), Instant::now()).unwrap();
-        store.append_mark(&a, mark(0, "Book"));
-        store.append_mark(&b, mark(1, "Other"));
+        store.insert_mark(&a, key(0, "Book"));
+        store.insert_mark(&b, key(1, "Other"));
 
         store.clear_marks(&a);
-        // The cleared session is empty; the other is untouched.
         assert!(store.marks(&a).is_empty());
-        assert_eq!(store.marks(&b).to_vec(), vec![mark(1, "Other")]);
+        assert_eq!(store.marks(&b).len(), 1);
+        assert!(store.marks(&b).contains(&key(1, "Other")));
 
         // Clearing an unknown id is a no-op and does not create a session.
         store.clear_marks(&SessionId("missing".into()));
         assert_eq!(store.len(), 2);
+    }
+
+    #[test]
+    fn insert_mark_dedupes() {
+        let mut store = SessionStore::new(8);
+        let sid = SessionId("s1".to_string());
+        let now = Instant::now();
+        store.create(sid.clone(), now).unwrap();
+
+        let k = (0_usize, "Author/Book".to_string(), Marker::NoEbook);
+        assert!(store.insert_mark(&sid, k.clone()), "first insert is new");
+        assert!(
+            !store.insert_mark(&sid, k.clone()),
+            "second insert is a dup"
+        );
+        assert_eq!(store.marks(&sid).len(), 1);
+    }
+
+    #[test]
+    fn marks_set_is_per_session() {
+        let mut store = SessionStore::new(8);
+        let s1 = SessionId("s1".to_string());
+        let s2 = SessionId("s2".to_string());
+        let now = Instant::now();
+        store.create(s1.clone(), now).unwrap();
+        store.create(s2.clone(), now).unwrap();
+
+        store.insert_mark(&s1, (0, "A".to_string(), Marker::NoEbook));
+        assert_eq!(store.marks(&s1).len(), 1);
+        assert_eq!(store.marks(&s2).len(), 0);
+    }
+
+    #[test]
+    fn clear_marks_empties_the_set() {
+        let mut store = SessionStore::new(8);
+        let sid = SessionId("s1".to_string());
+        let now = Instant::now();
+        store.create(sid.clone(), now).unwrap();
+        store.insert_mark(&sid, (0, "A".to_string(), Marker::NoEbook));
+        store.insert_mark(&sid, (0, "B".to_string(), Marker::EbookElsewhere));
+        assert_eq!(store.marks(&sid).len(), 2);
+
+        store.clear_marks(&sid);
+        assert_eq!(store.marks(&sid).len(), 0);
+    }
+
+    #[test]
+    fn remove_mark_returns_whether_present() {
+        let mut store = SessionStore::new(8);
+        let sid = SessionId("s1".to_string());
+        let now = Instant::now();
+        store.create(sid.clone(), now).unwrap();
+        let k = (0_usize, "A".to_string(), Marker::NoEbook);
+        store.insert_mark(&sid, k.clone());
+
+        assert!(store.remove_mark(&sid, &k), "first remove found it");
+        assert!(!store.remove_mark(&sid, &k), "second remove is a no-op");
+        assert_eq!(store.marks(&sid).len(), 0);
     }
 }

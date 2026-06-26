@@ -6,6 +6,7 @@
 //! banner; the `/mark` partial does not.
 
 use std::convert::Infallible;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -17,7 +18,9 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use tokio::sync::mpsc;
 
+use crate::marker::Marker;
 use crate::raw_view::{RawView, apply_mark_raw};
+use crate::scanner;
 use crate::tree::ViewMode;
 use crate::web::assets::{app_css, app_js, htmx_script, htmx_sse_script};
 use crate::web::render::render_view as render_view_html;
@@ -25,8 +28,16 @@ use crate::web::render::{FlaggedView, oob_sections, package_view, render_section
 use crate::web::{MarkRequest, ViewQuery, events_response};
 
 use super::banner;
-use super::session::{AtCapacity, Mark, SessionId, SessionStore};
+use super::session::{AtCapacity, MarkKey, SessionId, SessionStore};
 use super::state::{DemoConfig, DemoState};
+
+/// Transient legacy mark shape used to feed `derive_view` during the storage
+/// migration. Task 5 deletes this together with `derive_view`.
+struct Mark {
+    root: usize,
+    rel: String,
+    kind: Marker,
+}
 
 /// The page shown when the global session cap is reached. Served with HTTP 503 so
 /// bots and monitors read it as a soft, retryable refusal. Self-contained so it
@@ -126,6 +137,52 @@ fn resolve_in_store(
     }
 }
 
+/// Whether the (root, rel) pair names a folder the base view actually walked.
+/// Gates `/mark` and `/unmark` so garbage paths cannot enter the session set.
+///
+/// `rel == "."` is true for any walked root, per ADR-0005 (the root carries
+/// an empty `rel_path` in `ScannedFolder`, not "."). For non-root cases the
+/// `rel` string is compared component-aware via `PathBuf` equality.
+///
+/// O(F) per call. Runs at most twice per user click (mark, later unmark). On
+/// the biggest scenario this is sub-millisecond.
+fn folder_exists_in_base(base: &RawView, root: usize, rel: &str) -> bool {
+    let Some(scanner::RootScan::Walked { folders, .. }) = base.get(root) else {
+        return false;
+    };
+    if rel == "." {
+        return true;
+    }
+    let target = PathBuf::from(rel);
+    folders.iter().any(|f| f.rel_path == target)
+}
+
+/// Adapt the session's set to the legacy `Vec<Mark>` shape that
+/// `derive_view` still consumes. Iterates `Marker::ALL` in declaration order
+/// so the resulting cover_files order is deterministic. Task 5 deletes this
+/// helper when the overlay path replaces `derive_view`.
+fn marks_for_render(store: &SessionStore, sid: &SessionId) -> Vec<Mark> {
+    let mut keys: Vec<&MarkKey> = store.marks(sid).iter().collect();
+    // Stable order: by (root, rel, Marker::ALL index). Keeps the legacy
+    // derive_view output deterministic across this commit.
+    keys.sort_by(|a, b| {
+        a.0.cmp(&b.0)
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| marker_order(a.2).cmp(&marker_order(b.2)))
+    });
+    keys.into_iter()
+        .map(|(root, rel, kind)| Mark {
+            root: *root,
+            rel: rel.clone(),
+            kind: *kind,
+        })
+        .collect()
+}
+
+fn marker_order(m: Marker) -> usize {
+    Marker::ALL.iter().position(|x| *x == m).unwrap_or(0)
+}
+
 /// Derive one session's rendered view for a mode: clone the shared raw view,
 /// replay every session mark via `apply_mark_raw`, then render. With no marks
 /// the clone-and-render still runs because per-request rendering is the new
@@ -162,7 +219,7 @@ async fn index(
     let resolved = {
         let mut store = state.lock_sessions();
         resolve_in_store(&mut store, &state.config, existing, now)
-            .map(|(sid, set_cookie)| (set_cookie, store.marks(&sid).to_vec()))
+            .map(|(sid, set_cookie)| (set_cookie, marks_for_render(&store, &sid)))
     };
     let Some((set_cookie, marks)) = resolved else {
         return capacity_response();
@@ -187,21 +244,22 @@ async fn mark(
     if req.root >= state.num_roots() {
         return (StatusCode::BAD_REQUEST, "unknown library root").into_response();
     }
+    // Reject paths that do not exist in the base view, so garbage marks
+    // never reach the session set. Audit item #2: caps per-session size
+    // structurally at `|markable folders x marker kinds|`.
+    if !folder_exists_in_base(&state.base_raw, req.root, &req.rel) {
+        return (StatusCode::BAD_REQUEST, "unknown folder").into_response();
+    }
     let now = Instant::now();
     let existing = read_cookie(&headers, &state.config.cookie_name);
     let resolved = {
         let mut store = state.lock_sessions();
         match resolve_in_store(&mut store, &state.config, existing, now) {
             Some((sid, set_cookie)) => {
-                store.append_mark(
-                    &sid,
-                    Mark {
-                        root: req.root,
-                        rel: req.rel.clone(),
-                        kind: req.kind,
-                    },
-                );
-                Some((set_cookie, store.marks(&sid).to_vec()))
+                store.insert_mark(&sid, (req.root, req.rel.clone(), req.kind));
+                // Transient Vec<Mark> for derive_view. Task 5 deletes this.
+                let marks = marks_for_render(&store, &sid);
+                Some((set_cookie, marks))
             }
             None => None,
         }
@@ -279,7 +337,7 @@ async fn events(
     let resolved = {
         let mut store = state.lock_sessions();
         resolve_in_store(&mut store, &state.config, existing, now)
-            .map(|(sid, set_cookie)| (set_cookie, store.marks(&sid).to_vec()))
+            .map(|(sid, set_cookie)| (set_cookie, marks_for_render(&store, &sid)))
     };
     let Some((set_cookie, marks)) = resolved else {
         return capacity_response();
@@ -774,5 +832,69 @@ mod tests {
             .find("event: snapshot")
             .expect("snapshot must follow ack on reconnect");
         assert!(ack_at < snapshot_at, "ack must come before snapshot");
+    }
+
+    #[tokio::test]
+    async fn mark_rejects_unknown_root() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=99&rel=Book&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = body_string(response).await;
+        assert_eq!(body, "unknown library root");
+    }
+
+    #[tokio::test]
+    async fn mark_rejects_unknown_rel() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from(
+                        "root=0&rel=Not/A/Real/Folder&kind=no_ebook&view=gaps",
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = body_string(response).await;
+        assert_eq!(body, "unknown folder");
+    }
+
+    #[tokio::test]
+    async fn mark_accepts_root_dot_mark() {
+        // ADR-0005: every walked root is itself flaggable, named "." on the wire.
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=.&kind=no_ebook&view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }
