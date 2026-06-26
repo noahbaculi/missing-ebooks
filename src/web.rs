@@ -209,6 +209,31 @@ pub(crate) fn events_response(rx: mpsc::Receiver<Result<Event, Infallible>>) -> 
     response
 }
 
+/// The SSE event sent first on every `/events` connection. Carries `event: ack`,
+/// `id: r`, and empty data. No client listens to `ack`. Its sole purpose is to
+/// seed the browser's `lastEventId` so any reconnect carries `Last-Event-ID`,
+/// which `events` uses to discriminate first connect from reconnect. See
+/// ADR-0030.
+#[allow(dead_code)] // Caller wires up in the next commit (autosync::attach).
+pub(crate) fn ack_event() -> Result<Event, Infallible> {
+    Ok(Event::default().event("ack").id("r"))
+}
+
+/// The SSE `snapshot` event. The `id: r` stamp is identical to every other
+/// event on the channel; the server only checks header presence on reconnect,
+/// not the id value. See ADR-0030.
+#[allow(dead_code)] // Caller wires up in the next commit (autosync::attach).
+pub(crate) fn snapshot_event(payload: String) -> Result<Event, Infallible> {
+    Ok(Event::default().event("snapshot").id("r").data(payload))
+}
+
+/// The per-autosync-tick `section` event. Same `id: r` stamp as the rest of
+/// the channel for the same reason as `snapshot_event`.
+#[allow(dead_code)] // Caller switches over in Task 6 of this plan.
+pub(crate) fn section_event(html: String) -> Event {
+    Event::default().event("section").id("r").data(html)
+}
+
 /// SSE endpoint. The first event is `snapshot`, an OOB-swap payload byte-
 /// identical to what `GET /?view=…` renders for those sections. Subsequent
 /// events are `section` events from the autosync loop. `ping` events come from
@@ -771,5 +796,36 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_string(response).await;
         assert!(body.contains(r#"id="roots""#));
+    }
+
+    #[test]
+    fn ack_event_carries_event_name_and_id_for_last_event_id_seeding() {
+        let event = ack_event().unwrap();
+        let rendered = format!("{event:?}");
+        assert!(
+            rendered.contains("event: ack"),
+            "ack_event must carry event: ack, got {rendered}"
+        );
+        assert!(
+            rendered.contains("id: r"),
+            "ack_event must carry id: r, got {rendered}"
+        );
+    }
+
+    #[test]
+    fn snapshot_event_carries_event_name_and_id_and_payload() {
+        let event = snapshot_event("<oob>payload</oob>".to_string()).unwrap();
+        let rendered = format!("{event:?}");
+        assert!(rendered.contains("event: snapshot"));
+        assert!(rendered.contains("id: r"));
+        assert!(rendered.contains("payload"));
+    }
+
+    #[test]
+    fn section_event_carries_event_name_and_id_and_payload() {
+        let event = section_event("<oob>section</oob>".to_string());
+        let rendered = format!("{event:?}");
+        assert!(rendered.contains("event: section"));
+        assert!(rendered.contains("id: r"));
     }
 }
