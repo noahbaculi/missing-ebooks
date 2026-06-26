@@ -424,7 +424,7 @@ async fn run_loop(
         if !to_send.is_empty() {
             let mut guard = lock_inner(&inner);
             for (mode, _root_idx, html) in to_send {
-                let event = section_event(html);
+                let event = crate::web::section_event(html);
                 guard.subs[mode].retain(|tx| tx.try_send(Ok(event.clone())).is_ok());
             }
         } else {
@@ -439,13 +439,6 @@ async fn run_loop(
 
         sleep(interval).await;
     }
-}
-
-/// Build the SSE `section` event for one root's OOB swap fragment. The event
-/// name lines up with the client's `sse-swap="section"` attribute. The OOB
-/// target ID is carried inside the HTML body itself via `hx-swap-oob`.
-fn section_event(html: String) -> Event {
-    Event::default().event("section").data(html)
 }
 
 #[cfg(test)]
@@ -802,6 +795,20 @@ mod tests {
                 .autosync
                 .has_seeded_baseline_for_test(ViewMode::GapsOnly),
             "attach must seed last_content_hash even when it skipped the snapshot",
+        );
+    }
+
+    #[test]
+    fn section_event_helper_stamps_id_for_reconnect() {
+        // The per-tick path now routes through crate::web::section_event so
+        // every section event carries the same id: r stamp the snapshot and
+        // ack carry. A drop after the loop has pushed at least one section
+        // therefore reconnects with Last-Event-ID, which the /events
+        // handler treats as a reconnect.
+        let event = crate::web::section_event("<oob>x</oob>".to_string());
+        assert!(
+            format!("{event:?}").contains("id: r"),
+            "section_event must carry id: r so a reconnect after a section push sends Last-Event-ID",
         );
     }
 

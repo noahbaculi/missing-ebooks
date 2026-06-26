@@ -227,7 +227,6 @@ pub(crate) fn snapshot_event(payload: String) -> Result<Event, Infallible> {
 
 /// The per-autosync-tick `section` event. Same `id: r` stamp as the rest of
 /// the channel for the same reason as `snapshot_event`.
-#[allow(dead_code)] // Caller switches over in Task 6 of this plan.
 pub(crate) fn section_event(html: String) -> Event {
     Event::default().event("section").id("r").data(html)
 }
