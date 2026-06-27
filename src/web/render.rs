@@ -640,11 +640,10 @@ mod tests {
     /// friends) inside the OOB attribute would land in the selector portion
     /// and silently break OOB routing: htmx fires `htmx:oobErrorNoTarget` and
     /// drops the swap. Section events would reach the browser but never
-    /// update the DOM. The earlier `transition:true` regression
-    /// (.scratch/autosync-page-not-updating/issues/01-section-events-arrive-but-dom-does-not-update.md)
-    /// was exactly this. Lock the attribute to `<style>:<#id>` with no
-    /// whitespace or extra colons so the next person to reach for an OOB
-    /// modifier fails this test instead of shipping silent breakage.
+    /// update the DOM. The earlier `transition:true` regression was exactly
+    /// this. Lock the attribute to `<style>:<#id>` with no whitespace or
+    /// extra colons so the next person to reach for an OOB modifier fails
+    /// this test instead of shipping silent breakage.
     #[test]
     fn single_oob_section_attribute_survives_htmx_first_colon_parse() {
         let section = RootSection {
