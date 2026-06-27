@@ -1,3 +1,9 @@
+/*!
+ * htmx Server Sent Events (SSE) extension v2.2.4
+ * https://github.com/bigskysoftware/htmx-extensions
+ * Source: https://unpkg.com/htmx-ext-sse@2.2.4/sse.js
+ * License: 0BSD (BSD Zero Clause License)
+ */
 /*
 Server Sent Events Extension
 ============================
