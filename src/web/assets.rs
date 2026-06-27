@@ -129,24 +129,13 @@ fn if_none_match_hit(value: Option<&str>, etag: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    //! Asset-test scope: wire contracts and negative regression guards only.
+    //! Substring assertions that only mirror a CSS class name or a JS function
+    //! name with no cross-file consumer pin tests to the implementation, not to
+    //! behavior. Pin behavior with a rendered-HTML test against the router
+    //! output instead.
     //!
-    //! Each `*_BYTES.contains("...")` assertion in this module must pin a
-    //! literal that crosses a file boundary (an HX-Trigger event name, an
-    //! HTTP route, a DOM id emitted by Rust and read by JS, a `localStorage`
-    //! key shared between `assets/app.js` and `assets/prepaint.js`, or a CSS
-    //! custom property the script reads via `getComputedStyle`). Negative
-    //! guards (`!*.contains("...")`) fence off removed features so they do
-    //! not creep back in.
-    //!
-    //! Substring assertions that only mirror a CSS class name or a JS
-    //! function name with no cross-file consumer were removed by Spec B
-    //! (`docs/superpowers/specs/2026-06-23-b-render-split-and-assets-triage.md`).
-    //! If a future contributor wants to pin behavior, add a rendered-HTML
-    //! test against the router output instead.
-    //!
-    //! The `if_none_match_hit` block at the top tests handler logic, not
-    //! asset bytes; those tests are out of triage scope.
+    //! The `if_none_match_hit` block at the top tests handler logic, not asset
+    //! bytes; those tests are out of triage scope.
 
     use super::{APP_CSS_BYTES, APP_JS_BYTES, if_none_match_hit};
 
