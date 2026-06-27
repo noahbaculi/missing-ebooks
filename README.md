@@ -7,7 +7,7 @@ Self-hosted web server that scans audiobook library trees and surfaces folders t
 Try it without installing anything: **[demo-missing-ebooks.noahbaculi.com](https://demo-missing-ebooks.noahbaculi.com)**.
 Each visit opens a private, throwaway sandbox seeded with sample audiobooks. Changes stay in your session and reset when idle.
 
-For an offline-equivalent run on your own machine, `cargo run --example explore -- mixed-forest` serves the production router against a synthetic library in a temp directory. Several scenarios are available; see `examples/explore.rs`.
+For an offline-equivalent run on your own machine, `cargo run --bin explore -- mixed-forest` serves the production router against a synthetic library in a temp directory. Several scenarios are available; see `src/bin/explore.rs`.
 
 ## How it works
 
@@ -157,18 +157,18 @@ A marker covers the folder it sits in and everything below it, the same as an eb
 
 ## Exploring the UI
 
-`examples/explore.rs` seeds a synthetic library into a temp directory, serves it through the real UI on a loopback port, and tears the directory down on Ctrl-C. Use it to eyeball the rendered output across a catalog of known library states without pointing the server at a real library.
+`src/bin/explore.rs` seeds a synthetic library into a temp directory, serves it through the real UI on a loopback port, and tears the directory down on Ctrl-C. Use it to eyeball the rendered output across a catalog of known library states without pointing the server at a real library.
 
 Run a scenario:
 
 ```shell
-cargo run --example explore -- mixed-forest
+cargo run --bin explore -- mixed-forest
 ```
 
 It prints the URL (the app's default port 13379, or an OS-assigned one if that port is busy) and serves until Ctrl-C. Run with no scenario, or `--help`, to print the catalog:
 
 ```shell
-cargo run --example explore
+cargo run --bin explore
 ```
 
 Scenarios:
@@ -193,7 +193,7 @@ Flags:
 > [!NOTE]
 > Marker buttons write real `.no_ebook` / `.ebook_elsewhere` files into the seeded tree. Pass `--keep` to inspect them after exit; otherwise the temp directory is removed on shutdown.
 
-For a live-reload loop while iterating on the UI, run `bacon explore` instead. It rebuilds and reruns the harness on a fixed port whenever `src/`, `examples/`, or `assets/` change. The repo pins bacon in `mise.toml`, so `mise install` provisions it.
+For a live-reload loop while iterating on the UI, run `bacon explore` instead. It rebuilds and reruns the harness on a fixed port whenever `src/` or `assets/` change. The repo pins bacon in `mise.toml`, so `mise install` provisions it.
 
 ## Development
 

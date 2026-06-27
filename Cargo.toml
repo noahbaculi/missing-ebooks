@@ -8,23 +8,12 @@ license = "AGPL-3.0-or-later"
 repository = "https://github.com/noahbaculi/missing-ebooks"
 publish = false
 
-# Examples default to test = false, which hides the explore harness's tests
-# behind `cargo test --example explore`. Opt it into the default run so plain
-# `cargo test` covers every target.
-[[example]]
+# Explicit target blocks document each binary and bench's path even though
+# cargo auto-discovers src/bin/*.rs and benches/*.rs; the benches need
+# `harness = false` so they run as plain executables (criterion or custom).
+[[bin]]
 name = "explore"
-path = "examples/explore.rs"
-test = true
-
-[[example]]
-name = "scan_bench"
-path = "examples/scan_bench.rs"
-test = true
-
-[[example]]
-name = "tree_bench"
-path = "examples/tree_bench.rs"
-test = true
+path = "src/bin/explore.rs"
 
 [[bin]]
 name = "missing-ebooks"
@@ -39,6 +28,16 @@ path = "src/bin/demo.rs"
 [[bench]]
 name = "render"
 path = "benches/render.rs"
+harness = false
+
+[[bench]]
+name = "scan_bench"
+path = "benches/scan_bench.rs"
+harness = false
+
+[[bench]]
+name = "tree_bench"
+path = "benches/tree_bench.rs"
 harness = false
 
 [[test]]
@@ -57,6 +56,7 @@ maud = "0.27.0"
 rayon = "1.10"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+tempfile = "3.27.0"
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "net", "sync", "signal"] }
 tokio-stream = "0.1"
@@ -72,7 +72,6 @@ futures-util = { version = "0.3", default-features = false }
 http-body-util = "0.1.3"
 libc = "0.2"
 proptest = "1.11.0"
-tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }
 
 [lints.clippy]

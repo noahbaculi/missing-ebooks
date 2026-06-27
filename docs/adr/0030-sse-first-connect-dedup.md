@@ -4,7 +4,7 @@ Date: 2026-06-25.
 
 ## Context
 
-`/events` sends a `snapshot` event as the first emission on every connection (`src/web.rs:212-219`, `src/autosync.rs:136-171`). The snapshot is byte-identical to what the page just rendered inline. The browser parses it and `htmx-sse` performs one OOB swap per root, every one a no-op against an identical existing DOM. Headless-Chrome profiling against `examples/explore.rs mixed-forest` puts the cost at 126 ms in a single long task on the main thread, landing right after `load`. Production and demo both pay it on every visit.
+`/events` sends a `snapshot` event as the first emission on every connection (`src/web.rs:212-219`, `src/autosync.rs:136-171`). The snapshot is byte-identical to what the page just rendered inline. The browser parses it and `htmx-sse` performs one OOB swap per root, every one a no-op against an identical existing DOM. Headless-Chrome profiling against `src/bin/explore.rs mixed-forest` puts the cost at 126 ms in a single long task on the main thread, landing right after `load`. Production and demo both pay it on every visit.
 
 The snapshot exists for a real reason. The autosync loop (ADR-0023) may tick between page render and SSE connect. Without the snapshot, a subscriber would render an inline view that the autosync loop already moved past, with no recovery until the next tick.
 

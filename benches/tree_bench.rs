@@ -5,7 +5,7 @@
 //! network: this isolates the render cost the unified-cache rework moves onto
 //! the request path.
 //!
-//! `cargo run --release --example tree_bench` runs the default sweep and prints
+//! `cargo bench --bench tree_bench` runs the default sweep and prints
 //! one row per shape combination. CLI flags pin individual axes for ad hoc
 //! probes.
 
@@ -61,7 +61,7 @@ struct Args {
     iterations: usize,
 }
 
-const USAGE: &str = "usage: cargo run --release --example tree_bench -- \
+const USAGE: &str = "usage: cargo bench --bench tree_bench -- \
 [--total N] [--depth N] [--fanout N] [--gap-rate F] [--iterations N]";
 
 fn help_text() -> String {
@@ -264,6 +264,7 @@ fn main() -> ExitCode {
 }
 
 #[cfg(test)]
+#[allow(dead_code, unused_imports)]
 mod tests {
     use super::*;
 

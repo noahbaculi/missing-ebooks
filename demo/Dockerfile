@@ -4,13 +4,10 @@ FROM rust:1.96-alpine AS builder
 RUN apk add --no-cache musl-dev
 WORKDIR /build
 
-# The whole crate: the demo binary lives in src/bin and reuses the library. The
-# manifest declares the explore example target, so examples/ must be present for
-# the build to resolve the manifest even though only the demo binary is built.
+# The whole crate: the demo binary lives in src/bin and reuses the library.
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY assets ./assets
-COPY examples ./examples
 RUN cargo build --release --locked --bin demo
 
 # Runtime: the single demo binary plus a non-root user. /tmp is writable for the

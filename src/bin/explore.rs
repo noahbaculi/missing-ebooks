@@ -1,6 +1,6 @@
 //! Disposable, seeded instance of the real server for eyeballing the UI.
 //!
-//! `cargo run --example explore -- <scenario>` seeds a synthetic library into a
+//! `cargo run --bin explore -- <scenario>` seeds a synthetic library into a
 //! temp directory, serves it through the production `web::router` and `AppState`
 //! unchanged, and tears the directory down on Ctrl-C. There are no assertions and
 //! no browser automation: it just lets you click around a catalog of known
@@ -21,8 +21,7 @@ use missing_ebooks::web;
 use tokio::net::TcpListener;
 
 /// The usage line, printed beside the scenario catalog on a bad or absent name.
-const USAGE: &str =
-    "usage: cargo run --example explore -- <scenario> [--port N] [--ttl SECS] [--keep]";
+const USAGE: &str = "usage: cargo run --bin explore -- <scenario> [--port N] [--ttl SECS] [--keep]";
 
 /// A parsed command line. `scenario` is `None` when no positional name was given,
 /// which the catalog lookup treats the same as an unknown name.

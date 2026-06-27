@@ -1,7 +1,7 @@
 //! Read-only benchmark: time the real scanner against the configured library
 //! roots, local disk versus an SMB (CIFS) mount.
 //!
-//! `cargo run --release --example scan_bench -- --config config.toml --label smb --drop-caches`
+//! `cargo bench --bench scan_bench -- --config config.toml --label smb --drop-caches`
 //! loads the real `Config`, compiles `ScanSettings`, and times `scanner::scan_warm`
 //! per root, in cold and warm
 //! cache conditions, then saves a JSON report. The walks only read directory
@@ -12,7 +12,7 @@
 //! shipped binary, not a debug build. `--drop-caches` flushes the page cache for
 //! the cold runs and needs root on Linux, so run that invocation under `sudo`;
 //! omit the flag for warm-only numbers. With no Rust toolchain on the box, build
-//! `target/release/examples/scan_bench` on a machine of matching OS and arch and
+//! `target/release/scan_bench` on a machine of matching OS and arch and
 //! copy the binary over. Point it at the real mounts with `--config config.toml`,
 //! repeated `--root PATH`, or `MISSING_EBOOKS_LIBRARY_ROOTS`.
 
@@ -443,7 +443,7 @@ fn drop_caches() -> Result<(), String> {
     }
 }
 
-const USAGE: &str = "usage: cargo run --release --example scan_bench -- \
+const USAGE: &str = "usage: cargo bench --bench scan_bench -- \
 [--config PATH] [--root PATH]... [--iterations N] [--mode LIST] \
 [--concurrency LIST] [--drop-caches] [--label NAME] [--out PATH] [--no-save]";
 
@@ -994,6 +994,7 @@ fn main() -> ExitCode {
 }
 
 #[cfg(test)]
+#[allow(dead_code, unused_imports)]
 mod tests {
     use super::*;
 
