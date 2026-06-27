@@ -1,10 +1,18 @@
 # A library root is itself flaggable when it holds loose audio
 
-A library root that directly contains uncovered audio is flagged like any other folder and surfaced as a node at the top of that root's tree. The scanner reports it as the empty path relative to the root; the tree builder turns that empty path into a single flagged node whose name is the root directory's own name and whose relative path is `.`, pinned ahead of the natural-sorted author forest. So that the node can carry a usable name, `tree::build` takes the root directory name alongside the flagged paths.
+Date: 2026-06-05.
+
+## Context
 
 We first had this fall out the other way by accident. The scanner already pushes the empty relative path for an audio-bearing, uncovered root, and the tree builder dropped it (an empty path has no path components, so it produced no node). A root full of loose audio then rendered as "No missing ebooks in this root", a false negative for the one thing the tool exists to report. We rejected both that silent drop and the softer "declare loose root audio unsupported, but skip it deliberately": either way a real gap stays hidden.
 
+## Decision
+
+A library root that directly contains uncovered audio is flagged like any other folder and surfaced as a node at the top of that root's tree. The scanner reports it as the empty path relative to the root; the tree builder turns that empty path into a single flagged node whose name is the root directory's own name and whose relative path is `.`, pinned ahead of the natural-sorted author forest. So that the node can carry a usable name, `tree::build` takes the root directory name alongside the flagged paths.
+
 Audiobookshelf, the dominant tool in this domain, sets the precedent we followed. Its documented rule is that "any audio files (or ebook files) within a folder will be grouped into that book, except in the root folder where each audio file will be treated as an individual book": loose root-level audio is surfaced, never ignored. Audiobookshelf is file-granular, so it makes one book per loose file. This tool is folder-granular, so the natural adaptation is to flag the root folder itself as a single gap ("the root needs an ebook") rather than one finding per file.
+
+## Consequences
 
 The cost is a small model change: `build` gains the root-name parameter, and the root node uses the relative path `.` (which doubles as the marker-write target for the root later). Flagging never stops the descent, so a flagged root is still walked for deeper gaps; coverage is the only thing that prunes, so an ebook or marker sitting in the root still covers everything beneath it, unchanged.
 

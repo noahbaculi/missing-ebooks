@@ -1,10 +1,18 @@
 # The scan walk is parallel, sized by `scan_concurrency` rather than the core count
 
-The scan reads each level of the tree in parallel. `scanner` runs one level-synchronous breadth-first walk (`walk_all`): every directory in the current frontier is read at once with rayon (`par_iter`), then the walk descends into the next level. Both views share that single walk, the gaps view as a reduction over its output (ADR-0012) and a warm rescan as the same walk reusing unchanged directories from the shared index (ADR-0020). One pool serves the whole process. `main` builds rayon's global pool once with `build_global`, sized to `scan_concurrency.max(1)` (default 16, also `MISSING_EBOOKS_SCAN_CONCURRENCY`), and every scan shares it instead of spawning its own. `scan_concurrency = 1` disables the parallelism.
+Date: 2026-06-13.
+
+## Context
 
 The pool is sized by that knob, not the core count, because the walk is bound by per-directory latency rather than CPU. On a network mount each directory listing is one round trip, so the readers spend most of their time waiting on the wire; they stay useful well past the core count, and past a container CPU limit. Sizing by cores would leave that idle wait unspent.
 
+## Decision
+
+The scan reads each level of the tree in parallel. `scanner` runs one level-synchronous breadth-first walk (`walk_all`): every directory in the current frontier is read at once with rayon (`par_iter`), then the walk descends into the next level. Both views share that single walk, the gaps view as a reduction over its output (ADR-0012) and a warm rescan as the same walk reusing unchanged directories from the shared index (ADR-0020). One pool serves the whole process. `main` builds rayon's global pool once with `build_global`, sized to `scan_concurrency.max(1)` (default 16, also `MISSING_EBOOKS_SCAN_CONCURRENCY`), and every scan shares it instead of spawning its own. `scan_concurrency = 1` disables the parallelism.
+
 The `scan_bench` reports in `benchmarks/` justify the default. Against a local fuse.mergerfs root the full warm walk falls from 119 ms serial to 17 ms at 16 threads, roughly sevenfold; the curve elbows around 8 threads (18 ms) and barely improves out to 32 (16 ms). The rewrite costs nothing on the serial path: the parallel code held to one thread matches the pre-rayon serial walk within noise (119 ms either way warm, 340 against 337 ms cold), so the speedup is real concurrency rather than a regressed baseline recovering. 16 threads takes almost all of the local win without oversubscribing a small host.
+
+## Consequences
 
 Over an SMB (cifs) mount the same walk gains no more than about 1.3x over the serial baseline, even at 32 threads, which is expected rather than a defect. SMB2 credits let the client keep many requests in flight, but `cifs.ko` demultiplexes one connection's responses on a single kernel thread, and the server typically serves a single connection's requests in order (Samba, for one, hands each connection a single-threaded `smbd`), so 16 concurrent readers fold back onto roughly one worker. What is left is pipelining, overlapping one request's wire time with the next's processing, not parallelism; a faster link does not help, since it only shifts the bottleneck further onto that serial stage. Warm and cold scans run about even on SMB for a neighboring reason: the default CIFS caching (`cache=strict`, `actimeo=1`) ages attributes out faster than a multi-second walk completes, so the next walk re-queries the server.
 

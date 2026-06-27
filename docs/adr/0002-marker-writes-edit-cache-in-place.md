@@ -2,12 +2,24 @@
 
 > Amended 2026-06-26 by ADR-0027 and ADR-0028: the `service::*` and `Cache::*` symbols cited below were inlined into `web::*` handlers and `RawViewStore`. Current locations live in `src/state.rs` and `src/web.rs`.
 
-A marker click is the only kind of mutation the running server performs. Two writes sit behind it: a mark creates a `.no_ebook` or `.ebook_elsewhere` file, and an undo deletes one a mark just created. The mark write edits the cached raw scan view in place, removing the marked folder's subtree and pruning emptied containers (`service::apply_mark_raw`, called through `Cache::apply_marker_or_build`). The undo cannot be edited in place because a delete can re-flag a subtree whose pre-mark structure has already been discarded, so it rescans the one affected root and splices the result back into the raw slot under the cache lock (`Cache::rebuild_root`). Both leave `stored_at` untouched, so the TTL backstop still fires on schedule to pick up changes made outside the app.
+Date: 2026-06-22.
 
-These writes are provably equivalent to a rescan in steady state: a marker covers the folder and everything beneath it, and the marker file is on disk before the cache edit runs, so every later rescan agrees with the edited cache. Doing the edit instead of a rewalk keeps a click instant on a large networked library where a cold rescan costs seconds.
+## Context
+
+A marker click is the only kind of mutation the running server performs. Two writes sit behind it: a mark creates a `.no_ebook` or `.ebook_elsewhere` file, and an undo deletes one a mark just created.
+
+## Decision
+
+The mark write edits the cached raw scan view in place, removing the marked folder's subtree and pruning emptied containers (`service::apply_mark_raw`, called through `Cache::apply_marker_or_build`). The undo cannot be edited in place because a delete can re-flag a subtree whose pre-mark structure has already been discarded, so it rescans the one affected root and splices the result back into the raw slot under the cache lock (`Cache::rebuild_root`). Both leave `stored_at` untouched, so the TTL backstop still fires on schedule to pick up changes made outside the app.
 
 One lock serializes every cache mutation. The cache holds the raw scan output behind a `tokio::sync::Mutex<Option<CacheEntry>>` (ADR-0022), and the three mutating paths (`get_or_build`, `apply_marker_or_build`, `rebuild_root`) all hold it across their work. A mark that arrives during an in-flight rescan waits for the rescan to store its fresh view, then applies its subtree removal to that view. A cold or stale slot under either write path is rebuilt from scratch rather than edited, because the fresh build already reflects the on-disk marker. The marker write itself is `OpenOptions::create_new`, so a re-mark of an already-marked folder is a no-op on disk and an undo only ever deletes a file its own action created. Reads stay cheap: they clone an `Arc` to the raw view under the lock and hand it back, and `Arc::make_mut` in the write paths gives concurrent readers their pre-edit snapshot while this task observes the edit.
 
-Config is immutable at runtime. `excluded_dirs` and `exclude_globs` are read at startup and changed only by editing the config file or environment and restarting. A UI exclude button would require a `RwLock<Config>`, a TOML rewrite path (a `toml_edit` dependency), and invalidate-and-rewalk plumbing per click. Holding config behind a plain `Arc<Config>` with no lock drops all of that and matches the layered env-over-file model in ADR-0004, which already makes a write-back to the file awkward. Adding the button later stays a thin change at the service layer. The trade-off is convenience: excluding a series means editing config and restarting rather than clicking.
+Config is immutable at runtime. `excluded_dirs` and `exclude_globs` are read at startup and changed only by editing the config file or environment and restarting. A UI exclude button would require a `RwLock<Config>`, a TOML rewrite path (a `toml_edit` dependency), and invalidate-and-rewalk plumbing per click. Holding config behind a plain `Arc<Config>` with no lock drops all of that and matches the layered env-over-file model in ADR-0004, which already makes a write-back to the file awkward. Adding the button later stays a thin change at the service layer.
 
 Implementation lives in `service::mark` and `service::unmark`; the cache lock protocol and the `stored_at` policy live in `Cache` (`src/state.rs`). The path guard that re-validates the write target inside a configured root is its own decision (ADR-0008). The cover-files list shown next to a just-marked row, which lets the UI reflect the mark without waiting for a rescan, is ADR-0013.
+
+## Consequences
+
+These writes are provably equivalent to a rescan in steady state: a marker covers the folder and everything beneath it, and the marker file is on disk before the cache edit runs, so every later rescan agrees with the edited cache. Doing the edit instead of a rewalk keeps a click instant on a large networked library where a cold rescan costs seconds.
+
+The trade-off on the immutable-config side is convenience: excluding a series means editing config and restarting rather than clicking.
