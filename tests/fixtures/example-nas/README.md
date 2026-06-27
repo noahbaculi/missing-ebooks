@@ -14,11 +14,9 @@ The snapshot holds names and extensions only, no file contents. Coverage logic k
 
 For a limited-context reader: this README, with the counts under "Structure and quirks" below, is enough to understand the tree's shape. You do not need to load `audiobooks.snapshot` (700 KB+) to reason about it. For small, hand-checkable cases with known expected verdicts, use [`../curated/`](../curated/) instead.
 
-## Where it came from
+## Source
 
-- Source mount: a CIFS/SMB share mounted at `/mnt/example-nas` (host and share name scrubbed).
-- Library root: `/mnt/example-nas/Entertainment/Audiobooks`.
-- Captured: 2026-06-04. 126 top-level entries, 900 directories, 7,902 files.
+One developer's homelab capture, host and share name scrubbed. The source mount was a CIFS/SMB share at `/mnt/example-nas`, library root `/mnt/example-nas/Entertainment/Audiobooks`. Captured 2026-06-04: 126 top-level entries, 900 directories, 7,902 files.
 
 The snapshot was captured once for the SMB scaling investigation (ADR-0019) and has been kept since as the canonical realistic-layout artifact for `scan_bench`. Numbers are useful for relative comparisons inside one machine; they are not a normative baseline.
 

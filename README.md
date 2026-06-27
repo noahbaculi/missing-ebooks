@@ -7,6 +7,8 @@ Self-hosted web server that scans audiobook library trees and surfaces folders t
 Try it without installing anything: **[demo-missing-ebooks.noahbaculi.com](https://demo-missing-ebooks.noahbaculi.com)**.
 Each visit opens a private, throwaway sandbox seeded with sample audiobooks. Changes stay in your session and reset when idle.
 
+For an offline-equivalent run on your own machine, `cargo run --example explore -- mixed-forest` serves the production router against a synthetic library in a temp directory. Several scenarios are available; see `examples/explore.rs`.
+
 ## How it works
 
 Point the server at one or more library roots. Each root is scanned and rendered as its own tree. A folder is flagged when it directly holds an audio file and nothing covers it: no ebook and no marker in that folder or any ancestor up to its root. One ebook or marker covers everything beneath it.
@@ -34,6 +36,8 @@ A rescan button forces a cold scan (clears the dir index, walks every directory)
 By default the page shows only the gaps. A "Show all folders" toggle beside the Rescan button switches to a fuller view that renders the whole library tree, covered folders included, so a gap can be read in the context of everything around it. Covered folders show dimmed with a check and carry no actions; the gaps keep their buttons and search links. The toggle is per view and is not saved.
 
 ## Getting started
+
+Build from source with the toolchain pinned in `rust-toolchain.toml` (rustc 1.96). Clone the repo and run `cargo build --release` (or `cargo run --release` to start the server in one step).
 
 Set at least one library root and run the server. It exits if no root is configured in any layer.
 
@@ -188,3 +192,7 @@ For a live-reload loop while iterating on the UI, run `bacon explore` instead. I
 After cloning, run `mise install` to provision the pinned tools. With mise's shell integration active, the next time you cd into the repo `core.hooksPath` is set to `.githooks` automatically, so the committed pre-commit hook runs without further setup. Contributors who do not use mise shell integration can run `mise run setup` once per clone (and once per worktree) to point git at the same hooks.
 
 With the hook active, any commit that touches Rust or build-config files runs `cargo fmt`, `cargo clippy`, and `cargo doc -D warnings` first, and any commit that touches `assets/app.{css,js}` or `tests/accent/` runs `mise run test:accent`. These are the same checks CI enforces, run locally so the failures surface before push. Run them yourself any time with `mise run lint` (fmt and clippy) or by hand. Commits that touch only docs skip every check.
+
+## License
+
+Released under AGPL-3.0-or-later. See `LICENSE`.
