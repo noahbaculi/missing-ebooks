@@ -11,5 +11,3 @@ The skills speak in terms of five canonical triage roles. With a local-markdown 
 | `wontfix`         | `wontfix`            | Will not be actioned                     |
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), write the corresponding string from this table to the issue's `Status:` line.
-
-Edit the right-hand column to match whatever vocabulary you actually use.
