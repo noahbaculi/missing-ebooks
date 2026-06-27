@@ -29,7 +29,7 @@ fn banner_html(mode: ViewMode) -> String {
 
 /// Splice the banner in just after the opening `<body>` tag. Returns the input
 /// untouched when there is no `<body>` or the banner is already present.
-pub fn inject(html: &str, mode: ViewMode) -> String {
+pub(crate) fn inject(html: &str, mode: ViewMode) -> String {
     if html.contains(BANNER_MARKER) {
         return html.to_string();
     }

@@ -11,7 +11,7 @@
 /// `{}`, so a stray closer is ignored and an unclosed opener drops the rest of
 /// the name. Folder names are rarely malformed, so this is good enough.
 #[must_use]
-pub fn clean_query(name: &str) -> String {
+pub(crate) fn clean_query(name: &str) -> String {
     // 1. Drop (...), [...], and {...} segments. One depth counter spans all three
     //    bracket kinds, so nested segments fall out together. No regex crate needed.
     let mut depth: usize = 0;

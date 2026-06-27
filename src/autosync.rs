@@ -189,7 +189,7 @@ pub(crate) type SseSender = mpsc::Sender<Result<Event, Infallible>>;
 /// The inner `Arc<Mutex<...>>` is cloned by the loop and by per-request handler
 /// views, so the registry is one shared object regardless of how many `Autosync`
 /// values point at it.
-pub struct Autosync {
+pub(crate) struct Autosync {
     inner: Arc<StdMutex<AutosyncInner>>,
     /// The configured idle gap. `0` disables the loop entirely. Subscribing
     /// still works (the snapshot is sent), but no loop task is ever spawned.

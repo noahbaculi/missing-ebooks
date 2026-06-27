@@ -14,7 +14,7 @@ use crate::marker::Marker;
 use crate::scanner::{self, DirIndex, RootScan, ScanSettings};
 
 /// The whole raw view: one `RootScan` per configured library root, in config order.
-pub type RawView = Vec<RootScan>;
+pub(crate) type RawView = Vec<RootScan>;
 
 /// Apply a marker write to the raw view. For a non-root mark with path `P`:
 /// every entry whose `rel_path` equals `P` or starts with `P` followed by `/`
@@ -23,7 +23,7 @@ pub type RawView = Vec<RootScan>;
 /// see ADR-0005): every entry under that root flips `missing_ebook` to false,
 /// and the empty-rel-path entry gains the marker filename. Component-aware
 /// match: `Author` does not cover `Authority/X`.
-pub fn apply_mark_raw(raw: &mut RawView, root: usize, rel: &str, marker: Marker) {
+pub(crate) fn apply_mark_raw(raw: &mut RawView, root: usize, rel: &str, marker: Marker) {
     let Some(section) = raw.get_mut(root) else {
         return;
     };

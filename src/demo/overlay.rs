@@ -14,7 +14,7 @@ use crate::web::render::FlaggedView;
 
 /// Borrowing view over a session's mark set. Answers per-folder questions
 /// about which marks apply and how, without cloning the set.
-pub struct MarkOverlay<'a> {
+pub(crate) struct MarkOverlay<'a> {
     marks: &'a HashSet<MarkKey>,
 }
 
@@ -22,7 +22,7 @@ pub struct MarkOverlay<'a> {
 /// it, and which marker filenames apply to the folder itself (in
 /// `Marker::ALL` declaration order).
 #[derive(Default, Debug, PartialEq, Eq)]
-pub struct EffectiveState {
+pub(crate) struct EffectiveState {
     /// Set when a mark on this folder or any ancestor would flip
     /// `missing_ebook` to false.
     pub cleared_by_ancestor: bool,
@@ -87,7 +87,7 @@ impl<'a> MarkOverlay<'a> {
 ///
 /// Cost: `O(F)` clone plus `O(F * depth)` overlay probes, vs. the old
 /// `derive_view`'s `O((M+1) * F)`.
-pub fn package_view_with_overlay(
+pub(crate) fn package_view_with_overlay(
     base: &RawView,
     overlay: &MarkOverlay<'_>,
     mode: ViewMode,

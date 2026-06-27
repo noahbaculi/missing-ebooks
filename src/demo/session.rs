@@ -9,7 +9,7 @@ use crate::marker::Marker;
 
 /// An opaque session id carried in the visitor's cookie.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SessionId(String);
+pub(crate) struct SessionId(String);
 
 impl SessionId {
     pub(crate) fn new(value: String) -> SessionId {
@@ -26,7 +26,7 @@ impl SessionId {
 /// marker kind. The set is keyed on this tuple, so repeated identical marks
 /// are no-ops at insert time and per-session size is structurally bounded by
 /// the scenario's `|markable folders x marker kinds|`.
-pub type MarkKey = (usize, String, Marker);
+pub(crate) type MarkKey = (usize, String, Marker);
 
 /// One visitor's private state: the marks they have applied as a set, and when
 /// the session was last touched.
@@ -37,11 +37,11 @@ struct Session {
 
 /// Returned by `create` when the global session cap is reached.
 #[derive(Debug, PartialEq, Eq)]
-pub struct AtCapacity;
+pub(crate) struct AtCapacity;
 
 /// The session table and its global ceiling. One process holds one of these
 /// behind a mutex. Every operation runs under that single lock.
-pub struct SessionStore {
+pub(crate) struct SessionStore {
     sessions: HashMap<SessionId, Session>,
     max_sessions: usize,
 }
@@ -56,13 +56,9 @@ impl SessionStore {
     }
 
     /// How many sessions are live.
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.sessions.len()
-    }
-
-    /// Whether no sessions are live.
-    pub fn is_empty(&self) -> bool {
-        self.sessions.is_empty()
     }
 
     /// Bump an existing session's last-seen to `now`. Returns whether the session

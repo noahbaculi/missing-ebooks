@@ -308,7 +308,7 @@ impl RootScan {
 ///
 /// Emits the same tracing events the previous caller did before this move.
 #[must_use]
-pub fn scan_root(root: &Path, settings: &ScanSettings, index: &mut DirIndex) -> RootScan {
+pub(crate) fn scan_root(root: &Path, settings: &ScanSettings, index: &mut DirIndex) -> RootScan {
     let canonical = match std::fs::canonicalize(root) {
         Ok(path) => path,
         Err(err) => {

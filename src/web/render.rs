@@ -93,7 +93,7 @@ pub fn single_oob_section(
 /// for an SSE snapshot payload. Walks the view and delegates each section to
 /// `single_oob_section` so the per-section bytes are identical to what the
 /// autosync loop pushes one root at a time.
-pub fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
+pub(crate) fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         @for (root, section) in view.iter().enumerate() {
             (single_oob_section(section, root, links, mode))
@@ -297,7 +297,7 @@ fn root_badge(state: &RootState) -> Markup {
 /// Render one root's section with an optional inline alert. Public so SSE
 /// integration tests under `tests/` can compare the byte output against an
 /// OOB-wrapped snapshot fragment.
-pub fn render_section(
+pub(crate) fn render_section(
     section: &RootSection,
     root: usize,
     error: Option<&str>,

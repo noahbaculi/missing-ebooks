@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// A marker file a user writes to cover a folder on purpose (see CONTEXT.md).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Marker {
+pub(crate) enum Marker {
     /// `.no_ebook`: an ebook does not exist or could not be sourced.
     NoEbook,
     /// `.ebook_elsewhere`: the ebook exists but lives in another folder.
