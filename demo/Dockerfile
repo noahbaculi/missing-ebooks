@@ -8,16 +8,16 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY assets ./assets
-RUN cargo build --release --locked --bin demo
+RUN cargo build --release --locked --bin missing-ebooks-demo
 
 # Runtime: the single demo binary plus a non-root user. /tmp is writable for the
 # seeded scenario directory.
 FROM alpine:3.21
 RUN adduser -D -u 1000 demo
-COPY --from=builder /build/target/release/demo /usr/local/bin/demo
+COPY --from=builder /build/target/release/missing-ebooks-demo /usr/local/bin/missing-ebooks-demo
 USER demo
 
 ENV DEMO_BIND=0.0.0.0:8080 \
     DEMO_SCENARIO=mixed-forest
 EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/demo"]
+ENTRYPOINT ["/usr/local/bin/missing-ebooks-demo"]
