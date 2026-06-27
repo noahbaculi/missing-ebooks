@@ -1,6 +1,6 @@
 # Library surface
 
-Status: ready-for-human
+Status: done
 
 Audit cluster from `deep-dive/missing-ebooks-audit-2026-06-26.md`: issues 5, 6, 25, 28. The crate today exposes 16 `pub mod`s and ~58 `pub` items with no third-party consumer. Every `pub` exists so the demo bin, examples, benches, or integration tests can reach in. `scenarios.rs` and `synthetic.rs` (1360 LOC combined) ship in the lib API as a synthetic audiobook seeder. Several types are `pub` but only `pub(crate)`-reachable in practice.
 
