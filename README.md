@@ -39,6 +39,14 @@ By default the page shows only the gaps. A "Show all folders" toggle beside the 
 
 Build from source with the toolchain pinned in `rust-toolchain.toml` (rustc 1.96). Clone the repo and run `cargo build --release` (or `cargo run --release` to start the server in one step).
 
+Or install just the server binary with cargo:
+
+```shell
+cargo install --git https://github.com/noahbaculi/missing-ebooks --bin missing-ebooks
+```
+
+Docker (below) is the primary distribution path; this is the source install for people who want it on PATH.
+
 Set at least one library root and run the server. It exits if no root is configured in any layer.
 
 ```shell

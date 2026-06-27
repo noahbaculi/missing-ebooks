@@ -23,7 +23,7 @@ if [ -n "$rust_changed" ]; then
     echo "pre-commit: 'cargo fmt --check' failed. Run 'cargo fmt', then re-stage and commit." >&2
     exit 1
   fi
-  if ! cargo clippy --locked --all-targets --features fixtures -- -D warnings; then
+  if ! cargo clippy --locked --all-targets -- -D warnings; then
     echo "pre-commit: 'cargo clippy' failed. Fix the warnings above, then re-stage and commit." >&2
     exit 1
   fi

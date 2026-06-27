@@ -8,13 +8,6 @@ license = "AGPL-3.0-or-later"
 repository = "https://github.com/noahbaculi/missing-ebooks"
 publish = false
 
-[features]
-# Defined empty here so the demo binary can require it; spec B will gate
-# `scenarios.rs` and `synthetic.rs` under the same feature. The empty body
-# means no current behavior changes: the demo still builds today exactly
-# when `--features fixtures` is passed.
-fixtures = []
-
 # Examples default to test = false, which hides the explore harness's tests
 # behind `cargo test --example explore`. Opt it into the default run so plain
 # `cargo test` covers every target.
@@ -22,7 +15,6 @@ fixtures = []
 name = "explore"
 path = "examples/explore.rs"
 test = true
-required-features = ["fixtures"]
 
 [[example]]
 name = "scan_bench"
@@ -33,30 +25,25 @@ test = true
 name = "tree_bench"
 path = "examples/tree_bench.rs"
 test = true
-required-features = ["fixtures"]
 
 [[bin]]
 name = "missing-ebooks"
 path = "src/main.rs"
 
 # Renamed from the auto-discovered `demo` so `cargo install missing-ebooks`
-# does not plant a generic-named binary on user PATHs. Gated behind the
-# `fixtures` feature so the default install omits it entirely.
+# does not plant a generic-named binary on user PATHs.
 [[bin]]
 name = "missing-ebooks-demo"
 path = "src/bin/demo.rs"
-required-features = ["fixtures"]
 
 [[bench]]
 name = "render"
 path = "benches/render.rs"
 harness = false
-required-features = ["fixtures"]
 
 [[test]]
 name = "sse"
 path = "tests/sse.rs"
-required-features = ["fixtures"]
 
 [dependencies]
 anyhow = "1.0.102"
