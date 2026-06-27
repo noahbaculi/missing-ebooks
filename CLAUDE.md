@@ -16,6 +16,10 @@ Default triage vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `rea
 
 Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+## Superpowers artifacts
+
+Files produced by superpowers skills (anything under `.superpowers/`, `docs/superpowers/`, `.serena/`, `.worktrees/`, or other agent scratch trees listed in `.gitignore`) do not get committed by default. A skill's own default path or wording (for example writing-plans suggesting `docs/superpowers/plans/`) is not authority to commit; only an explicit instruction from the user is. Absent that, leave the artifact in the gitignored path for the local agent session and do not stage it. If the artifact is one this repo treats as durable (a PRD, an implementation plan, an issue) and the user wants it tracked, route it into `.scratch/<feature>/` per `docs/agents/issue-tracker.md`. Do not edit `.gitignore` to track a superpowers path.
+
 ## Verifying UI changes
 
 After changing the rendered UI (HTML in `src/web.rs`, styles in `assets/app.css`, or behavior in `assets/app.js`), run the seeded UI harness, confirm it is serving, and hand the user a clickable localhost link so they can verify it visually:
