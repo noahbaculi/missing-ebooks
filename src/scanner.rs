@@ -506,7 +506,18 @@ fn list_dir_all(
     let mut ebooks: Vec<String> = Vec::new();
     let mut markers: Vec<String> = Vec::new();
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(err) => {
+                tracing::warn!(
+                    dir = %dir.display(),
+                    error = %err,
+                    "skipping unreadable entry"
+                );
+                continue;
+            }
+        };
         stats.entries_seen += 1;
         let Ok(file_type) = entry.file_type() else {
             continue;
