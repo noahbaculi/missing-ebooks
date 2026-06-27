@@ -79,7 +79,7 @@ async fn main() -> ExitCode {
     if !ip.is_loopback() {
         tracing::warn!(
             bind = %config.bind,
-            "binding to a non-loopback address; the server has no authentication"
+            "binding to a non-loopback address, put a reverse proxy with authentication in front before exposing this"
         );
     }
     let addr = SocketAddr::new(ip, config.port);
