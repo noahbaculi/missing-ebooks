@@ -6,7 +6,7 @@ Lightweight web server to surface audiobook folders that are missing their ebook
 
 ### Issue tracker
 
-Issues and PRDs live as markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+Issues and PRDs live locally under `.scratch/<feature>/`, gitignored. See `docs/agents/issue-tracker.md` for the layout convention.
 
 ### Triage labels
 
