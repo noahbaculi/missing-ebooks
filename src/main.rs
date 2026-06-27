@@ -1,5 +1,5 @@
-//! Server entry point: load config, build the shared state, and serve the
-//! read-only web UI. `--print-config` still emits the template and exits.
+//! Server entry point: load config, build shared state, serve the web UI.
+//! `--print-config` emits the config template and exits.
 
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
