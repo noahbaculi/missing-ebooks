@@ -1,5 +1,7 @@
 # Marker writes edit the raw cache in place; config is immutable at runtime
 
+> Amended 2026-06-26 by ADR-0027 and ADR-0028: the `service::*` and `Cache::*` symbols cited below were inlined into `web::*` handlers and `RawViewStore`. Current locations live in `src/state.rs` and `src/web.rs`.
+
 A marker click is the only kind of mutation the running server performs. Two writes sit behind it: a mark creates a `.no_ebook` or `.ebook_elsewhere` file, and an undo deletes one a mark just created. The mark write edits the cached raw scan view in place, removing the marked folder's subtree and pruning emptied containers (`service::apply_mark_raw`, called through `Cache::apply_marker_or_build`). The undo cannot be edited in place because a delete can re-flag a subtree whose pre-mark structure has already been discarded, so it rescans the one affected root and splices the result back into the raw slot under the cache lock (`Cache::rebuild_root`). Both leave `stored_at` untouched, so the TTL backstop still fires on schedule to pick up changes made outside the app.
 
 These writes are provably equivalent to a rescan in steady state: a marker covers the folder and everything beneath it, and the marker file is on disk before the cache edit runs, so every later rescan agrees with the edited cache. Doing the edit instead of a rewalk keeps a click instant on a large networked library where a cold rescan costs seconds.

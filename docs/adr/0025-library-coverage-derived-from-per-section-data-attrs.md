@@ -1,5 +1,7 @@
 # ADR-0025: Library coverage is derived from per-section data attributes
 
+> Amended 2026-06-26 by ADR-0028: the `service::render_section_from_raw` symbol cited below was renamed and moved into `src/web/render.rs` as `package_section`.
+
 Date: 2026-06-22.
 
 ## Context

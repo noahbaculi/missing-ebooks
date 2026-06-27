@@ -1,5 +1,7 @@
 # A marker write swaps one section with vendored htmx, not a full reload
 
+> Amended 2026-06-26 by ADR-0028: the `service::mark` symbol cited below was inlined into the `web::mark` handler in `src/web.rs`.
+
 Superseded in part by ADR-0018 (commit `236073e`): the implicit progressive-enhancement framing here is gone, the UI requires JavaScript. The section-swap mechanism and the vendored-htmx decision below still stand, and ADR-0024 builds on the swap unit established here.
 
 After a marker write succeeds, the page replaces only the affected root's `<section>`. The two buttons on each node row POST to `/mark` and target the closest `section.root`, swapping the server's response in as the new section (`hx-target="closest section.root"`, `hx-swap="outerHTML"`). The handler renders just that one section, which `service::mark` has already updated in memory, so the swap costs nothing past rendering a single root.
