@@ -216,6 +216,39 @@ mod tests {
     }
 
     #[test]
+    fn app_script_wires_the_online_event_to_flash_or_hide() {
+        // The window `online` handler reads `bannerShowsProblem()` (which
+        // checks the three connection-banner states) and calls
+        // `flashReconnected` when one is set, `hideBanner` when the banner is
+        // clean. No DOM harness exists for app.js, so pin the wire shape as a
+        // substring check: the handler must be there, must branch on
+        // `bannerShowsProblem`, and must call both branches by name.
+        assert!(APP_JS_BYTES.contains(r#"addEventListener("online""#));
+        assert!(APP_JS_BYTES.contains("bannerShowsProblem()"));
+        assert!(APP_JS_BYTES.contains("flashReconnected()"));
+        assert!(APP_JS_BYTES.contains("hideBanner"));
+        // `bannerShowsProblem` itself reads the three problem-state classes.
+        for state in ["is-offline", "is-retrying", "is-failed"] {
+            assert!(
+                APP_JS_BYTES.contains(state),
+                "app.js missing banner state {state}"
+            );
+        }
+    }
+
+    #[test]
+    fn app_script_clones_the_mark_warn_template_rather_than_inlining_an_svg() {
+        // The mark-failure strip used to hold a duplicate SVG string; the
+        // single source of truth is now assets/svg/warning.svg, embedded once
+        // in the page shell as <template id="mark-warn-tpl"> and cloned here.
+        assert!(APP_JS_BYTES.contains(r#"getElementById("mark-warn-tpl")"#));
+        assert!(APP_JS_BYTES.contains(".content.cloneNode("));
+        // No inline SVG payload survives.
+        assert!(!APP_JS_BYTES.contains("MARK_WARN_SVG"));
+        assert!(!APP_JS_BYTES.contains("<svg viewBox=\"0 0 24 24\""));
+    }
+
+    #[test]
     fn app_script_reads_the_two_summary_end_state_ids() {
         // `gap-summary-clear` and `gap-summary-head` are DOM ids emitted by
         // `gap_summary` in render.rs and looked up here by id.

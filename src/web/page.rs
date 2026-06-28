@@ -236,6 +236,18 @@ pub(super) fn toast() -> Markup {
     }
 }
 
+/// One server copy of the warn glyph for the inline mark-failure strip, sourced
+/// from `assets/svg/warning.svg` and held inside a `<template>` so it never
+/// renders. `app.js` clones it per failure rather than carrying a duplicate SVG
+/// string, matching how every other glyph on the page is served.
+pub(super) fn mark_warn_template() -> Markup {
+    html! {
+        template id="mark-warn-tpl" {
+            (PreEscaped(include_str!("../../assets/svg/warning.svg")))
+        }
+    }
+}
+
 /// The HTML document shell: head, noscript notice, connection banner, SSE
 /// listener, navbar, confirm dialog, toast machinery, and the script tags.
 /// Wraps a prebuilt `body` markup (typically the gap summary plus the
@@ -298,6 +310,7 @@ pub(crate) fn page(mode: ViewMode, body: Markup) -> Markup {
                 (body)
                 (confirm_dialog())
                 (toast())
+                (mark_warn_template())
                 script src="/static/htmx.min.js" {}
                 script src="/static/htmx-sse.js" {}
                 script src="/static/app.js" {}
@@ -627,5 +640,16 @@ mod tests {
         // The template toast carries the undo button and the message slot.
         assert!(html.contains("toast-undo"));
         assert!(html.contains(r#"class="toast-msg""#));
+    }
+
+    #[test]
+    fn index_renders_the_mark_warn_template() {
+        // The mark-failure strip's warn glyph is served once from a hidden
+        // <template>; app.js clones it per failure (M50). The template id is
+        // the wire contract between the markup and the script.
+        let html = mark_warn_template().into_string();
+        assert!(html.contains(r#"id="mark-warn-tpl""#));
+        // The glyph itself rides in: the SVG asset's distinctive viewBox.
+        assert!(html.contains("viewBox=\"0 0 24 24\""));
     }
 }

@@ -773,9 +773,10 @@
     }
   }
 
-  // A small warning glyph for the inline mark-failure strip, in the row's error color.
-  var MARK_WARN_SVG =
-    '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+  // The mark-failure strip's warn glyph is served as a hidden <template> in
+  // src/web/page.rs (sourced from assets/svg/warning.svg) and cloned here, so
+  // the SVG bytes live in one place. The renderer below falls back to nothing
+  // if the template is missing rather than re-inlining the asset.
 
   /**
    * A folder renders as a leaf <div.row> or a <summary.row> inside <details>; return
@@ -835,7 +836,10 @@
       var icon = document.createElement("span");
       icon.className = "mark-failed-icon";
       icon.setAttribute("aria-hidden", "true");
-      icon.innerHTML = MARK_WARN_SVG;
+      var warnTpl = document.getElementById("mark-warn-tpl");
+      if (warnTpl && warnTpl instanceof HTMLTemplateElement) {
+        icon.appendChild(warnTpl.content.cloneNode(true));
+      }
       var msg = document.createElement("span");
       msg.className = "mark-failed-msg";
       msg.textContent = 'Couldn’t save “' + folder + '”.';
