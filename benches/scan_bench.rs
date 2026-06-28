@@ -21,7 +21,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::sync::Mutex as StdMutex;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -516,16 +515,16 @@ fn run_warm(
         .build()
         .map_err(|e| format!("could not build a {threads}-thread pool: {e}"))?;
 
-    let mut index = scanner::DirIndex::new();
+    let index = scanner::DirIndex::new();
     // Build the index: this first walk lists everything, so its timing is discarded.
-    let (_ms, mut last) = pool.install(|| time_reuse_walk(root, settings, &mut index));
+    let (_ms, mut last) = pool.install(|| time_reuse_walk(root, settings, &index));
 
     let cold = if drop_caches_enabled {
         let mut samples = Vec::with_capacity(iterations);
         let mut iter_counts = Vec::with_capacity(iterations);
         for _ in 0..iterations {
             drop_caches()?;
-            let (ms, counts) = pool.install(|| time_reuse_walk(root, settings, &mut index));
+            let (ms, counts) = pool.install(|| time_reuse_walk(root, settings, &index));
             samples.push(ms);
             iter_counts.push(iter_counts_from(&counts));
             last = counts;
@@ -536,11 +535,11 @@ fn run_warm(
     };
 
     // Warm phase: one discarded warmup, then measured reuse walks with no drop.
-    let _ = pool.install(|| time_reuse_walk(root, settings, &mut index));
+    let _ = pool.install(|| time_reuse_walk(root, settings, &index));
     let mut samples = Vec::with_capacity(iterations);
     let mut iter_counts = Vec::with_capacity(iterations);
     for _ in 0..iterations {
-        let (ms, counts) = pool.install(|| time_reuse_walk(root, settings, &mut index));
+        let (ms, counts) = pool.install(|| time_reuse_walk(root, settings, &index));
         samples.push(ms);
         iter_counts.push(iter_counts_from(&counts));
         last = counts;
@@ -604,7 +603,7 @@ fn run_concurrent(
     let config = Arc::new(cfg);
     let mut samples = Vec::with_capacity(iterations);
     for _ in 0..iterations {
-        let dir_indices = vec![Arc::new(StdMutex::new(DirIndex::new()))];
+        let dir_indices = vec![Arc::new(DirIndex::new())];
         let store = Arc::new(RawViewStore::new(
             Arc::clone(&config),
             Arc::clone(settings),
@@ -711,7 +710,7 @@ fn gate_verdict(modes: &BTreeMap<String, ModeReport>) -> Option<String> {
 fn time_reuse_walk(
     root: &Path,
     settings: &ScanSettings,
-    index: &mut scanner::DirIndex,
+    index: &scanner::DirIndex,
 ) -> (f64, WalkCounts) {
     let walk_start = Instant::now();
     let (folders, stats) = scanner::scan_warm(root, settings, index);
@@ -747,8 +746,7 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
     match mode {
         Mode::Full => {
             let walk_start = Instant::now();
-            let (folders, stats) =
-                scanner::scan_warm(root, settings, &mut scanner::DirIndex::new());
+            let (folders, stats) = scanner::scan_warm(root, settings, &scanner::DirIndex::new());
             let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
             let gaps = folders
                 .iter()
@@ -775,8 +773,7 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
         }
         Mode::Gaps => {
             let walk_start = Instant::now();
-            let (folders, stats) =
-                scanner::scan_warm(root, settings, &mut scanner::DirIndex::new());
+            let (folders, stats) = scanner::scan_warm(root, settings, &scanner::DirIndex::new());
             let walk_ms = round3(walk_start.elapsed().as_secs_f64() * 1000.0);
             let flagged = scanner::reduce_to_flagged(&folders);
             let gaps = flagged.len();
@@ -1452,12 +1449,12 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         touch(&dir.path().join("Covered/01.mp3"));
         touch(&dir.path().join("Covered/Book.epub"));
         let settings = bench_settings();
-        let mut index = scanner::DirIndex::new();
+        let index = scanner::DirIndex::new();
         // The first walk lists everything and fills the index. Nothing reused yet.
-        let (_ms, build) = time_reuse_walk(dir.path(), &settings, &mut index);
+        let (_ms, build) = time_reuse_walk(dir.path(), &settings, &index);
         assert_eq!(build.stats.dirs_reused, 0);
         // The second walk on the unchanged tree reuses every directory, lists none.
-        let (_ms, reuse) = time_reuse_walk(dir.path(), &settings, &mut index);
+        let (_ms, reuse) = time_reuse_walk(dir.path(), &settings, &index);
         assert_eq!(reuse.stats.dirs_visited, 3); // root, Gap, Covered
         assert_eq!(reuse.stats.dirs_reused, 3);
         assert_eq!(reuse.stats.entries_seen, 0);

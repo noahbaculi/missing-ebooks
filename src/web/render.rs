@@ -1648,7 +1648,7 @@ mod tests {
     use crate::scanner::{DirIndex, ScanSettings};
     use crate::scenarios::touch;
     use std::path::PathBuf;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     fn test_config(roots: Vec<PathBuf>, ttl_seconds: u64) -> Config {
         Config {
@@ -1662,10 +1662,8 @@ mod tests {
         Arc::new(ScanSettings::compile(Config::default().scan_inputs()).unwrap())
     }
 
-    fn test_indices(roots: usize) -> Vec<Arc<Mutex<DirIndex>>> {
-        (0..roots)
-            .map(|_| Arc::new(Mutex::new(DirIndex::new())))
-            .collect()
+    fn test_indices(roots: usize) -> Vec<Arc<DirIndex>> {
+        (0..roots).map(|_| Arc::new(DirIndex::new())).collect()
     }
 
     #[tokio::test]

@@ -6,7 +6,7 @@
 //! both consume this module as peers (see ADR-0029).
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::Arc;
 use std::time::Instant;
 
 use futures_util::future::join_all;
@@ -69,7 +69,7 @@ fn add_marker(cover_files: &mut Vec<String>, marker: Marker) {
 pub async fn build_view(
     config: &Config,
     settings: &Arc<ScanSettings>,
-    indices: &[Arc<StdMutex<DirIndex>>],
+    indices: &[Arc<DirIndex>],
 ) -> RawView {
     let started = Instant::now();
     let sections = join_all(
@@ -94,38 +94,26 @@ pub async fn build_view(
 pub(crate) async fn build_section(
     root: PathBuf,
     settings: Arc<ScanSettings>,
-    index: Arc<StdMutex<DirIndex>>,
+    index: Arc<DirIndex>,
 ) -> RootScan {
     let started = Instant::now();
-    let scan = match tokio::task::spawn_blocking(move || {
-        let mut guard = lock_index(&index);
-        scanner::scan_root(&root, &settings, &mut guard)
-    })
-    .await
-    {
-        Ok(scan) => scan,
-        Err(join_err) => {
-            tracing::error!(error = %join_err, "scan task panicked");
-            scanner::RootScan::Failed {
-                path: PathBuf::from("<unknown>"),
-                message: "scan task failed".to_string(),
+    let scan =
+        match tokio::task::spawn_blocking(move || scanner::scan_root(&root, &settings, &index))
+            .await
+        {
+            Ok(scan) => scan,
+            Err(join_err) => {
+                tracing::error!(error = %join_err, "scan task panicked");
+                scanner::RootScan::Failed {
+                    path: PathBuf::from("<unknown>"),
+                    message: "scan task failed".to_string(),
+                }
             }
-        }
-    };
+        };
     tracing::debug!(
         root = %scan.display_path(),
         elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
         "scanned root"
     );
     scan
-}
-
-/// Lock the shared index, recovering the guard when a previous walk panicked
-/// while holding it. A poisoned `DirIndex` is not corrupt: a stale entry is
-/// re-listed on its next mtime check, so recovery beats wedging every later
-/// scan on a restart.
-pub(crate) fn lock_index(index: &StdMutex<DirIndex>) -> std::sync::MutexGuard<'_, DirIndex> {
-    index
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }

@@ -77,7 +77,7 @@ pub async fn build_state(
     // per-root indices fed in are throwaway: they populate as the walks go,
     // then drop with this local Vec.
     let throwaway_indices: Vec<_> = (0..config.library_roots.len())
-        .map(|_| Arc::new(Mutex::new(DirIndex::new())))
+        .map(|_| Arc::new(DirIndex::new()))
         .collect();
     let base_raw = Arc::new(build_view(&config, &settings, &throwaway_indices).await);
     DemoState {

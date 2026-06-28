@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex as StdMutex, Weak};
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwapOption;
@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 
 use crate::config::Config;
 use crate::marker::Marker;
-use crate::raw_view::{RawView, apply_mark_raw, build_section, build_view, lock_index};
+use crate::raw_view::{RawView, apply_mark_raw, build_section, build_view};
 use crate::scanner::{DirIndex, ScanSettings};
 
 /// Everything a request handler needs: the immutable config and settings, the
@@ -70,8 +70,9 @@ pub struct RawViewStore {
     settings: Arc<ScanSettings>,
     /// Per-root mtime indices. One persistent `DirIndex` per configured
     /// library root, so the per-root walks in `build_view` hold disjoint
-    /// locks and run truly in parallel.
-    dir_indices: Vec<Arc<StdMutex<DirIndex>>>,
+    /// locks and run truly in parallel. The lock now lives inside
+    /// `DirIndex`; the store holds a shared reference per root.
+    dir_indices: Vec<Arc<DirIndex>>,
     /// Held by the store for `build_view`; the same `Arc<Config>` is also
     /// exposed on `AppState.config` for handlers that read pure config data
     /// (search links, cookie name, library roots). See ADR-0027.
@@ -84,7 +85,7 @@ impl RawViewStore {
     pub fn new(
         config: Arc<Config>,
         settings: Arc<ScanSettings>,
-        dir_indices: Vec<Arc<StdMutex<DirIndex>>>,
+        dir_indices: Vec<Arc<DirIndex>>,
         ttl: Option<Duration>,
     ) -> RawViewStore {
         RawViewStore {
@@ -169,7 +170,7 @@ impl RawViewStore {
     /// the TTL. The explicit "fix any drift" path, used by the /rescan click.
     pub(crate) async fn rescan(&self) -> Arc<RawView> {
         for index in &self.dir_indices {
-            lock_index(index).clear();
+            index.clear();
         }
         self.build_coalesced().await
     }
@@ -199,7 +200,7 @@ impl AppState {
         let config = Arc::new(config);
         let autosync = crate::autosync::Autosync::new(config.autosync_interval_seconds);
         let dir_indices = (0..config.library_roots.len())
-            .map(|_| Arc::new(StdMutex::new(DirIndex::new())))
+            .map(|_| Arc::new(DirIndex::new()))
             .collect();
         let store = RawViewStore::new(Arc::clone(&config), Arc::new(settings), dir_indices, ttl);
         AppState {
@@ -350,7 +351,7 @@ impl RawViewStore {
         } else {
             canonical_root.join(rel)
         };
-        lock_index(index).invalidate(&target);
+        index.invalidate(&target);
     }
 
     /// Delete a marker file and refresh the cached view by rescanning the one
@@ -532,7 +533,7 @@ mod tests {
             ..Default::default()
         };
         let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
-        let dir_indices = vec![Arc::new(StdMutex::new(DirIndex::new()))];
+        let dir_indices = vec![Arc::new(DirIndex::new())];
         RawViewStore::new(Arc::new(cfg), Arc::new(settings), dir_indices, ttl)
     }
 
@@ -580,13 +581,13 @@ mod tests {
 
         // Warm the index by reading once.
         let _ = store.current().await;
-        let after_warm = store.dir_indices[0].lock().unwrap().len();
+        let after_warm = store.dir_indices[0].len();
         assert!(after_warm > 0, "the warm read populated the dir index");
 
         // Drop a synthetic entry into the index that no real walk could reach.
         // A cold rescan must drop it; a warm rescan would preserve it.
         let synthetic_path = std::path::PathBuf::from("/nonexistent/synthetic/marker/path");
-        store.dir_indices[0].lock().unwrap().insert(
+        store.dir_indices[0].insert(
             synthetic_path.clone(),
             scanner::CachedDir {
                 mtime: std::time::UNIX_EPOCH,
@@ -596,24 +597,16 @@ mod tests {
             },
         );
         assert!(
-            store.dir_indices[0]
-                .lock()
-                .unwrap()
-                .get(&synthetic_path)
-                .is_some()
+            store.dir_indices[0].get_cloned(&synthetic_path).is_some(),
+            "synthetic entry is present before rescan"
         );
-
         // Rescan must drop every entry, then the rebuild repopulates it.
         let _ = store.rescan().await;
         assert!(
-            store.dir_indices[0]
-                .lock()
-                .unwrap()
-                .get(&synthetic_path)
-                .is_none(),
+            store.dir_indices[0].get_cloned(&synthetic_path).is_none(),
             "rescan must clear the dir index, dropping the synthetic entry"
         );
-        let after_rescan = store.dir_indices[0].lock().unwrap().len();
+        let after_rescan = store.dir_indices[0].len();
         assert_eq!(
             after_rescan, after_warm,
             "rescan must clear and repopulate to the same count on an unchanged tree"
@@ -785,9 +778,7 @@ mod tests {
             ..Default::default()
         };
         let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
-        let dir_indices = (0..2)
-            .map(|_| Arc::new(StdMutex::new(DirIndex::new())))
-            .collect();
+        let dir_indices = (0..2).map(|_| Arc::new(DirIndex::new())).collect();
         let store = RawViewStore::new(
             Arc::new(cfg),
             Arc::new(settings),
@@ -906,7 +897,7 @@ mod tests {
         assert!(f1.iter().any(|f| f.missing_ebook));
         assert!(f2.iter().any(|f| f.missing_ebook));
 
-        let reused = store.dir_indices[0].lock().unwrap().len();
+        let reused = store.dir_indices[0].len();
         assert!(reused > 0, "the index retained the walked directories");
     }
 
@@ -921,7 +912,7 @@ mod tests {
         let canonical = std::fs::canonicalize(dir.path()).unwrap();
         let book = canonical.join("Book");
         assert!(
-            store.dir_indices[0].lock().unwrap().get(&book).is_some(),
+            store.dir_indices[0].get_cloned(&book).is_some(),
             "Book is indexed after the scan"
         );
 
@@ -929,7 +920,7 @@ mod tests {
         // and the next walk re-lists it rather than trusting a pre-write mtime.
         store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
         assert!(
-            store.dir_indices[0].lock().unwrap().get(&book).is_none(),
+            store.dir_indices[0].get_cloned(&book).is_none(),
             "Book's index entry is invalidated by the marker write"
         );
     }

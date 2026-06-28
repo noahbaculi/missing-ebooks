@@ -10,9 +10,10 @@
 //! every non-directory entry is classified by its file name.
 //!
 //! One entry point, [`scan_warm`]: stat each directory and reuse the
-//! `&mut DirIndex` entry when the mtime is unchanged, listing the rest.
-//! Passing a fresh `DirIndex::new()` skips the reuse and walks every
-//! directory from scratch, what `CONTEXT.md` calls a cold scan.
+//! `&DirIndex` entry when the mtime is unchanged, listing the rest. The
+//! index is interior-mutable, so a shared reference is enough; passing a
+//! fresh `DirIndex::new()` skips the reuse and walks every directory from
+//! scratch, what `CONTEXT.md` calls a cold scan.
 
 use std::collections::HashSet;
 use std::ffi::OsStr;
@@ -169,9 +170,15 @@ pub struct CachedDir {
 /// the directory's path. A rescan reuses an entry whose mtime still matches and
 /// re-lists the rest. In-memory only: rebuilt on restart by the startup warm, which
 /// is also what reclaims entries for vanished folders, since none are pruned (ADR-0020).
+///
+/// The map is held behind an internal `Mutex` so the index is `Sync` and the
+/// walk takes a shared `&DirIndex`. Poison recovery is a private detail:
+/// every method recovers the guard on poison because a stale entry is
+/// re-listed on its next mtime check, so recovery beats wedging every later
+/// scan.
 #[derive(Debug, Default)]
 pub struct DirIndex {
-    entries: std::collections::HashMap<PathBuf, CachedDir>,
+    entries: std::sync::Mutex<std::collections::HashMap<PathBuf, CachedDir>>,
 }
 
 impl DirIndex {
@@ -181,34 +188,45 @@ impl DirIndex {
         Self::default()
     }
 
-    /// The cached entry for `dir`, if any.
+    /// Lock the map, recovering the guard when a previous walk panicked while
+    /// holding it. A poisoned index is not corrupt: a stale entry is re-listed
+    /// on its next mtime check, so recovery beats wedging every later scan.
+    fn lock(&self) -> std::sync::MutexGuard<'_, std::collections::HashMap<PathBuf, CachedDir>> {
+        self.entries
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// A clone of the cached entry for `dir`, if any. Returns by value because
+    /// the entry lives behind the lock; the clone is cheap once the cover and
+    /// audio file lists become `Arc<[String]>` (M23, cluster 4).
     #[must_use]
-    pub fn get(&self, dir: &Path) -> Option<&CachedDir> {
-        self.entries.get(dir)
+    pub fn get_cloned(&self, dir: &Path) -> Option<CachedDir> {
+        self.lock().get(dir).cloned()
     }
 
     /// Insert or replace the entry for `dir`.
-    pub fn insert(&mut self, dir: PathBuf, cached: CachedDir) {
-        self.entries.insert(dir, cached);
+    pub fn insert(&self, dir: PathBuf, cached: CachedDir) {
+        self.lock().insert(dir, cached);
     }
 
     /// Drop the entry for `dir`, so the next walk re-lists it. Returns whether one
     /// was present.
-    pub fn invalidate(&mut self, dir: &Path) -> bool {
-        self.entries.remove(dir).is_some()
+    pub fn invalidate(&self, dir: &Path) -> bool {
+        self.lock().remove(dir).is_some()
     }
 
     /// Drop every cached entry. The next scan walks every directory from
     /// scratch and repopulates the map as it goes.
-    pub fn clear(&mut self) {
-        self.entries.clear();
+    pub fn clear(&self) {
+        self.lock().clear();
     }
 
     /// Number of cached directories.
     #[must_use]
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.lock().len()
     }
 }
 
@@ -304,11 +322,12 @@ impl RootScan {
 ///
 /// Returns `Walked` on success (possibly empty when no folder qualified) and
 /// `Failed` when canonicalize or the directory check rejected the path. Runs
-/// synchronously and assumes the caller has already taken the dir-index lock.
+/// synchronously; the index is interior-mutable, so a shared reference is
+/// enough.
 ///
 /// Emits the same tracing events the previous caller did before this move.
 #[must_use]
-pub(crate) fn scan_root(root: &Path, settings: &ScanSettings, index: &mut DirIndex) -> RootScan {
+pub(crate) fn scan_root(root: &Path, settings: &ScanSettings, index: &DirIndex) -> RootScan {
     let canonical = match std::fs::canonicalize(root) {
         Ok(path) => path,
         Err(err) => {
@@ -354,7 +373,7 @@ pub(crate) fn scan_root(root: &Path, settings: &ScanSettings, index: &mut DirInd
 pub fn scan_warm(
     root: &Path,
     settings: &ScanSettings,
-    index: &mut DirIndex,
+    index: &DirIndex,
 ) -> (Vec<ScannedFolder>, WalkStats) {
     walk_all(root, settings, Some(index))
 }
@@ -366,29 +385,27 @@ pub fn scan_warm(
 fn walk_all(
     root: &Path,
     settings: &ScanSettings,
-    mut index: Option<&mut DirIndex>,
+    index: Option<&DirIndex>,
 ) -> (Vec<ScannedFolder>, WalkStats) {
     let mut out = Vec::new();
     let mut stats = WalkStats::default();
     let mut frontier: Vec<(PathBuf, bool)> = vec![(root.to_path_buf(), false)];
     while !frontier.is_empty() {
-        // Borrow the index shared only for this block, so the mutable update below
-        // does not overlap the parallel read.
-        let level: Vec<AllDir> = {
-            let index_read = index.as_deref();
-            frontier
-                .par_iter()
-                .map(|(dir, covered_from_above)| {
-                    read_dir_all(root, dir, *covered_from_above, settings, index_read)
-                })
-                .collect()
-        };
+        // Read the level in parallel. The index is interior-mutable, so the
+        // shared reference works for both the lookups inside `read_dir_all`
+        // and the inserts in the sequential pass below.
+        let level: Vec<AllDir> = frontier
+            .par_iter()
+            .map(|(dir, covered_from_above)| {
+                read_dir_all(root, dir, *covered_from_above, settings, index)
+            })
+            .collect();
         let mut next = Vec::new();
         for mut dir in level {
             stats.dirs_visited += dir.stats.dirs_visited;
             stats.entries_seen += dir.stats.entries_seen;
             stats.dirs_reused += dir.stats.dirs_reused;
-            if let Some(index) = index.as_deref_mut()
+            if let Some(index) = index
                 && let Some(cached) = dir.cache_update.take()
             {
                 index.insert(dir.path.clone(), cached);
@@ -433,10 +450,10 @@ fn read_dir_all(
 ) -> AllDir {
     if let Some(index) = index {
         if let Ok(mtime) = std::fs::metadata(dir).and_then(|m| m.modified()) {
-            if let Some(cached) = index.get(dir)
+            if let Some(cached) = index.get_cloned(dir)
                 && cached.mtime == mtime
             {
-                return reuse_dir_all(root, dir, covered_from_above, cached);
+                return reuse_dir_all(root, dir, covered_from_above, &cached);
             }
             return list_dir_all(root, dir, covered_from_above, settings, Some(mtime));
         }
@@ -646,7 +663,7 @@ mod tests {
     }
 
     fn flagged_set(root: &Path, settings: &ScanSettings) -> BTreeSet<String> {
-        scan_warm(root, settings, &mut DirIndex::new())
+        scan_warm(root, settings, &DirIndex::new())
             .0
             .iter()
             .filter(|f| f.directly_holds_audio && f.missing_ebook)
@@ -661,7 +678,7 @@ mod tests {
             .num_threads(threads)
             .build()
             .unwrap();
-        pool.install(|| scan_warm(root, settings, &mut DirIndex::new()).0)
+        pool.install(|| scan_warm(root, settings, &DirIndex::new()).0)
     }
 
     #[test]
@@ -716,8 +733,7 @@ mod tests {
             .num_threads(4)
             .build()
             .unwrap();
-        let (_flagged, stats) =
-            pool.install(|| scan_warm(dir.path(), &settings, &mut DirIndex::new()));
+        let (_flagged, stats) = pool.install(|| scan_warm(dir.path(), &settings, &DirIndex::new()));
         // root + AuthorA + Book1 + Book2.
         assert_eq!(stats.dirs_visited, 4);
     }
@@ -851,7 +867,7 @@ mod tests {
     }
 
     fn scanned(root: &Path, settings: &ScanSettings) -> BTreeMap<String, (bool, bool)> {
-        scan_warm(root, settings, &mut DirIndex::new())
+        scan_warm(root, settings, &DirIndex::new())
             .0
             .into_iter()
             .map(|f| {
@@ -972,7 +988,7 @@ mod tests {
     }
 
     fn cover_files_of(root: &Path, settings: &ScanSettings) -> BTreeMap<String, Vec<String>> {
-        scan_warm(root, settings, &mut DirIndex::new())
+        scan_warm(root, settings, &DirIndex::new())
             .0
             .into_iter()
             .map(|f| {
@@ -1029,7 +1045,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/02 - Two.mp3"));
         touch(&dir.path().join("Book/01 - One.mp3"));
-        let flagged = scan_warm(dir.path(), &default_settings(&[]), &mut DirIndex::new()).0;
+        let flagged = scan_warm(dir.path(), &default_settings(&[]), &DirIndex::new()).0;
         let book = flagged
             .iter()
             .find(|f| f.rel_path == Path::new("Book"))
@@ -1043,7 +1059,7 @@ mod tests {
         touch(&dir.path().join("Book/02 - Two.mp3"));
         touch(&dir.path().join("Book/10 - Ten.mp3"));
         touch(&dir.path().join("Book/01 - One.mp3"));
-        let folders = scan_warm(dir.path(), &default_settings(&[]), &mut DirIndex::new()).0;
+        let folders = scan_warm(dir.path(), &default_settings(&[]), &DirIndex::new()).0;
         let book = folders
             .iter()
             .find(|f| f.rel_path == Path::new("Book"))
@@ -1067,7 +1083,7 @@ mod tests {
         touch(&dir.path().join("Gap/02.mp3"));
         touch(&dir.path().join("Covered/01.mp3"));
         touch(&dir.path().join("Covered/Book.epub"));
-        let (_folders, stats) = scan_warm(dir.path(), &default_settings(&[]), &mut DirIndex::new());
+        let (_folders, stats) = scan_warm(dir.path(), &default_settings(&[]), &DirIndex::new());
         assert_eq!(stats.dirs_visited, 3); // root, Gap, Covered
         assert_eq!(stats.entries_seen, 6); // root sees 2 subdirs; Gap and Covered 2 files each
     }
@@ -1088,17 +1104,17 @@ mod tests {
         touch(&dir.path().join("AuthorB/Covered/Book.epub"));
         let settings = default_settings(&[]);
 
-        let baseline = scan_warm(dir.path(), &settings, &mut DirIndex::new()).0;
+        let baseline = scan_warm(dir.path(), &settings, &DirIndex::new()).0;
 
-        let mut index = DirIndex::new();
-        let (first, first_stats) = scan_warm(dir.path(), &settings, &mut index);
+        let index = DirIndex::new();
+        let (first, first_stats) = scan_warm(dir.path(), &settings, &index);
         assert_eq!(first, baseline, "the first warm walk equals the cold walk");
         assert_eq!(
             first_stats.dirs_reused, 0,
             "nothing to reuse on the first walk"
         );
 
-        let (second, second_stats) = scan_warm(dir.path(), &settings, &mut index);
+        let (second, second_stats) = scan_warm(dir.path(), &settings, &index);
         assert_eq!(
             second, baseline,
             "an unchanged rescan still equals the full walk"
@@ -1119,8 +1135,8 @@ mod tests {
         touch(&book.join("01.mp3"));
         let settings = default_settings(&[]);
 
-        let mut index = DirIndex::new();
-        let (first, _) = scan_warm(dir.path(), &settings, &mut index);
+        let index = DirIndex::new();
+        let (first, _) = scan_warm(dir.path(), &settings, &index);
         assert!(
             first.iter().any(|f| f.rel_path == Path::new("Author/Book")),
             "Author/Book starts as a gap"
@@ -1131,7 +1147,7 @@ mod tests {
         touch(&book.join("Book.epub"));
         set_file_mtime(&book, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
 
-        let (second, stats) = scan_warm(dir.path(), &settings, &mut index);
+        let (second, stats) = scan_warm(dir.path(), &settings, &index);
         let book_after = second
             .iter()
             .find(|f| f.rel_path == Path::new("Author/Book"))
@@ -1157,8 +1173,8 @@ mod tests {
         touch(&author.join("Book 1/01.mp3"));
         let settings = default_settings(&[]);
 
-        let mut index = DirIndex::new();
-        let (first, _) = scan_warm(dir.path(), &settings, &mut index);
+        let index = DirIndex::new();
+        let (first, _) = scan_warm(dir.path(), &settings, &index);
         assert!(
             first
                 .iter()
@@ -1177,7 +1193,7 @@ mod tests {
         touch(&author.join("Book 2/01.mp3"));
         set_file_mtime(&author, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
 
-        let (second, stats) = scan_warm(dir.path(), &settings, &mut index);
+        let (second, stats) = scan_warm(dir.path(), &settings, &index);
         assert!(
             second
                 .iter()
@@ -1202,8 +1218,8 @@ mod tests {
         touch(&author.join("Book 2/01.mp3"));
         let settings = default_settings(&[]);
 
-        let mut index = DirIndex::new();
-        let (first, _) = scan_warm(dir.path(), &settings, &mut index);
+        let index = DirIndex::new();
+        let (first, _) = scan_warm(dir.path(), &settings, &index);
         assert!(
             first
                 .iter()
@@ -1215,7 +1231,7 @@ mod tests {
         std::fs::remove_dir_all(author.join("Book 2")).unwrap();
         set_file_mtime(&author, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
 
-        let (second, _) = scan_warm(dir.path(), &settings, &mut index);
+        let (second, _) = scan_warm(dir.path(), &settings, &index);
         assert!(
             !second
                 .iter()
@@ -1246,7 +1262,7 @@ mod tests {
             exclude_globs: &[],
         })
         .unwrap();
-        let (_folders, stats) = scan_warm(dir.path(), &settings, &mut DirIndex::new());
+        let (_folders, stats) = scan_warm(dir.path(), &settings, &DirIndex::new());
         // @eaDir is pruned: root and Book are read, the excluded dir is not.
         assert_eq!(stats.dirs_visited, 2); // root, Book
         assert_eq!(stats.entries_seen, 3); // root sees @eaDir + Book; Book sees 01.mp3

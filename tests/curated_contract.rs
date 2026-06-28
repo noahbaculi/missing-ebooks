@@ -76,7 +76,7 @@ fn collect(nodes: &[Node], flagged: &mut BTreeSet<String>, containers: &mut BTre
 fn scanner_flagged_set_matches_the_contract() {
     let expected = load_expected();
     let root = fixture_dir().join("Audiobooks");
-    let folders = scan_warm(&root, &expected_settings(&expected), &mut DirIndex::new()).0;
+    let folders = scan_warm(&root, &expected_settings(&expected), &DirIndex::new()).0;
     let got: BTreeSet<String> = folders
         .iter()
         .filter(|f| f.directly_holds_audio && f.missing_ebook)
@@ -138,7 +138,7 @@ fn collect_all(nodes: &[Node], out: &mut BTreeMap<String, (bool, bool, Vec<Strin
 fn scan_and_build_match_the_contract() {
     let expected = load_expected();
     let root = fixture_dir().join("Audiobooks");
-    let folders = scan_warm(&root, &expected_settings(&expected), &mut DirIndex::new()).0;
+    let folders = scan_warm(&root, &expected_settings(&expected), &DirIndex::new()).0;
     let scan = RootScan::Walked {
         canonical_path: PathBuf::from("/Audiobooks"),
         folders,
