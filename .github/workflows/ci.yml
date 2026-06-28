@@ -47,13 +47,26 @@ jobs:
       - run: mise run test:accent
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --locked
+      - run: cargo test --benches --locked --no-run
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the MSRV toolchain
+        run: rustup toolchain install 1.96.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo +1.96.0 build --locked
 
   docker-entrypoint:
     runs-on: ubuntu-latest

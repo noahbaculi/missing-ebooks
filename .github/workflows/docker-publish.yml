@@ -11,18 +11,25 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # Gate: build the amd64 image, run it, and confirm it serves before any
+  # Gate: build the image, run it, and confirm it serves before any
   # multi-arch image reaches the registry.
   smoke:
-    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build amd64 image (load locally)
+      - name: Build image (load locally)
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           load: true
           tags: missing-ebooks:smoke
       - name: Run the image against a temp library
@@ -144,7 +151,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Create the manifest list and push
         working-directory: ${{ runner.temp }}/digests
