@@ -27,6 +27,10 @@ pub struct RootSection {
     /// `Error`. The web layer surfaces it as `data-total-audiobooks` on the
     /// section so the strip's library coverage stays current across swaps.
     pub total_audiobooks: usize,
+    /// Total gaps across this root's forest, precomputed by `build_forest` so
+    /// the summary strip and per-root chip read a number instead of walking
+    /// the tree. `Clean` and `Error` are zero by construction.
+    pub gaps_within: usize,
 }
 
 /// Build the per-mode `FlaggedView` from the cached raw scan output. The gaps
@@ -44,10 +48,16 @@ pub fn package_view(raw: &RawView, mode: ViewMode) -> FlaggedView {
 /// the snapshot path; `autosync::render_oob_section` calls it on the push
 /// path. Any future per-root field lands here once.
 pub fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
+    let state = tree::build(scan, mode);
+    let gaps_within = match &state {
+        RootState::Forest(nodes) => nodes.iter().map(|n| n.gaps_within).sum(),
+        RootState::Clean | RootState::Error(_) => 0,
+    };
     RootSection {
         path: scan.display_path().to_string(),
-        state: tree::build(scan, mode),
+        state,
         total_audiobooks: scan.audiobook_count(),
+        gaps_within,
     }
 }
 
@@ -118,25 +128,12 @@ pub fn render_view(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
     super::page::page(mode, body)
 }
 
-/// Count the gaps (`needs_ebook()` nodes) anywhere in a forest. Drives the root
-/// summary badge so a collapsed root still tells you how much is unresolved.
-fn count_gaps(nodes: &[Node]) -> usize {
-    nodes
-        .iter()
-        .map(|n| usize::from(n.needs_ebook()) + count_gaps(&n.children))
-        .sum()
-}
-
-/// Total gaps across all roots: the sum of `count_gaps` over each forest. `Clean`
-/// and `Error` roots contribute nothing. Feeds the summary hero and the session
-/// bar's load-time baseline.
+/// Total gaps across all roots: read directly from each section's
+/// precomputed `gaps_within`. `Clean` and `Error` roots contribute zero by
+/// construction. Feeds the summary hero and the session bar's load-time
+/// baseline.
 fn total_gaps(view: &FlaggedView) -> usize {
-    view.iter()
-        .map(|section| match &section.state {
-            RootState::Forest(nodes) => count_gaps(nodes),
-            RootState::Clean | RootState::Error(_) => 0,
-        })
-        .sum()
+    view.iter().map(|section| section.gaps_within).sum()
 }
 
 /// A root's short label: the last non-empty path segment, for the per-root chips.
@@ -215,8 +212,8 @@ fn gap_summary(view: &FlaggedView) -> Markup {
 fn root_chip(root: usize, section: &RootSection) -> Markup {
     html! {
         @match &section.state {
-            RootState::Forest(nodes) => {
-                @let n = count_gaps(nodes);
+            RootState::Forest(_) => {
+                @let n = section.gaps_within;
                 span.gap-chip data-root=(root) {
                     span.gap-chip-name { (root_label(&section.path)) }
                     span.gap-chip-num { (n) }
@@ -270,12 +267,12 @@ fn coverage_bar(covered: usize, total: usize, pct: usize) -> Markup {
 
 /// The badge shown on a root's summary: the gap count, a clean check, or a scan
 /// error. In show-all the forest also holds covered nodes, but only gaps are
-/// counted.
-fn root_badge(state: &RootState) -> Markup {
+/// counted; reads the precomputed `section.gaps_within`.
+fn root_badge(section: &RootSection) -> Markup {
     html! {
-        @match state {
-            RootState::Forest(nodes) => {
-                @let n = count_gaps(nodes);
+        @match &section.state {
+            RootState::Forest(_) => {
+                @let n = section.gaps_within;
                 @if n == 0 {
                     span.root-badge.root-badge-clean { "\u{2713} no gaps" }
                 } @else if n == 1 {
@@ -314,7 +311,7 @@ pub(crate) fn render_section(
                     (chevron())
                     h2 { (section.path) }
                     span.spring {}
-                    (root_badge(&section.state))
+                    (root_badge(section))
                 }
                 @if let Some(message) = error {
                     div.alert.alert-error { (PreEscaped(include_str!("../../assets/svg/error.svg"))) span { (message) } }
@@ -650,6 +647,7 @@ mod tests {
             path: "/some/root".to_string(),
             state: RootState::Clean,
             total_audiobooks: 0,
+            gaps_within: 0,
         };
         let html = single_oob_section(&section, 3, &[], ViewMode::GapsOnly).into_string();
 
@@ -689,6 +687,7 @@ mod tests {
             children: Vec::new(),
             cover_files: Vec::new(),
             audio_files: audio.iter().map(|s| (*s).into()).collect(),
+            gaps_within: 1,
         }
     }
 
@@ -703,11 +702,13 @@ mod tests {
             children: Vec::new(),
             cover_files: cover_files.iter().map(|s| (*s).into()).collect(),
             audio_files: Vec::new(),
+            gaps_within: 0,
         }
     }
 
     /// A container row: no audio of its own, holds children.
     fn container(name: &str, rel: &str, children: Vec<Node>) -> Node {
+        let gaps_within = children.iter().map(|c| c.gaps_within).sum();
         Node {
             name: name.into(),
             rel_path: rel.into(),
@@ -716,6 +717,7 @@ mod tests {
             children,
             cover_files: Vec::new(),
             audio_files: Vec::new(),
+            gaps_within,
         }
     }
 
@@ -727,10 +729,15 @@ mod tests {
     /// One library root labeled with its display path, the given state, and
     /// the audiobook count `render_section` emits as `data-total-audiobooks`.
     fn section(path: &str, state: RootState, total: usize) -> RootSection {
+        let gaps_within = match &state {
+            RootState::Forest(nodes) => nodes.iter().map(|n| n.gaps_within).sum(),
+            RootState::Clean | RootState::Error(_) => 0,
+        };
         RootSection {
             path: path.into(),
             state,
             total_audiobooks: total,
+            gaps_within,
         }
     }
 
@@ -858,6 +865,7 @@ mod tests {
             )],
             cover_files: Vec::new(),
             audio_files: vec!["01.mp3".into()],
+            gaps_within: 2,
         };
 
         let view = vec![section("/lib", forest(vec![loose, mixed]), 3)];
@@ -929,6 +937,7 @@ mod tests {
             )],
             cover_files: Vec::new(),
             audio_files: vec!["01 - The Colour of Magic.mp3".into()],
+            gaps_within: 2,
         };
         let view = vec![section("/lib", forest(vec![mixed]), 2)];
         let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
@@ -1769,11 +1778,12 @@ mod tests {
             path: "/lib".to_string(),
             state: RootState::Clean,
             total_audiobooks: 0,
+            gaps_within: 0,
         };
         let value = serde_json::to_value(&section).unwrap();
         assert_eq!(
             value,
-            serde_json::json!({ "path": "/lib", "state": "clean", "total_audiobooks": 0 })
+            serde_json::json!({ "path": "/lib", "state": "clean", "total_audiobooks": 0, "gaps_within": 0 })
         );
     }
 

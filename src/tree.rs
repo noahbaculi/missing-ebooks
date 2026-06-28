@@ -36,6 +36,10 @@ pub struct Node {
     /// Audio filenames that physically sit in this folder, natural-sorted. Non-empty
     /// only where the folder directly holds audio; the file display reads it.
     pub audio_files: Vec<String>,
+    /// Count of gaps in this subtree: this node's own `needs_ebook()` plus
+    /// every descendant's. Precomputed once during `build_forest` so render
+    /// reads it instead of re-walking. `has_gap_within()` is `gaps_within > 0`.
+    pub gaps_within: usize,
 }
 
 impl Node {
@@ -50,7 +54,7 @@ impl Node {
     /// marker buttons and search links appear only where there is a gap to act on.
     #[must_use]
     pub fn has_gap_within(&self) -> bool {
-        self.needs_ebook() || self.children.iter().any(Node::has_gap_within)
+        self.gaps_within > 0
     }
 }
 
@@ -197,10 +201,24 @@ fn build_forest(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> V
                 children: Vec::new(),
                 cover_files: entry.cover_files.clone(),
                 audio_files: entry.audio_files.clone(),
+                gaps_within: 0,
             },
         );
     }
+    fill_gaps_within(&mut roots);
     roots
+}
+
+/// Fill `Node::gaps_within` bottom-up: each node's own gap plus the sum of its
+/// children's totals. Render reads the field instead of re-walking the forest.
+fn fill_gaps_within(nodes: &mut [Node]) -> usize {
+    let mut total = 0;
+    for node in nodes.iter_mut() {
+        let below = fill_gaps_within(&mut node.children);
+        node.gaps_within = usize::from(node.needs_ebook()) + below;
+        total += node.gaps_within;
+    }
+    total
 }
 
 fn insert_all(
@@ -227,6 +245,7 @@ fn insert_all(
                 children: Vec::new(),
                 cover_files: Vec::new(),
                 audio_files: Vec::new(),
+                gaps_within: 0,
             });
             siblings.len() - 1
         }
@@ -321,6 +340,7 @@ mod tests {
                 children: Vec::new(),
                 cover_files: Vec::new(),
                 audio_files: Vec::new(),
+                gaps_within: 0,
             };
             assert_eq!(node.needs_ebook(), want, "audio={audio} missing={missing}");
         }
@@ -395,6 +415,7 @@ mod tests {
             children: Vec::new(),
             cover_files: Vec::new(),
             audio_files: Vec::new(),
+            gaps_within: 1,
         }
     }
 
@@ -556,9 +577,11 @@ mod tests {
                     children: Vec::new(),
                     cover_files: Vec::new(),
                     audio_files: Vec::new(),
+                    gaps_within: 1,
                 }],
                 cover_files: Vec::new(),
                 audio_files: Vec::new(),
+                gaps_within: 1,
             },
             Node {
                 name: "Series".to_string(),
@@ -574,6 +597,7 @@ mod tests {
                         children: Vec::new(),
                         cover_files: Vec::new(),
                         audio_files: Vec::new(),
+                        gaps_within: 0,
                     },
                     Node {
                         name: "Book 2".to_string(),
@@ -583,6 +607,7 @@ mod tests {
                         children: Vec::new(),
                         cover_files: Vec::new(),
                         audio_files: Vec::new(),
+                        gaps_within: 0,
                     },
                     Node {
                         name: "Book 10".to_string(),
@@ -592,10 +617,12 @@ mod tests {
                         children: Vec::new(),
                         cover_files: Vec::new(),
                         audio_files: Vec::new(),
+                        gaps_within: 0,
                     },
                 ],
                 cover_files: vec!["Series.epub".to_string()],
                 audio_files: Vec::new(),
+                gaps_within: 0,
             },
         ];
         assert_eq!(got, expected);
@@ -635,6 +662,7 @@ mod tests {
                     children: Vec::new(),
                     cover_files: Vec::new(),
                     audio_files: vec!["01.mp3".to_string()],
+                    gaps_within: 1,
                 },
                 Node {
                     name: "Book 10".to_string(),
@@ -644,10 +672,12 @@ mod tests {
                     children: Vec::new(),
                     cover_files: Vec::new(),
                     audio_files: vec!["01.mp3".to_string()],
+                    gaps_within: 1,
                 },
             ],
             cover_files: Vec::new(),
             audio_files: Vec::new(),
+            gaps_within: 2,
         }];
         assert_eq!(unified, expected);
     }
@@ -662,6 +692,7 @@ mod tests {
             children: vec![gap_leaf("B", "A/B")],
             cover_files: Vec::new(),
             audio_files: Vec::new(),
+            gaps_within: 1,
         };
         assert!(container.has_gap_within(), "a descendant gap counts");
 
@@ -678,9 +709,11 @@ mod tests {
                 children: Vec::new(),
                 cover_files: Vec::new(),
                 audio_files: Vec::new(),
+                gaps_within: 0,
             }],
             cover_files: Vec::new(),
             audio_files: Vec::new(),
+            gaps_within: 0,
         };
         assert!(!covered.has_gap_within(), "a fully covered branch has none");
     }
