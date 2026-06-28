@@ -1,6 +1,6 @@
 # A marker write swaps one section with vendored htmx, not a full reload
 
-> Amended 2026-06-26 by ADR-0028: the `service::mark` symbol cited below was inlined into the `web::mark` handler in `src/web.rs`.
+> Amended 2026-06-26 by ADR-0028: the the `web::mark` handler symbol cited below was inlined into the `web::mark` handler in `src/web.rs`.
 
 Date: 2026-06-06.
 
@@ -10,7 +10,7 @@ Superseded in part by ADR-0018 (commit `236073e`): the implicit progressive-enha
 
 ## Decision
 
-After a marker write succeeds, the page replaces only the affected root's `<section>`. The two buttons on each node row POST to `/mark` and target the closest `section.root`, swapping the server's response in as the new section (`hx-target="closest section.root"`, `hx-swap="outerHTML"`). The handler renders just that one section, which `service::mark` has already updated in memory, so the swap costs nothing past rendering a single root.
+After a marker write succeeds, the page replaces only the affected root's `<section>`. The two buttons on each node row POST to `/mark` and target the closest `section.root`, swapping the server's response in as the new section (`hx-target="closest section.root"`, `hx-swap="outerHTML"`). The handler renders just that one section, which the `web::mark` handler has already updated in memory, so the swap costs nothing past rendering a single root.
 
 ADR-0018 later moved rescan onto the same htmx POST path as every other button (no full-page reload). A marker write is the case this ADR scopes: it changes one folder in one root and leaves the rest alone. Reloading the whole page would re-render every root and lose the open or closed state of the `<details>` elements the user has expanded. Swapping one section keeps that state and keeps the click responsive on a library with many roots.
 

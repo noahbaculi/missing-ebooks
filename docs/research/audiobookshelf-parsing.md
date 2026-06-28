@@ -2,6 +2,8 @@
 
 How Audiobookshelf (ABS, [advplyr/audiobookshelf](https://github.com/advplyr/audiobookshelf)) classifies audio and ebook files by extension. We mirror these lists in `src/config.rs`.
 
+Snapshot as of 2026-06-05, not a maintained reference; audiobookshelf's parsing may have changed since.
+
 > [!NOTE]
 > Sourced from the `master` branch as of 2026-06-05. The lists below have been stable, but a tagged release a user runs could differ. Treat `server/utils/globals.js` in source as the authoritative list rather than the docs site, which doesn't publish a complete extension table.
 

@@ -1,5 +1,7 @@
 # ADR-0024: Autosync pushes are per-root section OOB swaps
 
+> Amended 2026-06-25 by ADR-0030: "snapshot before subscribe" narrows to "ack before subscribe, snapshot before subscribe when sent." The per-section seed hashes still feed `subscribe_and_seed` in both branches; loop-level first-tick dedup is unaffected.
+
 Date: 2026-06-21.
 
 ## Context
@@ -27,7 +29,3 @@ The per-broadcast dedup is computed from the packaged section (`web::render::Roo
 - **Per-row OOB swap**: minimal DOM churn but a real refactor; revisit if real workloads show section-level swaps cause noticeable jank.
 - **Push a "rescanned" event and let the client GET /**: simplest server but defeats the point because the client does the work and the page flickers.
 - **Push every section every tick**: see ADR-0023.
-
-## Amendment (2026-06-25)
-
-ADR-0030 narrows "snapshot before subscribe" to "ack before subscribe, and snapshot before subscribe when sent." The ack-first invariant always holds; the snapshot is sent only when the request carries `Last-Event-ID`. The per-section seed hashes still feed `subscribe_and_seed` in both branches, so the loop's first-tick dedup behaves as this ADR specifies regardless of whether the snapshot crossed the wire.

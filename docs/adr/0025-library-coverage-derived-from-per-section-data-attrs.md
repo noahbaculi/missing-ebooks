@@ -14,7 +14,7 @@ The total audiobook count per root rides to the browser as `data-total-audiobook
 
 The strip carries two readouts that `app.js` toggles between on the same recompute. The head holds `{pct}% covered · {covered} of {total} audiobooks` with the progress bar when gaps remain; the all-clear line carries a trailing ` · 100% covered ({T} of {T} audiobooks)` fragment when the library has audiobooks but no gaps, and stays bare when the library is empty (so the line never reads "0 of 0"). The all-clear tail's two numeric values ride in their own child spans so `app.js` only rewrites the digits and the surrounding wording lives once in the server template. The head readout floors the percent so 199 of 200 reads "99% covered" next to a hero "1 gap to fill", never a false "100%" while gaps remain.
 
-A small `scanner::RootScan::audiobook_count(&self) -> usize` method filters the raw `Vec<ScannedFolder>` already in the cache (ADR-0022). One `service::render_section_from_raw(scan, mode)` packages a `RootScan` with its rendered state and audiobook total; both `render_view` (snapshot path) and `autosync::render_oob_section` (push path) call it, so any future per-root field lands in one place. `render_section` emits the attribute on the section open tag.
+A small `scanner::RootScan::audiobook_count(&self) -> usize` method filters the raw `Vec<ScannedFolder>` already in the cache (ADR-0022). One `web::render::package_section(scan, mode)` packages a `RootScan` with its rendered state and audiobook total; both `render_view` (snapshot path) and `autosync::render_oob_section` (push path) call it, so any future per-root field lands in one place. `render_section` emits the attribute on the section open tag.
 
 ## Consequences
 
@@ -22,7 +22,7 @@ The coverage readout rides every existing swap channel: a mark replaces the clos
 
 The cost is one filter over the raw vec per render per root. On `mixed-forest` (81 folders across three roots) this is negligible; on a 10k-folder library it is one pass over 10k entries, well under the 25 ms render gate ADR-0022 measured.
 
-The pattern matches the chip and hero updaters, which also count off the DOM. Future per-root coverage on the chips, if it lands, reuses the same data attribute. A future per-root field on `RootSection` (per-root coverage, last-scanned timestamp) only has to thread through `render_section_from_raw`.
+The pattern matches the chip and hero updaters, which also count off the DOM. Future per-root coverage on the chips, if it lands, reuses the same data attribute. A future per-root field on `RootSection` (per-root coverage, last-scanned timestamp) only has to thread through `package_section`.
 
 ## Alternatives considered
 
