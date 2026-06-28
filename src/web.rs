@@ -20,7 +20,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::config::SearchLink;
 use crate::marker::Marker;
-use crate::raw_view::RawView;
+use crate::state::RawView;
 use crate::state::{AppState, WriteFailure};
 use crate::tree::ViewMode;
 

@@ -1,6 +1,6 @@
 //! The MarkOverlay: a borrowing view over the session's mark set that the
 //! demo render path consults per folder, replacing the clone-and-replay
-//! `derive_view` shape. The semantic oracle is `crate::raw_view::apply_mark_raw`;
+//! `derive_view` shape. The semantic oracle is `crate::state::apply_mark_raw`;
 //! the equivalence test pins byte-for-byte parity.
 
 use std::collections::HashSet;
@@ -8,7 +8,7 @@ use std::path::Path;
 
 use crate::demo::session::MarkKey;
 use crate::marker::Marker;
-use crate::raw_view::RawView;
+use crate::state::RawView;
 use crate::tree::ViewMode;
 use crate::web::render::FlaggedView;
 
@@ -205,7 +205,7 @@ mod tests {
                 .filter(|(root, rel, _)| folder_in_raw(&raw_replay, *root, rel))
                 .collect();
             for (root, rel, kind) in &valid_marks {
-                crate::raw_view::apply_mark_raw(&mut raw_replay, *root, rel, *kind);
+                crate::state::apply_mark_raw(&mut raw_replay, *root, rel, *kind);
             }
             let replay_view = package_view(&raw_replay, mode);
             let replay_html = render_view(&replay_view, &links, mode).into_string();

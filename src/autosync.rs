@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
-use crate::raw_view;
+use crate::state;
 use crate::tree::ViewMode;
 
 /// Diff each section's content hash against `last_content_hash` and return the
@@ -30,7 +30,7 @@ use crate::tree::ViewMode;
 /// `has_subs[mode]` short-circuits modes nobody is listening to: their hashes
 /// stay untouched and they produce no pushes.
 fn compute_pushes(
-    raw: &raw_view::RawView,
+    raw: &state::RawView,
     last_content_hash: &mut EnumMap<ViewMode, Vec<Option<u64>>>,
     has_subs: EnumMap<ViewMode, bool>,
     links: &[crate::config::SearchLink],
@@ -109,7 +109,7 @@ fn section_content_hash(section: &crate::web::render::RootSection) -> u64 {
 /// hashes to `Autosync::subscribe` so the loop's first compute_pushes finds
 /// matching hashes and emits nothing until something actually changes.
 fn snapshot_and_seed(
-    raw: &raw_view::RawView,
+    raw: &state::RawView,
     mode: ViewMode,
     links: &[crate::config::SearchLink],
 ) -> (String, Vec<u64>) {
@@ -216,7 +216,7 @@ impl Autosync {
     /// Build an empty registry. The loop is not spawned until the first
     /// subscriber arrives, even when `autosync_interval_seconds > 0`.
     #[must_use]
-    pub fn new(autosync_interval_seconds: u64) -> Self {
+    pub(crate) fn new(autosync_interval_seconds: u64) -> Self {
         let inner = AutosyncInner {
             subs: EnumMap::default(),
             last_content_hash: EnumMap::default(),
@@ -350,9 +350,9 @@ impl Autosync {
 /// Lock the autosync inner mutex, recovering the guard when a previous
 /// holder panicked. The registry is insert/remove only and remains valid
 /// after a poisoned guard, so recovery beats wedging the SSE loop on a
-/// transient render panic. Mirrors `crate::raw_view::lock_index`; this
-/// variant logs a warn because a poisoned autosync registry typically
-/// indicates a render or sender bug worth surfacing.
+/// transient render panic. The poison-recovery pattern duplicates `DirIndex`'s
+/// internal lock recovery; this variant logs a warn because a poisoned autosync
+/// registry typically indicates a render or sender bug worth surfacing.
 fn lock_inner(inner: &StdMutex<AutosyncInner>) -> std::sync::MutexGuard<'_, AutosyncInner> {
     inner.lock().unwrap_or_else(|poisoned| {
         tracing::warn!("autosync inner mutex poisoned; recovering");
@@ -470,7 +470,7 @@ mod tests {
         }
     }
 
-    fn raw_view_of(roots: Vec<RootScan>) -> raw_view::RawView {
+    fn raw_view_of(roots: Vec<RootScan>) -> state::RawView {
         roots
     }
 

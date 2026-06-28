@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config::{Config, SearchLink};
-use crate::raw_view::{RawView, build_view};
 use crate::scanner::{DirIndex, ScanSettings};
+use crate::state::{RawView, build_view};
 
 use super::session::SessionStore;
 
@@ -50,7 +50,8 @@ impl DemoState {
     /// Poison means a previous thread panicked while holding the lock. The
     /// session table itself is intact as far as the surviving thread can
     /// tell, so we proceed with a `tracing::warn` rather than propagate the
-    /// panic. Mirrors `raw_view::lock_index` and `autosync::lock_inner`.
+    /// panic. The poison-recovery pattern duplicates `DirIndex`'s internal lock
+    /// recovery and `autosync::lock_inner`.
     pub(crate) fn lock_sessions(&self) -> std::sync::MutexGuard<'_, SessionStore> {
         self.sessions.lock().unwrap_or_else(|poisoned| {
             tracing::warn!("demo session mutex poisoned; recovering");
@@ -91,7 +92,7 @@ pub async fn build_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::raw_view::RawView;
+    use crate::state::RawView;
 
     /// Build a minimal DemoState whose base_raw is empty (no roots). Enough
     /// to exercise the session-store lock. No scan runs.

@@ -18,8 +18,8 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use tokio::sync::mpsc;
 
-use crate::raw_view::RawView;
 use crate::scanner;
+use crate::state::RawView;
 use crate::tree::ViewMode;
 use crate::web::assets::{app_css, app_js, htmx_script, htmx_sse_script};
 use crate::web::render::render_view as render_view_html;
