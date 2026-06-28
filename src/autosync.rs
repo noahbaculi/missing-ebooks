@@ -128,6 +128,18 @@ fn snapshot_and_seed(
     (payload, hashes)
 }
 
+/// The per-root seed hashes a non-snapshot subscriber carries, computed
+/// without rendering the OOB payload it would never send. Mirrors
+/// `snapshot_and_seed`'s hashing so the seed agrees with `compute_pushes`.
+fn seed_hashes(raw: &state::RawView, mode: ViewMode) -> Vec<u64> {
+    raw.iter()
+        .map(|scan| {
+            let section = crate::web::render::package_section(scan, mode);
+            section_content_hash(&section)
+        })
+        .collect()
+}
+
 /// Establish one SSE subscription and return the receiver the handler will
 /// stream to the client. Owns the handshake (channel construction, ack send,
 /// raw read, conditional snapshot send, registry subscription with seed
@@ -151,25 +163,26 @@ pub(crate) async fn attach(
     // follows now. See ADR-0030.
     let _ = tx.send(crate::web::ack_event()).await;
 
-    // Build the snapshot payload and per-root seed hashes from the same raw
-    // view, so the loop's first tick suppresses redundant section events for
-    // sections the snapshot already carried (ADR-0024). The snapshot HTML is
-    // computed even when send_snapshot is false; the cost is one render per
-    // root off the user's critical path. A future split into a seed-only
-    // path can reclaim it if profiling shows it matters.
+    // On a connect that sends the snapshot, render once and seed from the
+    // same package call so the loop's first tick sees matching hashes
+    // (ADR-0024). On a reconnect that carries Last-Event-ID, the snapshot
+    // would be discarded, so skip the per-root OOB render and seed from the
+    // hash alone.
     let raw = state.store.current().await;
-    let (snapshot, seed_hashes) = snapshot_and_seed(&raw, mode, &state.config.search_links);
-
-    if send_snapshot {
+    let seed_hashes = if send_snapshot {
+        let (snapshot, hashes) = snapshot_and_seed(&raw, mode, &state.config.search_links);
         // Bumping the render count here keeps it consistent with the
         // snapshot_and_seed render the autosync loop's accounting expects.
         // Only the snapshot path bumps the counter, since that is the only
         // branch whose render reaches a subscriber.
         lock_inner(&state.autosync.inner)
             .render_count
-            .fetch_add(seed_hashes.len() as u64, Ordering::Relaxed);
+            .fetch_add(hashes.len() as u64, Ordering::Relaxed);
         let _ = tx.send(crate::web::snapshot_event(snapshot)).await;
-    }
+        hashes
+    } else {
+        seed_hashes(&raw, mode)
+    };
 
     // Subscribe in both branches so the loop's first tick suppresses
     // redundant section events for sections the inline render or the

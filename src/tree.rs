@@ -168,11 +168,11 @@ fn build_forest(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> V
     let mut roots: Vec<Node> = Vec::new();
     let mut root_entry: Option<&crate::scanner::ScannedFolder> = None;
     for folder in folders {
-        let components: Vec<String> = folder
+        let components: Vec<std::borrow::Cow<'_, str>> = folder
             .rel_path
             .components()
             .filter_map(|c| match c {
-                Component::Normal(os) => Some(os.to_string_lossy().into_owned()),
+                Component::Normal(os) => Some(os.to_string_lossy()),
                 _ => None,
             })
             .collect();
@@ -223,19 +223,19 @@ fn fill_gaps_within(nodes: &mut [Node]) -> usize {
 
 fn insert_all(
     siblings: &mut Vec<Node>,
-    components: &[String],
+    components: &[std::borrow::Cow<'_, str>],
     parent_rel: &str,
     folder: &crate::scanner::ScannedFolder,
 ) {
     let Some((head, tail)) = components.split_first() else {
         return;
     };
-    let rel_path = child_rel(parent_rel, head);
-    let idx = match siblings.iter().position(|n| &n.name == head) {
+    let rel_path = child_rel(parent_rel, head.as_ref());
+    let idx = match siblings.iter().position(|n| n.name == head.as_ref()) {
         Some(i) => i,
         None => {
             siblings.push(Node {
-                name: head.clone(),
+                name: head.clone().into_owned(),
                 rel_path: rel_path.clone(),
                 // Placeholder facts, overwritten when this folder's own entry is
                 // processed. `scan` emits every folder, so that always happens.

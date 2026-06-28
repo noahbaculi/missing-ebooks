@@ -10,39 +10,45 @@
 /// Bracket handling is lenient: a single depth counter spans `()`, `[]`, and
 /// `{}`, so a stray closer is ignored and an unclosed opener drops the rest of
 /// the name. Folder names are rarely malformed, so this is good enough.
+///
+/// One pass: handles brackets, separator-to-space normalization, and run
+/// collapse together. A space is held back as `pending_space` until the next
+/// real character lands, so trailing separators never reach the output and
+/// runs collapse to one. Only the bracket-fallback and the leading-`-` trim
+/// remain after the loop.
 #[must_use]
 pub(crate) fn clean_query(name: &str) -> String {
-    // 1. Drop (...), [...], and {...} segments. One depth counter spans all three
-    //    bracket kinds, so nested segments fall out together. No regex crate needed.
+    let mut out = String::with_capacity(name.len());
     let mut depth: usize = 0;
-    let mut without_brackets = String::with_capacity(name.len());
+    let mut pending_space = false;
     for ch in name.chars() {
         match ch {
             '(' | '[' | '{' => depth += 1,
             ')' | ']' | '}' => depth = depth.saturating_sub(1),
-            _ if depth == 0 => without_brackets.push(ch),
-            _ => {}
+            _ if depth > 0 => {}
+            // `_`, `.`, and whitespace all normalize to a single deferred space.
+            ' ' | '\t' | '_' | '.' => {
+                if !out.is_empty() {
+                    pending_space = true;
+                }
+            }
+            _ if ch.is_whitespace() => {
+                if !out.is_empty() {
+                    pending_space = true;
+                }
+            }
+            _ => {
+                if pending_space {
+                    out.push(' ');
+                    pending_space = false;
+                }
+                out.push(ch);
+            }
         }
     }
-
-    // 2. Normalize `_` and `.` to spaces. Folder names are usually space-separated
-    //    but not always. The swap is byte-length-preserving, so the input length
-    //    pre-sizes the output exactly.
-    let mut spaced = String::with_capacity(without_brackets.len());
-    spaced.extend(
-        without_brackets
-            .chars()
-            .map(|c| if c == '_' || c == '.' { ' ' } else { c }),
-    );
-
-    // 3. Collapse whitespace runs to single spaces, then 4. trim the ends and any
-    //    dangling separator punctuation. After step 2 only `-` can still dangle;
-    //    `_` and `.` are listed defensively in case the order ever changes.
-    let collapsed = spaced.split_whitespace().collect::<Vec<_>>().join(" ");
-    let trimmed =
-        collapsed.trim_matches(|c: char| c.is_whitespace() || matches!(c, '-' | '_' | '.'));
-
-    // 5. Fall back to the raw name when cleaning empties the string.
+    // The deferred space never lands at the tail; only a leading `-` (which
+    // is not in the separator set above, so the pass kept it) needs trimming.
+    let trimmed = out.trim_matches(|c: char| c.is_whitespace() || matches!(c, '-' | '_' | '.'));
     if trimmed.is_empty() {
         name.to_string()
     } else {
