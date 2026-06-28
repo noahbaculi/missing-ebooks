@@ -121,8 +121,8 @@ enum Mode {
     Warm,
     /// Five concurrent `RawViewStore::current()` calls against a fresh store
     /// over the configured roots. With single-flight cold builds the wall time
-    /// tracks one scan; without it, five. The unit invariant (one rebuild
-    /// per cold burst) is pinned by `state::tests`; this is the wall-time
+    /// tracks one scan. Without it, five. The unit invariant (one rebuild
+    /// per cold burst) is pinned by `state::tests`. This is the wall-time
     /// view for the maintainer.
     Concurrent,
 }
@@ -140,7 +140,7 @@ impl Mode {
 }
 
 /// Map `--mode`: one keyword or a comma-separated list, e.g. `full,warm`.
-/// `every` expands to all listing-walk modes (full, gaps, warm); `concurrent`
+/// `every` expands to all listing-walk modes (full, gaps, warm). `concurrent`
 /// is opt-in because it builds a tokio runtime and a full `RawViewStore`,
 /// which the other modes do not need. Duplicates collapse, first occurrence
 /// wins, so the listed order is the report order. `all` is not a keyword:
@@ -578,9 +578,9 @@ fn run_warm(
 /// Concurrent cold-cache scenario: fire `concurrency` simultaneous
 /// `RawViewStore::current()` calls and report the wall clock to last-done.
 /// With single-flight cold builds the callers coalesce onto one walk and the
-/// wall time tracks one scan; without it, the locked-across-await cache
+/// wall time tracks one scan. Without it, the locked-across-await cache
 /// serializes them and the wall time tracks `concurrency` scans. The unit
-/// invariant (one rebuild per cold burst) is pinned by `state::tests`; this
+/// invariant (one rebuild per cold burst) is pinned by `state::tests`. This
 /// is the wall-time view for the maintainer.
 fn run_concurrent(
     root: &Path,
@@ -1215,7 +1215,7 @@ mod tests {
         assert_eq!(parse_modes("full"), Ok(vec![Mode::Full]));
         assert_eq!(parse_modes("warm"), Ok(vec![Mode::Warm]));
         assert_eq!(parse_modes("concurrent"), Ok(vec![Mode::Concurrent]));
-        // `every` expands to the listing-walk modes, in report order; the
+        // `every` expands to the listing-walk modes, in report order. The
         // concurrent burst is opt-in because it builds a tokio runtime.
         assert_eq!(
             parse_modes("every"),

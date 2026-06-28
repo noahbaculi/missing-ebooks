@@ -267,7 +267,7 @@ fn coverage_bar(covered: usize, total: usize, pct: usize) -> Markup {
 
 /// The badge shown on a root's summary: the gap count, a clean check, or a scan
 /// error. In show-all the forest also holds covered nodes, but only gaps are
-/// counted; reads the precomputed `section.gaps_within`.
+/// counted. Reads the precomputed `section.gaps_within`.
 fn root_badge(section: &RootSection) -> Markup {
     html! {
         @match &section.state {

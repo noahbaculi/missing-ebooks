@@ -364,7 +364,7 @@ impl Autosync {
 /// holder panicked. The registry is insert/remove only and remains valid
 /// after a poisoned guard, so recovery beats wedging the SSE loop on a
 /// transient render panic. The poison-recovery pattern duplicates `DirIndex`'s
-/// internal lock recovery; this variant logs a warn because a poisoned autosync
+/// internal lock recovery. This variant logs a warn because a poisoned autosync
 /// registry typically indicates a render or sender bug worth surfacing.
 fn lock_inner(inner: &StdMutex<AutosyncInner>) -> std::sync::MutexGuard<'_, AutosyncInner> {
     inner.lock().unwrap_or_else(|poisoned| {

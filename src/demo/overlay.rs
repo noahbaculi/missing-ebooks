@@ -1,7 +1,7 @@
 //! The MarkOverlay: a borrowing view over the session's mark set that the
 //! demo render path consults per folder, replacing the clone-and-replay
-//! `derive_view` shape. The semantic oracle is `crate::state::apply_mark_raw`;
-//! the equivalence test pins byte-for-byte parity.
+//! `derive_view` shape. The semantic oracle is `crate::state::apply_mark_raw`.
+//! The equivalence test pins byte-for-byte parity.
 
 use std::collections::HashSet;
 use std::path::Path;

@@ -46,7 +46,7 @@ pub(crate) fn clean_query(name: &str) -> String {
             }
         }
     }
-    // The deferred space never lands at the tail; only a leading `-` (which
+    // The deferred space never lands at the tail. Only a leading `-` (which
     // is not in the separator set above, so the pass kept it) needs trimming.
     let trimmed = out.trim_matches(|c: char| c.is_whitespace() || matches!(c, '-' | '_' | '.'));
     if trimmed.is_empty() {

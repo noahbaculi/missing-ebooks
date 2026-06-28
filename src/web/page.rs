@@ -645,7 +645,7 @@ mod tests {
     #[test]
     fn index_renders_the_mark_warn_template() {
         // The mark-failure strip's warn glyph is served once from a hidden
-        // <template>; app.js clones it per failure (M50). The template id is
+        // <template>. app.js clones it per failure (M50). The template id is
         // the wire contract between the markup and the script.
         let html = mark_warn_template().into_string();
         assert!(html.contains(r#"id="mark-warn-tpl""#));

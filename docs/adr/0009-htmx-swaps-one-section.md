@@ -1,6 +1,6 @@
 # A marker write swaps one section with vendored htmx, not a full reload
 
-> Amended 2026-06-26 by ADR-0028: the the `web::mark` handler symbol cited below was inlined into the `web::mark` handler in `src/web.rs`.
+> Amended 2026-06-26 by ADR-0028: the `service::mark` symbol cited below was inlined into the `web::mark` handler in `src/web.rs`.
 
 Date: 2026-06-06.
 

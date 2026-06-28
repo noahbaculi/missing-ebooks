@@ -35,7 +35,7 @@ pub(crate) fn apply_mark_raw(raw: &mut RawView, root: usize, rel: &str, marker: 
         return;
     };
     let scanner::RootScan::Walked { folders, .. } = section else {
-        // A Failed section has no folders to flip; the next rescan will
+        // A Failed section has no folders to flip. The next rescan will
         // reflect the marker on disk when the slot rebuilds.
         return;
     };
@@ -55,7 +55,7 @@ pub(crate) fn apply_mark_raw(raw: &mut RawView, root: usize, rel: &str, marker: 
             add_marker(&mut folder.cover_files, marker);
         } else if folder.rel_path.starts_with(&marked) {
             // PathBuf::starts_with is component-aware, so Author does not match
-            // Authority/X; this is the correctness pin against a naive str cmp.
+            // Authority/X. This is the correctness pin against a naive str cmp.
             folder.missing_ebook = false;
         }
     }
@@ -65,7 +65,7 @@ fn add_marker(cover_files: &mut std::sync::Arc<[String]>, marker: Marker) {
     let name = marker.filename().to_string();
     if !cover_files.iter().any(|existing| existing == &name) {
         // An Arc<[String]> is fixed-length, so rebuild on the rare mark. The
-        // hot path is the read side, which clones a pointer; this path runs
+        // hot path is the read side, which clones a pointer. This path runs
         // only on the user clicking a marker button.
         let mut next: Vec<String> = cover_files.to_vec();
         next.push(name);
@@ -75,7 +75,7 @@ fn add_marker(cover_files: &mut std::sync::Arc<[String]>, marker: Marker) {
 
 /// Build the raw view for every configured root, in config order. Roots are
 /// disjoint subtrees, so each scans against its own persistent `DirIndex` on
-/// its own blocking task; `join_all` runs the walks in parallel.
+/// its own blocking task. `join_all` runs the walks in parallel.
 pub(crate) async fn build_view(
     config: &Config,
     settings: &Arc<ScanSettings>,
@@ -180,7 +180,7 @@ pub struct RawViewStore {
     /// Per-root mtime indices. One persistent `DirIndex` per configured
     /// library root, so the per-root walks in `build_view` hold disjoint
     /// locks and run truly in parallel. The lock now lives inside
-    /// `DirIndex`; the store holds a shared reference per root.
+    /// `DirIndex`. The store holds a shared reference per root.
     dir_indices: Vec<Arc<DirIndex>>,
     /// Held by the store for `build_view`; the same `Arc<Config>` is also
     /// exposed on `AppState.config` for handlers that read pure config data
@@ -223,7 +223,7 @@ impl RawViewStore {
     }
 
     /// Return the cached raw view if still fresh, otherwise build one. Reads
-    /// are lock-free; concurrent cold reads coalesce onto one build.
+    /// are lock-free. Concurrent cold reads coalesce onto one build.
     /// TTL-respecting. Used by page loads and the SSE first event.
     pub async fn current(&self) -> Arc<RawView> {
         if let Some(entry) = self.cache.load_full()
@@ -237,8 +237,8 @@ impl RawViewStore {
     }
 
     /// Start a build, or join the one already running. The first caller owns
-    /// the build and stores the result (bumping `rebuild_count` once);
-    /// joiners share the same future and return its output without a second
+    /// the build and stores the result (bumping `rebuild_count` once).
+    /// Joiners share the same future and return its output without a second
     /// walk or a second count bump.
     async fn build_coalesced(&self) -> Arc<RawView> {
         let (handle, owns) = {
@@ -259,7 +259,7 @@ impl RawViewStore {
             }
         };
         // Keep the Arc alive across the await so a concurrent caller can
-        // upgrade the Weak and join this build; cloning the inner Shared
+        // upgrade the Weak and join this build. Cloning the inner Shared
         // future is what actually yields the awaitable.
         let raw = (*handle).clone().await;
         if owns {
@@ -874,7 +874,7 @@ mod tests {
     #[tokio::test]
     async fn store_scans_independent_roots_without_cross_root_lock_contention() {
         // Two roots, each with one gap. A single shared index would serialize
-        // the walks; per-root indices let them proceed independently. We
+        // the walks. Per-root indices let them proceed independently. We
         // assert the weaker, deterministic property: both roots scan and both
         // gaps surface.
         let a = tempfile::tempdir().unwrap();

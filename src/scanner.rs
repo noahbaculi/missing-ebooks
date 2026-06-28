@@ -11,7 +11,7 @@
 //!
 //! One entry point, [`scan_warm`]: stat each directory and reuse the
 //! `&DirIndex` entry when the mtime is unchanged, listing the rest. The
-//! index is interior-mutable, so a shared reference is enough; passing a
+//! index is interior-mutable, so a shared reference is enough. Passing a
 //! fresh `DirIndex::new()` skips the reuse and walks every directory from
 //! scratch, what `CONTEXT.md` calls a cold scan.
 
@@ -112,7 +112,7 @@ enum FileKind {
 }
 
 fn classify_file(name: &OsStr, settings: &ScanSettings) -> FileKind {
-    // Marker and dotfile checks need a &str; a non-UTF-8 name is neither, so
+    // Marker and dotfile checks need a &str. A non-UTF-8 name is neither, so
     // it falls through to the extension match below.
     if let Some(s) = name.to_str() {
         if Marker::from_filename(s).is_some() {
@@ -204,7 +204,7 @@ impl DirIndex {
     }
 
     /// A clone of the cached entry for `dir`, if any. Returns by value because
-    /// the entry lives behind the lock; the clone is cheap once the cover and
+    /// the entry lives behind the lock. The clone is cheap once the cover and
     /// audio file lists become `Arc<[String]>` (M23, cluster 4).
     #[must_use]
     pub fn get_cloned(&self, dir: &Path) -> Option<CachedDir> {
@@ -330,7 +330,7 @@ impl RootScan {
 ///
 /// Returns `Walked` on success (possibly empty when no folder qualified) and
 /// `Failed` when canonicalize or the directory check rejected the path. Runs
-/// synchronously; the index is interior-mutable, so a shared reference is
+/// synchronously. The index is interior-mutable, so a shared reference is
 /// enough.
 ///
 /// Emits the same tracing events the previous caller did before this move.

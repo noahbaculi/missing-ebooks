@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn app_script_clones_the_mark_warn_template_rather_than_inlining_an_svg() {
-        // The mark-failure strip used to hold a duplicate SVG string; the
+        // The mark-failure strip used to hold a duplicate SVG string. The
         // single source of truth is now assets/svg/warning.svg, embedded once
         // in the page shell as <template id="mark-warn-tpl"> and cloned here.
         assert!(APP_JS_BYTES.contains(r#"getElementById("mark-warn-tpl")"#));
