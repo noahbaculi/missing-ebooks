@@ -9,12 +9,10 @@ RUN apk add --no-cache musl-dev
 WORKDIR /build
 
 # assets/ is required: src/web.rs embeds assets/app.css and assets/htmx.min.js
-# at compile time via include_str!. examples/ is required because the Cargo
-# manifest declares the explore example target and Cargo validates its path.
+# at compile time via include_str!.
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY assets ./assets
-COPY examples ./examples
 
 RUN cargo build --release --locked --bin missing-ebooks
 
