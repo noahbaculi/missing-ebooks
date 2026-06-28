@@ -1176,8 +1176,13 @@
     node.setAttribute("aria-live", "polite");
     /** @type {Element} */ (node.querySelector(".toast-undo")).addEventListener("click", function () {
       dismissToast(node);
+      // Qualify by `section.root` so the swap lands on the root's section, not a
+      // matching `data-root` chip in the gap-summary strip up top. Without the
+      // tag, the bare `[data-root]` selector hits the chip first and the
+      // section markup swaps in for the chip, duplicating row state and
+      // throwing the live gap-hero count off.
       htmx.ajax("POST", "/unmark", {
-        target: '[data-root="' + detail.root + '"]',
+        target: 'section.root[data-root="' + detail.root + '"]',
         swap: "outerHTML",
         values: {
           root: detail.root,

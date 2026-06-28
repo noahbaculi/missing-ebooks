@@ -206,6 +206,13 @@ mod tests {
         // the `/unmark` route both cross the JS/Rust boundary.
         assert!(APP_JS_BYTES.contains(r#"addEventListener("marked""#));
         assert!(APP_JS_BYTES.contains("/unmark"));
+        // The toast-undo swap must target the root's `section.root`, not any
+        // element carrying `data-root`. Without the tag qualifier the bare
+        // selector hits a gap-summary chip first and the section markup swaps
+        // in for the chip, duplicating row state and throwing the live
+        // gap-hero count off until a reload.
+        assert!(APP_JS_BYTES.contains(r#"target: 'section.root[data-root="'"#));
+        assert!(!APP_JS_BYTES.contains(r#"target: '[data-root="'"#));
     }
 
     #[test]
