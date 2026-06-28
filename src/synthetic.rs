@@ -44,19 +44,22 @@ pub fn generate(total: usize, depth: usize, fanout: usize, gap_rate: f64) -> Vec
                         directly_holds_audio: true,
                         missing_ebook: is_gap,
                         cover_files: if is_gap {
-                            Vec::new()
+                            std::sync::Arc::from(Vec::<String>::new())
                         } else {
-                            vec!["Book.epub".to_string()]
+                            std::sync::Arc::from(vec!["Book.epub".to_string()])
                         },
-                        audio_files: vec!["01.mp3".to_string(), "02.mp3".to_string()],
+                        audio_files: std::sync::Arc::from(vec![
+                            "01.mp3".to_string(),
+                            "02.mp3".to_string(),
+                        ]),
                     });
                 } else {
                     out.push(ScannedFolder {
                         rel_path: PathBuf::from(&name),
                         directly_holds_audio: false,
                         missing_ebook: true,
-                        cover_files: Vec::new(),
-                        audio_files: Vec::new(),
+                        cover_files: std::sync::Arc::from(Vec::<String>::new()),
+                        audio_files: std::sync::Arc::from(Vec::<String>::new()),
                     });
                     next.push((name, level + 1));
                 }

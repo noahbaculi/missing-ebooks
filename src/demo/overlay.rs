@@ -105,7 +105,12 @@ pub(crate) fn package_view_with_overlay(
             for marker in state.exact_markers {
                 let name = marker.filename().to_string();
                 if !folder.cover_files.iter().any(|existing| existing == &name) {
-                    folder.cover_files.push(name);
+                    // Same rebuild-on-mark pattern as state::add_marker: the
+                    // cover list is shared via Arc<[String]>, so a synthesized
+                    // marker drops a fresh allocation in place of the shared one.
+                    let mut next: Vec<String> = folder.cover_files.to_vec();
+                    next.push(name);
+                    folder.cover_files = next.into();
                 }
             }
         }

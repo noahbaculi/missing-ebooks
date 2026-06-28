@@ -112,20 +112,30 @@ enum FileKind {
 }
 
 fn classify_file(name: &OsStr, settings: &ScanSettings) -> FileKind {
-    let name = name.to_string_lossy();
-    if Marker::from_filename(name.as_ref()).is_some() {
-        return FileKind::Marker;
+    // Marker and dotfile checks need a &str; a non-UTF-8 name is neither, so
+    // it falls through to the extension match below.
+    if let Some(s) = name.to_str() {
+        if Marker::from_filename(s).is_some() {
+            return FileKind::Marker;
+        }
+        if s.starts_with('.') {
+            // AppleDouble ._*, hidden sidecars (.beets), .gitkeep: never audio/ebook.
+            return FileKind::Other;
+        }
     }
-    if name.starts_with('.') {
-        // AppleDouble ._*, hidden sidecars (.beets), .gitkeep: never audio/ebook.
-        return FileKind::Other;
-    }
-    match Path::new(name.as_ref()).extension().and_then(OsStr::to_str) {
+    match Path::new(name).extension().and_then(OsStr::to_str) {
         Some(ext) => {
-            let ext = ext.to_lowercase();
-            if settings.ebook_exts.contains(&ext) {
+            if settings
+                .ebook_exts
+                .iter()
+                .any(|e| e.eq_ignore_ascii_case(ext))
+            {
                 FileKind::Ebook
-            } else if settings.audio_exts.contains(&ext) {
+            } else if settings
+                .audio_exts
+                .iter()
+                .any(|e| e.eq_ignore_ascii_case(ext))
+            {
                 FileKind::Audio
             } else {
                 FileKind::Other
@@ -156,14 +166,10 @@ pub struct WalkStats {
 /// are already natural-sorted, the same order a fresh listing produces.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CachedDir {
-    /// The directory's modification time when it was last listed.
     pub mtime: std::time::SystemTime,
-    /// Non-excluded child directories, to descend without re-listing.
     pub subdirs: Vec<PathBuf>,
-    /// Audio filenames physically in this folder, natural-sorted.
-    pub audio_files: Vec<String>,
-    /// Ebook then marker filenames physically in this folder, natural-sorted.
-    pub cover_files: Vec<String>,
+    pub audio_files: std::sync::Arc<[String]>,
+    pub cover_files: std::sync::Arc<[String]>,
 }
 
 /// A per-directory cache shared across walks and across both view modes, keyed by
@@ -258,11 +264,13 @@ pub struct ScannedFolder {
     pub missing_ebook: bool,
     /// Ebook and marker filenames that physically sit in this folder and cover it
     /// on its own. Ebooks first, then markers, each natural-sorted. Empty for gaps,
-    /// plain containers, and folders covered only through an ancestor.
-    pub cover_files: Vec<String>,
+    /// plain containers, and folders covered only through an ancestor. Shared
+    /// with `CachedDir` via `Arc<[String]>` so a folder build and a warm-cache
+    /// reuse are pointer copies, not `Vec` clones.
+    pub cover_files: std::sync::Arc<[String]>,
     /// Audio filenames that physically sit in this folder, natural-sorted. Empty on
-    /// a folder with no direct audio. Collected the same way as `cover_files`.
-    pub audio_files: Vec<String>,
+    /// a folder with no direct audio. Shared with `CachedDir` the same way.
+    pub audio_files: std::sync::Arc<[String]>,
 }
 
 /// The result of scanning one library root: walked folders or a failure message.
@@ -472,8 +480,8 @@ fn reuse_dir_all(root: &Path, dir: &Path, covered_from_above: bool, cached: &Cac
         rel_path: rel.to_path_buf(),
         directly_holds_audio: !cached.audio_files.is_empty(),
         missing_ebook: !covered,
-        cover_files: cached.cover_files.clone(),
-        audio_files: cached.audio_files.clone(),
+        cover_files: std::sync::Arc::clone(&cached.cover_files),
+        audio_files: std::sync::Arc::clone(&cached.audio_files),
     });
     AllDir {
         folder,
@@ -576,13 +584,18 @@ fn list_dir_all(
     }
 
     // Local cover files: ebooks first, then markers, each natural-sorted so the
-    // order is stable across filesystems.
+    // order is stable across filesystems. Both lists are sealed into Arc<[String]>
+    // here so the folder and the cache entry share one allocation.
     ebooks.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
     markers.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
-    let mut cover_files = ebooks;
-    cover_files.extend(markers);
+    let cover_files: std::sync::Arc<[String]> = {
+        let mut v = ebooks;
+        v.extend(markers);
+        v.into()
+    };
 
     audio_files.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
+    let audio_files: std::sync::Arc<[String]> = audio_files.into();
 
     let children: Vec<PathBuf> = subdirs
         .into_iter()
@@ -593,8 +606,8 @@ fn list_dir_all(
         rel_path: rel.to_path_buf(),
         directly_holds_audio: !audio_files.is_empty(),
         missing_ebook: !covered,
-        cover_files: cover_files.clone(),
-        audio_files: audio_files.clone(),
+        cover_files: std::sync::Arc::clone(&cover_files),
+        audio_files: std::sync::Arc::clone(&audio_files),
     });
 
     let cache_update = store_mtime.map(|mtime| CachedDir {
@@ -720,7 +733,7 @@ mod tests {
             .iter()
             .find(|f| f.rel_path == Path::new("AuthorA/Book1"))
             .unwrap();
-        assert_eq!(book1.audio_files, vec!["01.mp3", "02.mp3"]);
+        assert_eq!(book1.audio_files.as_ref(), ["01.mp3", "02.mp3"]);
     }
 
     #[test]
@@ -909,14 +922,17 @@ mod tests {
             (true, false)
         );
         // The covered container lists its own ebook as a cover file.
-        assert_eq!(by_path["AuthorB/Covered"].cover_files, vec!["Book.epub"]);
+        assert_eq!(
+            by_path["AuthorB/Covered"].cover_files.as_ref(),
+            ["Book.epub"]
+        );
         // AuthorA/Book1 is a gap that keeps both audio files, natural-sorted.
         let book1 = by_path["AuthorA/Book1"];
         assert_eq!(
             (book1.directly_holds_audio, book1.missing_ebook),
             (true, true)
         );
-        assert_eq!(book1.audio_files, vec!["01.mp3", "02.mp3"]);
+        assert_eq!(book1.audio_files.as_ref(), ["01.mp3", "02.mp3"]);
         // The loose-root case: the root (empty path) directly holds audio.
         assert!(by_path[""].directly_holds_audio);
     }
@@ -993,7 +1009,7 @@ mod tests {
             .into_iter()
             .map(|f| {
                 let rel = f.rel_path.to_string_lossy().replace('\\', "/");
-                (rel, f.cover_files)
+                (rel, f.cover_files.to_vec())
             })
             .collect()
     }
@@ -1050,7 +1066,7 @@ mod tests {
             .iter()
             .find(|f| f.rel_path == Path::new("Book"))
             .unwrap();
-        assert_eq!(book.audio_files, vec!["01 - One.mp3", "02 - Two.mp3"]);
+        assert_eq!(book.audio_files.as_ref(), ["01 - One.mp3", "02 - Two.mp3"]);
     }
 
     #[test]
@@ -1065,8 +1081,8 @@ mod tests {
             .find(|f| f.rel_path == Path::new("Book"))
             .unwrap();
         assert_eq!(
-            book.audio_files,
-            vec!["01 - One.mp3", "02 - Two.mp3", "10 - Ten.mp3"]
+            book.audio_files.as_ref(),
+            ["01 - One.mp3", "02 - Two.mp3", "10 - Ten.mp3"]
         );
         // The root container holds no direct audio here, so its list is empty.
         let root = folders
@@ -1273,8 +1289,8 @@ mod tests {
         let folder = ScannedFolder {
             rel_path: ".".into(),
             directly_holds_audio: true,
-            cover_files: Vec::new(),
-            audio_files: Vec::new(),
+            cover_files: std::sync::Arc::from(Vec::<String>::new()),
+            audio_files: std::sync::Arc::from(Vec::<String>::new()),
             missing_ebook: true,
         };
         let scan = RootScan::Walked {
@@ -1316,22 +1332,22 @@ mod tests {
                     rel_path: PathBuf::from("A/Book1"),
                     directly_holds_audio: true,
                     missing_ebook: true,
-                    cover_files: Vec::new(),
-                    audio_files: vec!["01.mp3".to_string()],
+                    cover_files: std::sync::Arc::from(Vec::<String>::new()),
+                    audio_files: std::sync::Arc::from(vec!["01.mp3".to_string()]),
                 },
                 ScannedFolder {
                     rel_path: PathBuf::from("A"),
                     directly_holds_audio: false,
                     missing_ebook: false,
-                    cover_files: Vec::new(),
-                    audio_files: Vec::new(),
+                    cover_files: std::sync::Arc::from(Vec::<String>::new()),
+                    audio_files: std::sync::Arc::from(Vec::<String>::new()),
                 },
                 ScannedFolder {
                     rel_path: PathBuf::from("A/Book2"),
                     directly_holds_audio: true,
                     missing_ebook: false,
-                    cover_files: vec!["Book2.epub".to_string()],
-                    audio_files: vec!["01.mp3".to_string()],
+                    cover_files: std::sync::Arc::from(vec!["Book2.epub".to_string()]),
+                    audio_files: std::sync::Arc::from(vec!["01.mp3".to_string()]),
                 },
             ],
         };

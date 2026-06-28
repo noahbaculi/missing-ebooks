@@ -199,8 +199,8 @@ fn build_forest(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> V
                 directly_holds_audio: true,
                 missing_ebook: entry.missing_ebook,
                 children: Vec::new(),
-                cover_files: entry.cover_files.clone(),
-                audio_files: entry.audio_files.clone(),
+                cover_files: entry.cover_files.to_vec(),
+                audio_files: entry.audio_files.to_vec(),
                 gaps_within: 0,
             },
         );
@@ -253,8 +253,8 @@ fn insert_all(
     if tail.is_empty() {
         siblings[idx].directly_holds_audio = folder.directly_holds_audio;
         siblings[idx].missing_ebook = folder.missing_ebook;
-        siblings[idx].cover_files = folder.cover_files.clone();
-        siblings[idx].audio_files = folder.audio_files.clone();
+        siblings[idx].cover_files = folder.cover_files.to_vec();
+        siblings[idx].audio_files = folder.audio_files.to_vec();
     } else {
         insert_all(&mut siblings[idx].children, tail, &rel_path, folder);
     }
@@ -309,8 +309,12 @@ mod tests {
             rel_path: PathBuf::from(rel),
             directly_holds_audio: true,
             missing_ebook: true,
-            cover_files: Vec::new(),
-            audio_files: audio.iter().map(|s| s.to_string()).collect(),
+            cover_files: std::sync::Arc::from(Vec::<String>::new()),
+            audio_files: audio
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .into(),
         }
     }
 
@@ -424,8 +428,8 @@ mod tests {
             rel_path: PathBuf::from(rel),
             directly_holds_audio: audio,
             missing_ebook: missing,
-            cover_files: Vec::new(),
-            audio_files: Vec::new(),
+            cover_files: std::sync::Arc::from(Vec::<String>::new()),
+            audio_files: std::sync::Arc::from(Vec::<String>::new()),
         }
     }
 
@@ -434,8 +438,12 @@ mod tests {
             rel_path: PathBuf::from(rel),
             directly_holds_audio: true,
             missing_ebook: true,
-            cover_files: Vec::new(),
-            audio_files: audio_files.iter().map(|s| s.to_string()).collect(),
+            cover_files: std::sync::Arc::from(Vec::<String>::new()),
+            audio_files: audio_files
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .into(),
         }
     }
 
@@ -501,8 +509,12 @@ mod tests {
             rel_path: PathBuf::from(rel),
             directly_holds_audio: audio,
             missing_ebook: missing,
-            cover_files: cover_files.iter().map(|s| s.to_string()).collect(),
-            audio_files: Vec::new(),
+            cover_files: cover_files
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .into(),
+            audio_files: std::sync::Arc::from(Vec::<String>::new()),
         }
     }
 

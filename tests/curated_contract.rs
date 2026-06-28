@@ -96,8 +96,8 @@ fn tree_container_set_matches_the_contract() {
             rel_path: PathBuf::from(&f.path),
             directly_holds_audio: true,
             missing_ebook: true,
-            cover_files: Vec::new(),
-            audio_files: Vec::new(),
+            cover_files: std::sync::Arc::from(Vec::<String>::new()),
+            audio_files: std::sync::Arc::from(Vec::<String>::new()),
         })
         .collect();
     let scan = RootScan::Walked {

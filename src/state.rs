@@ -61,10 +61,15 @@ pub(crate) fn apply_mark_raw(raw: &mut RawView, root: usize, rel: &str, marker: 
     }
 }
 
-fn add_marker(cover_files: &mut Vec<String>, marker: Marker) {
+fn add_marker(cover_files: &mut std::sync::Arc<[String]>, marker: Marker) {
     let name = marker.filename().to_string();
     if !cover_files.iter().any(|existing| existing == &name) {
-        cover_files.push(name);
+        // An Arc<[String]> is fixed-length, so rebuild on the rare mark. The
+        // hot path is the read side, which clones a pointer; this path runs
+        // only on the user clicking a marker button.
+        let mut next: Vec<String> = cover_files.to_vec();
+        next.push(name);
+        *cover_files = next.into();
     }
 }
 
@@ -696,8 +701,8 @@ mod tests {
             scanner::CachedDir {
                 mtime: std::time::UNIX_EPOCH,
                 subdirs: Vec::new(),
-                cover_files: Vec::new(),
-                audio_files: Vec::new(),
+                cover_files: std::sync::Arc::from(Vec::<String>::new()),
+                audio_files: std::sync::Arc::from(Vec::<String>::new()),
             },
         );
         assert!(

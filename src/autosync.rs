@@ -464,8 +464,8 @@ mod tests {
                 rel_path: PathBuf::from("Book"),
                 directly_holds_audio: true,
                 missing_ebook,
-                cover_files: Vec::new(),
-                audio_files: vec!["01.mp3".to_string()],
+                cover_files: std::sync::Arc::from(Vec::<String>::new()),
+                audio_files: std::sync::Arc::from(vec!["01.mp3".to_string()]),
             }],
         }
     }
@@ -932,15 +932,15 @@ mod tests {
                     rel_path: PathBuf::from("Book"),
                     directly_holds_audio: true,
                     missing_ebook: true,
-                    cover_files: Vec::new(),
-                    audio_files: vec!["01.mp3".to_string()],
+                    cover_files: std::sync::Arc::from(Vec::<String>::new()),
+                    audio_files: std::sync::Arc::from(vec!["01.mp3".to_string()]),
                 },
                 ScannedFolder {
                     rel_path: PathBuf::from("Container"),
                     directly_holds_audio: false,
                     missing_ebook: false,
-                    cover_files: Vec::new(),
-                    audio_files: Vec::new(),
+                    cover_files: std::sync::Arc::from(Vec::<String>::new()),
+                    audio_files: std::sync::Arc::from(Vec::<String>::new()),
                 },
             ],
         };
@@ -1001,8 +1001,8 @@ mod tests {
                 rel_path: PathBuf::from("Book"),
                 directly_holds_audio: true,
                 missing_ebook: false,
-                cover_files,
-                audio_files: vec!["01.mp3".to_string()],
+                cover_files: cover_files.into(),
+                audio_files: std::sync::Arc::from(vec!["01.mp3".to_string()]),
             }],
         };
         let before = covered(vec!["Book.epub".to_string()]);
