@@ -41,14 +41,14 @@ On jane-core, the host that holds the library:
 
 ```shell
 sudo -v
-cargo run --release --example scan_bench -- --root /mnt/pool/Entertainment/Audiobooks --label local --drop-caches --concurrency 1,4,8,16,32
+cargo bench --bench scan_bench -- --root /mnt/pool/Entertainment/Audiobooks --label local --drop-caches --concurrency 1,4,8,16,32
 ```
 
 On jane-2, the client that mounts the library over SMB:
 
 ```shell
 sudo -v
-cargo run --release --example scan_bench -- --root /mnt/jane-nas/Entertainment/Audiobooks --label smb --drop-caches --concurrency 1,4,8,16,32
+cargo bench --bench scan_bench -- --root /mnt/jane-nas/Entertainment/Audiobooks --label smb --drop-caches --concurrency 1,4,8,16,32
 ```
 
 ## 0. Control
@@ -85,7 +85,7 @@ A check on the in-memory mtime index that warm scans reuse (the dir index, ADR-0
 
 ```shell
 sudo -v
-cargo run --release --example scan_bench -- --root /mnt/jane-nas/Entertainment/Audiobooks --iterations 5 --drop-caches --label smb
+cargo bench --bench scan_bench -- --root /mnt/jane-nas/Entertainment/Audiobooks --iterations 5 --drop-caches --label smb
 ```
 
 A bare run uses the default `every` mode, which times the full-listing walk, the gaps walk, and the reuse walk in one pass and saves them to a single JSON report, so the go/no-go ratio is computable from one file with no hand-transcription. The `warm` mode (named `incremental` in the historical reports linked above) is a single-level entry: it runs once at the top concurrency rather than sweeping, since concurrency is inert over SMB for the reuse walk.
