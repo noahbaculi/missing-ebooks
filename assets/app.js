@@ -90,7 +90,7 @@
   var ACCENT_DEFAULT = "#f5a524";
   var ACCENT_RE = /^#[0-9a-fA-F]{6}$/;
 
-  // ACCENT-DERIVE:BEGIN. Mirrored in src/web/render.rs, parity checked by tests/accent/derive.test.mjs.
+  // ACCENT-DERIVE:BEGIN. Mirrored in assets/prepaint.js, parity checked by tests/accent/derive.test.mjs.
   /**
    * Relative luminance of a #rrggbb hex, per WCAG.
    * @param {string} hex
@@ -216,7 +216,7 @@
    * hue for the most vivid shade that clears AA against it, dark ink for light
    * and light ink for dark. Falls back to a clamped extreme if nothing reaches
    * AA. Keep this in sync with the duplicate in the pre-paint bootstrap
-   * (`PREPAINT_JS` in src/web/render.rs).
+   * (`assets/prepaint.js`, embedded into the page shell by src/web/page.rs).
    * @param {string} base
    * @param {"light" | "dark"} theme
    * @returns {string}
