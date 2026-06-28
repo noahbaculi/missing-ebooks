@@ -51,6 +51,8 @@ Or install just the server binary with cargo:
 cargo install --git https://github.com/noahbaculi/missing-ebooks --bin missing-ebooks
 ```
 
+Dropping `--bin missing-ebooks` installs all three binaries (`missing-ebooks`, `missing-ebooks-demo`, and `explore`); the flag above installs only the server.
+
 This crate is not published to crates.io (`publish = false`), so `cargo install missing-ebooks` will not work; use `--git` or Docker.
 
 ```shell

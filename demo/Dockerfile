@@ -1,6 +1,6 @@
 # Builder: compile the demo binary against musl on the runner's native arch. On
 # the Ampere host this produces an arm64 binary with no cross-compilation.
-FROM rust:1.96-alpine AS builder
+FROM rust:1.96.0-alpine AS builder
 RUN apk add --no-cache musl-dev
 WORKDIR /build
 

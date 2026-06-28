@@ -1,7 +1,7 @@
 # Builder: compile a static musl binary on the runner's native architecture.
 # rust:alpine targets *-unknown-linux-musl by default, so cargo build emits a
 # fully static binary at target/release/.
-FROM rust:1.96-alpine AS builder
+FROM rust:1.96.0-alpine AS builder
 
 # Some crates link a C runtime; musl-dev provides it for the musl target.
 RUN apk add --no-cache musl-dev

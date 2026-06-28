@@ -25,7 +25,15 @@ allow = [
 confidence-threshold = 0.8
 
 [bans]
-multiple-versions = "warn"
+multiple-versions = "deny"
+# Current, accepted duplicates. Each entry is a known transitive conflict; remove
+# it when the tree converges. Re-run `cargo deny check bans` after a dep bump.
+skip = [
+    { name = "getrandom", version = "=0.2.17" },
+    { name = "getrandom", version = "=0.4.2" },
+    { name = "wit-bindgen", version = "=0.51.0" },
+    { name = "wit-bindgen", version = "=0.57.1" },
+]
 
 [sources]
 unknown-registry = "deny"

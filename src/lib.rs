@@ -4,6 +4,8 @@
 //! Cargo-built target in the same workspace can reach it. There is no
 //! semver promise, no external consumer, and the published artifact
 //! (`publish = false`) is the binary.
+// publish = false, so the crate's docs serve only in-workspace navigation; the
+// CI `docs` job still builds them with -D warnings to keep doc-comments honest.
 #![doc(hidden)]
 
 pub mod config;

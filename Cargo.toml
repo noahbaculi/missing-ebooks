@@ -74,7 +74,7 @@ http-body-util = "0.1.3"
 libc = "0.2"
 proptest = "1.11.0"
 sha2 = "0.10"
-tower = { version = "0.5.3", features = ["util"] }
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
 
 [lints.clippy]
 correctness = "deny"
@@ -85,6 +85,9 @@ perf = "warn"
 [lints.rust]
 missing_docs = "warn"
 
+# panic = "unwind" (the default, kept deliberately): tokio catches a per-task
+# panic and the server survives, so a single bad request never aborts the
+# process. Do not switch to abort.
 [profile.release]
 lto = "fat"
 codegen-units = 1
