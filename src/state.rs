@@ -50,7 +50,7 @@ type SharedBuild = Shared<BoxFuture<'static, Arc<RawView>>>;
 /// Owns the scan substrate, the TTL-bounded cache slot, and the marker file
 /// IO. The single place where raw scan output is produced, memoized, and
 /// edited. See ADR-0027.
-pub(crate) struct RawViewStore {
+pub struct RawViewStore {
     /// The cache slot, swapped atomically. Reads are lock-free: `current`
     /// loads the `Arc<CacheEntry>` and clones the inner `Arc<RawView>` out.
     cache: ArcSwapOption<CacheEntry>,
@@ -161,13 +161,13 @@ impl RawViewStore {
     /// Rebuild ignoring the TTL, keeping the dir index. The autosync tick
     /// path: the loop calls this each tick to pick up filesystem changes
     /// without forcing a cold walk.
-    pub async fn refresh(&self) -> Arc<RawView> {
+    pub(crate) async fn refresh(&self) -> Arc<RawView> {
         self.build_coalesced().await
     }
 
     /// Force a cold scan: clear every per-root index, then rebuild. Ignores
     /// the TTL. The explicit "fix any drift" path, used by the /rescan click.
-    pub async fn rescan(&self) -> Arc<RawView> {
+    pub(crate) async fn rescan(&self) -> Arc<RawView> {
         for index in &self.dir_indices {
             lock_index(index).clear();
         }
@@ -273,7 +273,7 @@ impl RawViewStore {
     /// Write a marker into a folder and update the cached raw view in place,
     /// without a rescan (ADR-0002). The guard and write run on a blocking task;
     /// the cache lock is held only for the in-memory mutation.
-    pub async fn write_mark(
+    pub(crate) async fn write_mark(
         &self,
         root: usize,
         rel: &str,
@@ -356,7 +356,7 @@ impl RawViewStore {
     /// Delete a marker file and refresh the cached view by rescanning the one
     /// affected root (ADR-0002). The guard and delete run on a blocking task;
     /// the cache lock is held only for the per-root rebuild.
-    pub async fn remove_mark(
+    pub(crate) async fn remove_mark(
         &self,
         root: usize,
         rel: &str,

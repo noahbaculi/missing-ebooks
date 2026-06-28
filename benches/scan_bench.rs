@@ -20,10 +20,14 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
+use std::time::Duration;
 use std::time::Instant;
 
 use missing_ebooks::config::Config;
-use missing_ebooks::scanner::{self, ScanSettings, WalkStats};
+use missing_ebooks::scanner::{self, DirIndex, ScanSettings, WalkStats};
+use missing_ebooks::state::RawViewStore;
 use missing_ebooks::tree;
 use serde::Serialize;
 
@@ -116,6 +120,12 @@ enum Mode {
     Gaps,
     Full,
     Warm,
+    /// Five concurrent `RawViewStore::current()` calls against a fresh store
+    /// over the configured roots. With single-flight cold builds the wall time
+    /// tracks one scan; without it, five. The unit invariant (one rebuild
+    /// per cold burst) is pinned by `state::tests`; this is the wall-time
+    /// view for the maintainer.
+    Concurrent,
 }
 
 impl Mode {
@@ -125,15 +135,18 @@ impl Mode {
             Mode::Gaps => "gaps",
             Mode::Full => "full",
             Mode::Warm => "warm",
+            Mode::Concurrent => "concurrent",
         }
     }
 }
 
 /// Map `--mode`: one keyword or a comma-separated list, e.g. `full,warm`.
-/// `every` expands to all modes, the default. Duplicates collapse,
-/// first occurrence wins, so the listed order is the report order. `all` is not a
-/// keyword: older reports key the full walk as `all`, so it stays a report value
-/// only, never a live selector.
+/// `every` expands to all listing-walk modes (full, gaps, warm); `concurrent`
+/// is opt-in because it builds a tokio runtime and a full `RawViewStore`,
+/// which the other modes do not need. Duplicates collapse, first occurrence
+/// wins, so the listed order is the report order. `all` is not a keyword:
+/// older reports key the full walk as `all`, so it stays a report value only,
+/// never a live selector.
 fn parse_modes(value: &str) -> Result<Vec<Mode>, String> {
     let mut modes = Vec::new();
     for part in value.split(',') {
@@ -141,10 +154,11 @@ fn parse_modes(value: &str) -> Result<Vec<Mode>, String> {
             "gaps" => vec![Mode::Gaps],
             "full" => vec![Mode::Full],
             "warm" => vec![Mode::Warm],
+            "concurrent" => vec![Mode::Concurrent],
             "every" => vec![Mode::Full, Mode::Gaps, Mode::Warm],
             other => {
                 return Err(format!(
-                    "--mode: {other:?} must be full, gaps, warm, or every"
+                    "--mode: {other:?} must be full, gaps, warm, concurrent, or every"
                 ));
             }
         };
@@ -263,6 +277,10 @@ fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
             concurrency = parse_concurrency(&next_value(&mut iter, "--concurrency")?)?;
         } else if let Some(v) = arg.strip_prefix("--concurrency=") {
             concurrency = parse_concurrency(v)?;
+        } else if arg == "--bench" {
+            // Cargo passes `--bench` through when invoking the binary under
+            // `cargo bench`. The bench has its own dispatch and does not need
+            // to know about libtest's bench mode, so accept and ignore it.
         } else if arg.starts_with('-') {
             return Err(format!("unknown flag {arg:?}"));
         } else {
@@ -459,8 +477,12 @@ flags:
   --config PATH     load the real config.toml (extensions, exclusions, roots)
   --root PATH       benchmark this exact path; repeatable; replaces config roots
   --iterations N    measured runs per phase (default 5)
-  --mode LIST       comma-separated: full, gaps, warm, or every (default every);
-                    every runs all modes, so a bare run saves a comprehensive report
+  --mode LIST       comma-separated: full, gaps, warm, concurrent, or every
+                    (default every); every runs all listing-walk modes, so a
+                    bare run saves a comprehensive report. `concurrent` is
+                    opt-in: it builds a tokio runtime and times five
+                    simultaneous `RawViewStore::current()` calls so the
+                    single-flight cold-build path is visible at wall time
   --concurrency LIST   thread counts to sweep, comma-separated, e.g. 1,4,8,16 (default 16)
   --drop-caches     Linux: sudo-flush the page cache before each cold run
   --label NAME      tag stdout and the report (e.g. local, smb)
@@ -549,6 +571,83 @@ fn run_warm(
             dirs_reused: Some(last.stats.dirs_reused),
             tree_build_ms: last.tree_build_ms,
             cold,
+            warm,
+        }],
+    })
+}
+
+/// Concurrent cold-cache scenario: fire `concurrency` simultaneous
+/// `RawViewStore::current()` calls and report the wall clock to last-done.
+/// With single-flight cold builds the callers coalesce onto one walk and the
+/// wall time tracks one scan; without it, the locked-across-await cache
+/// serializes them and the wall time tracks `concurrency` scans. The unit
+/// invariant (one rebuild per cold burst) is pinned by `state::tests`; this
+/// is the wall-time view for the maintainer.
+fn run_concurrent(
+    root: &Path,
+    settings: &Arc<ScanSettings>,
+    iterations: usize,
+    concurrency: usize,
+) -> Result<ModeReport, String> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("could not build a tokio runtime: {e}"))?;
+
+    // The store ttl is irrelevant for cold-burst measurement: every
+    // iteration constructs a fresh store so every call hits a cold slot.
+    let cfg = Config {
+        library_roots: vec![root.to_path_buf()],
+        ttl_seconds: 600,
+        ..Default::default()
+    };
+    let config = Arc::new(cfg);
+    let mut samples = Vec::with_capacity(iterations);
+    for _ in 0..iterations {
+        let dir_indices = vec![Arc::new(StdMutex::new(DirIndex::new()))];
+        let store = Arc::new(RawViewStore::new(
+            Arc::clone(&config),
+            Arc::clone(settings),
+            dir_indices,
+            Some(Duration::from_secs(600)),
+        ));
+        let started = Instant::now();
+        let elapsed_ms = runtime.block_on(async {
+            let handles: Vec<_> = (0..concurrency)
+                .map(|_| {
+                    let s = Arc::clone(&store);
+                    tokio::spawn(async move {
+                        let _ = s.current().await;
+                    })
+                })
+                .collect();
+            for h in handles {
+                let _ = h.await;
+            }
+            round3(started.elapsed().as_secs_f64() * 1000.0)
+        });
+        samples.push(elapsed_ms);
+    }
+
+    // No per-iteration walk counts: the wall-clock burst is the measurement
+    // and the rebuild-count invariant is the unit test.
+    let warm = phase_report(&samples, 0, Vec::new());
+    println!(
+        "  mode=concurrent  concurrency={concurrency}  iterations={iterations}  \
+         wall_median_ms={}  (one rebuild per burst is pinned by state::tests)",
+        warm.median_ms
+    );
+
+    Ok(ModeReport {
+        levels: vec![LevelReport {
+            concurrency,
+            dirs_visited: 0,
+            entries_seen: 0,
+            gaps: 0,
+            audio_files: 0,
+            dirs_reused: None,
+            tree_build_ms: 0.0,
+            cold: None,
             warm,
         }],
     })
@@ -703,6 +802,8 @@ fn time_walk(mode: Mode, root: &Path, settings: &ScanSettings) -> (f64, WalkCoun
         }
         // Warm is routed to run_warm before any phase calls this.
         Mode::Warm => unreachable!("warm mode does not use time_walk"),
+        // Concurrent is routed to run_concurrent before any phase calls this.
+        Mode::Concurrent => unreachable!("concurrent mode does not use time_walk"),
     }
 }
 
@@ -806,7 +907,7 @@ fn main() -> ExitCode {
         }
     };
     let settings = match ScanSettings::compile(config.scan_inputs()) {
-        Ok(settings) => settings,
+        Ok(settings) => Arc::new(settings),
         Err(err) => {
             eprintln!("invalid scan settings: {err}");
             return ExitCode::FAILURE;
@@ -887,6 +988,21 @@ fn main() -> ExitCode {
                     }
                     Err(message) => {
                         eprintln!("error during warm run: {message}");
+                        return ExitCode::FAILURE;
+                    }
+                }
+                continue;
+            }
+            if mode == Mode::Concurrent {
+                // Run once at the top swept concurrency level (default 5), so a
+                // single config produces a single burst measurement per root.
+                let threads = args.concurrency.iter().copied().max().unwrap_or(5);
+                match run_concurrent(&canonical, &settings, args.iterations, threads) {
+                    Ok(report) => {
+                        modes.insert(mode.label().to_string(), report);
+                    }
+                    Err(message) => {
+                        eprintln!("error during concurrent run: {message}");
                         return ExitCode::FAILURE;
                     }
                 }
@@ -1101,7 +1217,9 @@ mod tests {
         assert_eq!(parse_modes("gaps"), Ok(vec![Mode::Gaps]));
         assert_eq!(parse_modes("full"), Ok(vec![Mode::Full]));
         assert_eq!(parse_modes("warm"), Ok(vec![Mode::Warm]));
-        // `every` expands to all modes, in report order.
+        assert_eq!(parse_modes("concurrent"), Ok(vec![Mode::Concurrent]));
+        // `every` expands to the listing-walk modes, in report order; the
+        // concurrent burst is opt-in because it builds a tokio runtime.
         assert_eq!(
             parse_modes("every"),
             Ok(vec![Mode::Full, Mode::Gaps, Mode::Warm])
