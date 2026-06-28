@@ -55,6 +55,14 @@ docker compose -f demo/docker-compose.yml down             # stop and remove the
 
 Tune the demo by editing the `DEMO_*` environment values in `demo/docker-compose.yml` (scenario, idle window, session cap, and the cookie name), then re-run the up command.
 
+| Variable | Effect | Default |
+| --- | --- | --- |
+| `DEMO_BIND` | IP:port to bind | `127.0.0.1:8080` |
+| `DEMO_SCENARIO` | Seeded scenario name | `mixed-forest` |
+| `DEMO_MAX_SESSIONS` | Hard cap on concurrent sessions | `1000` |
+| `DEMO_IDLE_SECS` | Session idle window before the reaper drops it | `1200` |
+| `DEMO_COOKIE_NAME` | Session cookie name | `me_demo_sid` |
+
 ## Notes
 
 - The app has no authentication. That is acceptable here because the data is synthetic and the only per-session write is an in-memory mark that resets when the session is idle. No marker file is written on the request path.

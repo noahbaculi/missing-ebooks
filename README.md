@@ -37,6 +37,12 @@ By default the page shows only the gaps. A "Show all folders" toggle beside the 
 
 ## Getting started
 
+Docker is the supported distribution path (see [Run with Docker](#run-with-docker) below).
+
+Set at least one library root and run the server. It exits if no root is configured in any layer.
+
+### From source
+
 Build from source with the toolchain pinned in `rust-toolchain.toml` (rustc 1.96). Clone the repo and run `cargo build --release` (or `cargo run --release` to start the server in one step).
 
 Or install just the server binary with cargo:
@@ -45,9 +51,7 @@ Or install just the server binary with cargo:
 cargo install --git https://github.com/noahbaculi/missing-ebooks --bin missing-ebooks
 ```
 
-Docker (below) is the primary distribution path; this is the source install for people who want it on PATH.
-
-Set at least one library root and run the server. It exits if no root is configured in any layer.
+This crate is not published to crates.io (`publish = false`), so `cargo install missing-ebooks` will not work; use `--git` or Docker.
 
 ```shell
 MISSING_EBOOKS_LIBRARY_ROOTS="/mnt/nas/Audiobooks" cargo run --release
@@ -123,6 +127,7 @@ These environment variables override the file when set:
 | `MISSING_EBOOKS_TTL_SECONDS`      | `ttl_seconds`                            |
 | `MISSING_EBOOKS_SCAN_CONCURRENCY` | `scan_concurrency`                       |
 | `MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS` | `autosync_interval_seconds`              |
+| `MISSING_EBOOKS_LOG`              | Log verbosity (see Logging below)        |
 | `PUID`                            | Container run-as user ID (Docker only)   |
 | `PGID`                            | Container run-as group ID (Docker only)  |
 
@@ -143,6 +148,8 @@ Reading more folders at once with `scan_concurrency` overlaps their round trips.
 `ttl_seconds` keeps a scanned view cached so repeat page loads do not rescan, and this matters more over SMB than locally. The client's own attribute cache ages out within a second, faster than a multi-second walk finishes, so a second walk re-queries the server and runs no faster than the first; the in-process cache is what spares the repeat cost. Raise `ttl_seconds` on a slow mount and treat the rescan button as the deliberate refresh.
 
 `autosync_interval_seconds` (default 10) governs the background sync loop. While at least one browser tab is open to the server, the loop runs a warm scan every N seconds (idle gap: the timer measures from completion to next start) and pushes any changed root sections back to the tab over SSE. Warm scans reuse a per-directory mtime index built up by previous scans; on the README's ~900-folder reference library a steady-state warm scan finishes in low single-digit milliseconds over SMB. Set the value to `0` to disable the loop; the SSE endpoint still serves the initial snapshot but emits no further section events. The Rescan button takes a different path: it clears the dir index and walks every directory (a cold scan), the explicit "fix any drift" action, which on the same library is about 1.9 s over SMB.
+
+Staleness detection keys off directory mtime; on filesystems with coarse or unreliable mtime (some NFS and FAT mounts), a change made inside the same mtime tick can be missed until the next cold rescan. Use the rescan button or a shorter TTL if your mount has this property.
 
 ## Markers
 
