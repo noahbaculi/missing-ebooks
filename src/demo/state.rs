@@ -73,11 +73,13 @@ pub async fn build_state(
     demo_config: DemoConfig,
 ) -> DemoState {
     let settings = Arc::new(settings);
-    // The demo scans once into a static raw view and never rescans, so the dir
-    // index this build feeds in is throwaway: it populates as the walk goes,
-    // then drops with the local Arc.
-    let throwaway_index = Arc::new(std::sync::Mutex::new(DirIndex::new()));
-    let base_raw = Arc::new(build_view(&config, &settings, throwaway_index).await);
+    // The demo scans once into a static raw view and never rescans, so the
+    // per-root indices fed in are throwaway: they populate as the walks go,
+    // then drop with this local Vec.
+    let throwaway_indices: Vec<_> = (0..config.library_roots.len())
+        .map(|_| Arc::new(Mutex::new(DirIndex::new())))
+        .collect();
+    let base_raw = Arc::new(build_view(&config, &settings, &throwaway_indices).await);
     DemoState {
         base_raw,
         sessions: Mutex::new(SessionStore::new(demo_config.max_sessions)),

@@ -68,7 +68,10 @@ pub(crate) struct RawViewStore {
     ttl: Option<Duration>,
     /// Scan substrate: the compiled settings and the shared mtime index.
     settings: Arc<ScanSettings>,
-    dir_index: Arc<StdMutex<DirIndex>>,
+    /// Per-root mtime indices. One persistent `DirIndex` per configured
+    /// library root, so the per-root walks in `build_view` hold disjoint
+    /// locks and run truly in parallel.
+    dir_indices: Vec<Arc<StdMutex<DirIndex>>>,
     /// Held by the store for `build_view`; the same `Arc<Config>` is also
     /// exposed on `AppState.config` for handlers that read pure config data
     /// (search links, cookie name, library roots). See ADR-0027.
@@ -81,7 +84,7 @@ impl RawViewStore {
     pub fn new(
         config: Arc<Config>,
         settings: Arc<ScanSettings>,
-        dir_index: Arc<StdMutex<DirIndex>>,
+        dir_indices: Vec<Arc<StdMutex<DirIndex>>>,
         ttl: Option<Duration>,
     ) -> RawViewStore {
         RawViewStore {
@@ -90,7 +93,7 @@ impl RawViewStore {
             rebuild_count: AtomicU64::new(0),
             ttl,
             settings,
-            dir_index,
+            dir_indices,
             config,
         }
     }
@@ -135,9 +138,9 @@ impl RawViewStore {
             } else {
                 let config = Arc::clone(&self.config);
                 let settings = Arc::clone(&self.settings);
-                let index = Arc::clone(&self.dir_index);
+                let indices: Vec<_> = self.dir_indices.iter().map(Arc::clone).collect();
                 let build: SharedBuild =
-                    async move { Arc::new(build_view(&config, &settings, index).await) }
+                    async move { Arc::new(build_view(&config, &settings, &indices).await) }
                         .boxed()
                         .shared();
                 let handle = Arc::new(build);
@@ -162,21 +165,18 @@ impl RawViewStore {
         self.build_coalesced().await
     }
 
-    /// Force a cold scan: clear the dir index, then rebuild. Ignores the TTL.
-    /// The explicit "fix any drift" path, used by the /rescan click.
+    /// Force a cold scan: clear every per-root index, then rebuild. Ignores
+    /// the TTL. The explicit "fix any drift" path, used by the /rescan click.
     pub async fn rescan(&self) -> Arc<RawView> {
-        lock_index(&self.dir_index).clear();
+        for index in &self.dir_indices {
+            lock_index(index).clear();
+        }
         self.build_coalesced().await
     }
 
     /// Build the raw view for every configured root, in config order.
     async fn build_view(&self) -> RawView {
-        build_view(
-            self.config.as_ref(),
-            &self.settings,
-            Arc::clone(&self.dir_index),
-        )
-        .await
+        build_view(self.config.as_ref(), &self.settings, &self.dir_indices).await
     }
 
     /// Returns the count of fresh builds stored into the slot since this
@@ -198,12 +198,10 @@ impl AppState {
         };
         let config = Arc::new(config);
         let autosync = crate::autosync::Autosync::new(config.autosync_interval_seconds);
-        let store = RawViewStore::new(
-            Arc::clone(&config),
-            Arc::new(settings),
-            Arc::new(StdMutex::new(DirIndex::new())),
-            ttl,
-        );
+        let dir_indices = (0..config.library_roots.len())
+            .map(|_| Arc::new(StdMutex::new(DirIndex::new())))
+            .collect();
+        let store = RawViewStore::new(Arc::clone(&config), Arc::new(settings), dir_indices, ttl);
         AppState {
             config,
             store,
@@ -306,7 +304,7 @@ impl RawViewStore {
         };
 
         // A self-write may not bump the folder mtime, so force a re-list on rescan.
-        self.invalidate_index(&canonical_root, rel);
+        self.invalidate_index(root, &canonical_root, rel);
 
         let rel_for_edit = rel.to_string();
         let raw = {
@@ -334,21 +332,25 @@ impl RawViewStore {
     }
 
     /// Drop the index entry for `rel` under `canonical_root` so the next walk
-    /// re-lists it. Used after this process writes or deletes a marker, so the
-    /// change is picked up even if the directory mtime resolution would have
-    /// hidden the same-tick write. A no-op when the path was never indexed.
+    /// re-lists it. Used after this process writes or deletes a marker, so
+    /// the change is picked up even if the directory mtime resolution would
+    /// have hidden the same-tick write. A no-op when the path was never
+    /// indexed, or when `root` is out of range.
     ///
     /// `canonical_root` must already be canonicalized by the caller.
-    /// `write_marker` and `delete_marker` do that on `spawn_blocking` and hand
-    /// back the result, so the sync `canonicalize` syscall stays off the async
-    /// runtime thread.
-    fn invalidate_index(&self, canonical_root: &Path, rel: &str) {
+    /// `write_marker` and `delete_marker` do that on `spawn_blocking` and
+    /// hand back the result, so the sync `canonicalize` syscall stays off
+    /// the async runtime thread.
+    fn invalidate_index(&self, root: usize, canonical_root: &Path, rel: &str) {
+        let Some(index) = self.dir_indices.get(root) else {
+            return;
+        };
         let target = if rel == "." {
             canonical_root.to_path_buf()
         } else {
             canonical_root.join(rel)
         };
-        lock_index(&self.dir_index).invalidate(&target);
+        lock_index(index).invalidate(&target);
     }
 
     /// Delete a marker file and refresh the cached view by rescanning the one
@@ -384,7 +386,7 @@ impl RawViewStore {
         };
 
         // A self-delete may not bump the folder mtime, so force a re-list.
-        self.invalidate_index(&canonical_root, rel);
+        self.invalidate_index(root, &canonical_root, rel);
 
         let raw = {
             let _edit = self.inflight.lock().await;
@@ -393,7 +395,7 @@ impl RawViewStore {
                     let section = build_section(
                         root_path.clone(),
                         Arc::clone(&self.settings),
-                        Arc::clone(&self.dir_index),
+                        Arc::clone(&self.dir_indices[root]),
                     )
                     .await;
                     let mut next = (*entry.raw).clone();
@@ -530,8 +532,8 @@ mod tests {
             ..Default::default()
         };
         let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
-        let dir_index = Arc::new(StdMutex::new(DirIndex::new()));
-        RawViewStore::new(Arc::new(cfg), Arc::new(settings), dir_index, ttl)
+        let dir_indices = vec![Arc::new(StdMutex::new(DirIndex::new()))];
+        RawViewStore::new(Arc::new(cfg), Arc::new(settings), dir_indices, ttl)
     }
 
     #[tokio::test]
@@ -578,13 +580,13 @@ mod tests {
 
         // Warm the index by reading once.
         let _ = store.current().await;
-        let after_warm = store.dir_index.lock().unwrap().len();
+        let after_warm = store.dir_indices[0].lock().unwrap().len();
         assert!(after_warm > 0, "the warm read populated the dir index");
 
         // Drop a synthetic entry into the index that no real walk could reach.
         // A cold rescan must drop it; a warm rescan would preserve it.
         let synthetic_path = std::path::PathBuf::from("/nonexistent/synthetic/marker/path");
-        store.dir_index.lock().unwrap().insert(
+        store.dir_indices[0].lock().unwrap().insert(
             synthetic_path.clone(),
             scanner::CachedDir {
                 mtime: std::time::UNIX_EPOCH,
@@ -594,8 +596,7 @@ mod tests {
             },
         );
         assert!(
-            store
-                .dir_index
+            store.dir_indices[0]
                 .lock()
                 .unwrap()
                 .get(&synthetic_path)
@@ -605,15 +606,14 @@ mod tests {
         // Rescan must drop every entry, then the rebuild repopulates it.
         let _ = store.rescan().await;
         assert!(
-            store
-                .dir_index
+            store.dir_indices[0]
                 .lock()
                 .unwrap()
                 .get(&synthetic_path)
                 .is_none(),
             "rescan must clear the dir index, dropping the synthetic entry"
         );
-        let after_rescan = store.dir_index.lock().unwrap().len();
+        let after_rescan = store.dir_indices[0].lock().unwrap().len();
         assert_eq!(
             after_rescan, after_warm,
             "rescan must clear and repopulate to the same count on an unchanged tree"
@@ -769,6 +769,44 @@ mod tests {
         assert!(book.missing_ebook, "remove_mark re-flagged the folder");
     }
 
+    #[tokio::test]
+    async fn store_scans_independent_roots_without_cross_root_lock_contention() {
+        // Two roots, each with one gap. A single shared index would serialize
+        // the walks; per-root indices let them proceed independently. We
+        // assert the weaker, deterministic property: both roots scan and both
+        // gaps surface.
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&a.path().join("Book/01.mp3"));
+        crate::scenarios::touch(&b.path().join("Book/01.mp3"));
+        let cfg = Config {
+            library_roots: vec![a.path().to_path_buf(), b.path().to_path_buf()],
+            ttl_seconds: 600,
+            ..Default::default()
+        };
+        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
+        let dir_indices = (0..2)
+            .map(|_| Arc::new(StdMutex::new(DirIndex::new())))
+            .collect();
+        let store = RawViewStore::new(
+            Arc::new(cfg),
+            Arc::new(settings),
+            dir_indices,
+            Some(Duration::from_secs(600)),
+        );
+        let raw = store.current().await;
+        assert_eq!(raw.len(), 2, "one section per root");
+        for section in raw.iter() {
+            let RootScan::Walked { folders, .. } = section else {
+                panic!("expected Walked");
+            };
+            assert!(
+                folders.iter().any(|f| f.missing_ebook),
+                "each root has a gap"
+            );
+        }
+    }
+
     /// Helper: assert that `Book` under root 0 of `raw` has the expected
     /// `missing_ebook` value. Used by ported tests that previously asserted on
     /// the packaged `RootState`; the equivalent at the raw layer reads off the
@@ -868,7 +906,7 @@ mod tests {
         assert!(f1.iter().any(|f| f.missing_ebook));
         assert!(f2.iter().any(|f| f.missing_ebook));
 
-        let reused = store.dir_index.lock().unwrap().len();
+        let reused = store.dir_indices[0].lock().unwrap().len();
         assert!(reused > 0, "the index retained the walked directories");
     }
 
@@ -883,7 +921,7 @@ mod tests {
         let canonical = std::fs::canonicalize(dir.path()).unwrap();
         let book = canonical.join("Book");
         assert!(
-            store.dir_index.lock().unwrap().get(&book).is_some(),
+            store.dir_indices[0].lock().unwrap().get(&book).is_some(),
             "Book is indexed after the scan"
         );
 
@@ -891,7 +929,7 @@ mod tests {
         // and the next walk re-lists it rather than trusting a pre-write mtime.
         store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
         assert!(
-            store.dir_index.lock().unwrap().get(&book).is_none(),
+            store.dir_indices[0].lock().unwrap().get(&book).is_none(),
             "Book's index entry is invalidated by the marker write"
         );
     }

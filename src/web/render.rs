@@ -1662,8 +1662,10 @@ mod tests {
         Arc::new(ScanSettings::compile(Config::default().scan_inputs()).unwrap())
     }
 
-    fn test_index() -> Arc<Mutex<DirIndex>> {
-        Arc::new(Mutex::new(DirIndex::new()))
+    fn test_indices(roots: usize) -> Vec<Arc<Mutex<DirIndex>>> {
+        (0..roots)
+            .map(|_| Arc::new(Mutex::new(DirIndex::new())))
+            .collect()
     }
 
     #[tokio::test]
@@ -1671,7 +1673,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Author/Book/01.mp3"));
         let cfg = test_config(vec![dir.path().to_path_buf()], 60);
-        let raw = build_view(&cfg, &test_settings(), test_index()).await;
+        let raw = build_view(&cfg, &test_settings(), &test_indices(1)).await;
         let view = package_view(&raw, ViewMode::GapsOnly);
         assert_eq!(view.len(), 1);
         match &view[0].state {
@@ -1688,7 +1690,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("Empty")).unwrap();
         let cfg = test_config(vec![dir.path().to_path_buf()], 60);
-        let raw = build_view(&cfg, &test_settings(), test_index()).await;
+        let raw = build_view(&cfg, &test_settings(), &test_indices(1)).await;
         let view = package_view(&raw, ViewMode::GapsOnly);
         assert!(matches!(view[0].state, RootState::Clean));
     }
@@ -1704,7 +1706,7 @@ mod tests {
             ],
             60,
         );
-        let raw = build_view(&cfg, &test_settings(), test_index()).await;
+        let raw = build_view(&cfg, &test_settings(), &test_indices(2)).await;
         let view = package_view(&raw, ViewMode::GapsOnly);
         assert!(matches!(view[0].state, RootState::Error(_)));
         assert!(matches!(view[1].state, RootState::Forest(_)));
@@ -1729,7 +1731,7 @@ mod tests {
             ],
             60,
         );
-        let raw = build_view(&cfg, &test_settings(), test_index()).await;
+        let raw = build_view(&cfg, &test_settings(), &test_indices(3)).await;
         let view = package_view(&raw, ViewMode::GapsOnly);
 
         assert_eq!(view[0].total_audiobooks, 2, "two audiobook folders");
@@ -1745,7 +1747,7 @@ mod tests {
         touch(&dir.path().join("Author/Covered/01.mp3"));
         touch(&dir.path().join("Author/Covered/Covered.epub"));
         let cfg = test_config(vec![dir.path().to_path_buf()], 60);
-        let raw = build_view(&cfg, &test_settings(), test_index()).await;
+        let raw = build_view(&cfg, &test_settings(), &test_indices(1)).await;
         let view = package_view(&raw, ViewMode::All);
         let RootState::Forest(nodes) = &view[0].state else {
             panic!("show-all always yields a Forest");

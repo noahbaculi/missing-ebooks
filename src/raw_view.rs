@@ -9,6 +9,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Instant;
 
+use futures_util::future::join_all;
+
 use crate::config::Config;
 use crate::marker::Marker;
 use crate::scanner::{self, DirIndex, RootScan, ScanSettings};
@@ -61,19 +63,25 @@ fn add_marker(cover_files: &mut Vec<String>, marker: Marker) {
     }
 }
 
-/// Build the raw view for every configured root, in config order. Each root
-/// is scanned on a blocking task so the directory walk does not stall the
-/// runtime. The response renders per mode from the result (see ADR-0022).
+/// Build the raw view for every configured root, in config order. Roots are
+/// disjoint subtrees, so each scans against its own persistent `DirIndex` on
+/// its own blocking task; `join_all` runs the walks in parallel.
 pub async fn build_view(
     config: &Config,
     settings: &Arc<ScanSettings>,
-    index: Arc<StdMutex<DirIndex>>,
+    indices: &[Arc<StdMutex<DirIndex>>],
 ) -> RawView {
     let started = Instant::now();
-    let mut sections = Vec::with_capacity(config.library_roots.len());
-    for root in &config.library_roots {
-        sections.push(build_section(root.clone(), Arc::clone(settings), Arc::clone(&index)).await);
-    }
+    let sections = join_all(
+        config
+            .library_roots
+            .iter()
+            .zip(indices)
+            .map(|(root, index)| {
+                build_section(root.clone(), Arc::clone(settings), Arc::clone(index))
+            }),
+    )
+    .await;
     tracing::info!(
         roots = sections.len(),
         elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
