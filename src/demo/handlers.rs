@@ -198,7 +198,7 @@ fn apply_mark(
     req: &MarkRequest,
     op: MarkOp,
 ) -> Response {
-    let mode = req.view;
+    let mode = ViewMode::from_query(req.view.as_deref());
     // The UI only ever submits a root index from a rendered button, so an
     // out-of-range index is a malformed request.
     if req.root >= state.num_roots() {

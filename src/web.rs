@@ -45,8 +45,11 @@ pub(crate) struct MarkRequest {
     pub(crate) root: usize,
     pub(crate) rel: String,
     pub(crate) kind: Marker,
+    /// Raw `view` form field, parsed leniently via `ViewMode::from_query` at the
+    /// call site so an unknown value falls back to gaps-only rather than 422,
+    /// matching the index/rescan handlers.
     #[serde(default)]
-    pub(crate) view: ViewMode,
+    pub(crate) view: Option<String>,
 }
 
 /// Build the application router with the shared state attached.
@@ -87,7 +90,7 @@ async fn mark(
 ) -> axum::response::Response {
     let started = Instant::now();
     let links = &state.config.search_links;
-    let mode = req.view;
+    let mode = ViewMode::from_query(req.view.as_deref());
     let resp = match state.store.write_mark(req.root, &req.rel, req.kind).await {
         Ok(applied) => {
             let view = render::package_view(&applied.raw, mode);
@@ -123,7 +126,7 @@ async fn unmark(
 ) -> axum::response::Response {
     let started = Instant::now();
     let links = &state.config.search_links;
-    let mode = req.view;
+    let mode = ViewMode::from_query(req.view.as_deref());
     let resp = match state.store.remove_mark(req.root, &req.rel, req.kind).await {
         Ok(raw) => {
             let view = render::package_view(&raw, mode);
@@ -320,7 +323,7 @@ fn marked_trigger(req: &MarkRequest, name: &str) -> String {
             "root": req.root,
             "rel": req.rel,
             "kind": req.kind,
-            "view": req.view.as_query(),
+            "view": ViewMode::from_query(req.view.as_deref()).as_query(),
             "name": name,
         }
     });
@@ -848,5 +851,25 @@ mod tests {
         let rendered = format!("{event:?}");
         assert!(rendered.contains("event: section"));
         assert!(rendered.contains("id: r"));
+    }
+
+    #[tokio::test]
+    async fn mark_tolerates_an_unknown_view_value() {
+        // An unknown view= must fall back to gaps-only, matching index/rescan,
+        // rather than 422 on the strict ViewMode deserialize it used to do.
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let response = app_for(dir.path())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/mark")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("root=0&rel=Book&kind=no_ebook&view=bogus"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }
