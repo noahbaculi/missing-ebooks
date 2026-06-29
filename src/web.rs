@@ -872,4 +872,34 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
     }
+
+    #[tokio::test]
+    async fn a_failed_root_scan_renders_the_error_banner_not_a_500() {
+        // A root that exists at construction (so it would survive startup
+        // Config::validate) but cannot be walked when the first request triggers
+        // the lazy scan: remove it after the app is built. canonicalize then
+        // fails, the scanner yields RootScan::Failed, and the section must render
+        // its error banner with a graceful 200. Portable: no chmod, no
+        // non-directory trickery.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("library");
+        std::fs::create_dir(&root).unwrap();
+        let app = app_for(&root);
+        std::fs::remove_dir(&root).unwrap();
+
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "a failed root scan must not 500",
+        );
+        let body = body_string(response).await;
+        assert!(
+            body.contains("Could not scan this root:"),
+            "the failed root must render its error banner",
+        );
+    }
 }
