@@ -32,6 +32,18 @@ Several worktrees can run this harness at once, so the port may already be taken
 
 When the user explicitly asks for a fresh reset, that restraint is off: sweep every stray harness with `pkill -f 'target/debug/explore'` to catch instances that were orphaned and never cleaned up. Clear the visual-verification browsers in the same pass, since neither they nor the harness auto-clean. A Playwright session from the `playwright-cli` skill stays open until closed, so run `playwright-cli close-all` (or `playwright-cli kill-all` to force it); `playwright-cli list` shows what is still around.
 
+## Agent toolbox
+
+Run `mise tasks` to list every check. The shortcuts agents reach for most:
+
+- `mise run check` runs the full pre-commit equivalent. Run before claiming
+  work is done.
+- `mise run test` runs nextest plus doctests.
+- `mise run lint` runs fmt, clippy, typos, taplo, and the unused-dep check.
+- `bacon` gives continuous fmt/clippy feedback while editing (see `bacon.toml`).
+- `sg run -p '<pattern>' -l rust src/` does structural search across Rust
+  source. Use for refactors where regex would over- or under-match.
+
 ## Committing and merging
 
 Work lands on `main` by rebase and fast-forward only, so each commit sits inline on a linear history with no merge commit above it to carry context. Keep commits granular and don't squash (this is pre-release); each one has to read on its own.
