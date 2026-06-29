@@ -71,6 +71,10 @@ pub struct ScanSettings {
 
 impl ScanSettings {
     /// Normalize the extension and exclude-name lists and compile the globs.
+    ///
+    /// # Errors
+    /// Returns a [`ScanSettingsError`] if any exclude-glob pattern fails to
+    /// compile or the resulting set fails to assemble.
     pub fn compile(inputs: ScanInputs<'_>) -> Result<Self, ScanSettingsError> {
         let mut builder = GlobSetBuilder::new();
         for pattern in inputs.exclude_globs {
@@ -163,13 +167,19 @@ pub struct WalkStats {
 }
 
 /// One directory's cached facts: its mtime and everything a walk would otherwise
-/// re-read. `subdirs` are the non-excluded children. `audio_files` and `cover_files`
-/// are already natural-sorted, the same order a fresh listing produces.
+/// re-read.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CachedDir {
+    /// The directory's mtime when last walked. A rescan reuses the entry when
+    /// this still matches.
     pub mtime: std::time::SystemTime,
+    /// The non-excluded children, paths in the same form the walk emitted them.
     pub subdirs: Vec<PathBuf>,
+    /// Audio filenames, already natural-sorted (the same order a fresh listing
+    /// produces).
     pub audio_files: std::sync::Arc<[String]>,
+    /// Cover filenames, already natural-sorted (the same order a fresh listing
+    /// produces).
     pub cover_files: std::sync::Arc<[String]>,
 }
 

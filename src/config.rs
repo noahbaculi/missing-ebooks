@@ -131,6 +131,11 @@ pub enum ConfigError {
 impl Config {
     /// Resolve config: defaults, then an optional file, then env overrides,
     /// then validate that at least one library root is set.
+    ///
+    /// # Errors
+    /// Returns a [`ConfigError`] if the optional file cannot be read or parsed,
+    /// an env override is malformed, or validation fails (e.g. no library roots
+    /// are configured).
     pub fn load(config_path: Option<&Path>) -> Result<Config, ConfigError> {
         let mut cfg = match config_path {
             Some(path) => Self::from_file(path)?,
