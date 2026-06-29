@@ -125,7 +125,7 @@ pub fn render_view(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> 
             (super::page::search_empty())
         }
     };
-    super::page::page(mode, body)
+    super::page::page(mode, &body)
 }
 
 /// Total gaps across all roots: read directly from each section's

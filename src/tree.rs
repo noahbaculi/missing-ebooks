@@ -312,7 +312,7 @@ mod tests {
             cover_files: std::sync::Arc::from(Vec::<String>::new()),
             audio_files: audio
                 .iter()
-                .map(|s| s.to_string())
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .into(),
         }
@@ -441,7 +441,7 @@ mod tests {
             cover_files: std::sync::Arc::from(Vec::<String>::new()),
             audio_files: audio_files
                 .iter()
-                .map(|s| s.to_string())
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .into(),
         }
@@ -511,7 +511,7 @@ mod tests {
             missing_ebook: missing,
             cover_files: cover_files
                 .iter()
-                .map(|s| s.to_string())
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .into(),
             audio_files: std::sync::Arc::from(Vec::<String>::new()),

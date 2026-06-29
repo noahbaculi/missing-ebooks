@@ -177,7 +177,7 @@ mod tests {
         // app.js writes and prepaint.js reads before first paint.
         for key in ["boldTopFolder", "italicNestedFolders"] {
             assert!(APP_JS_BYTES.contains(key), "app.js missing {key}");
-            assert!(PREPAINT_JS_BYTES.contains(key), "prepaint.js missing {key}",);
+            assert!(PREPAINT_JS_BYTES.contains(key), "prepaint.js missing {key}");
         }
     }
 

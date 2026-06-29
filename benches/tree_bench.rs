@@ -34,7 +34,7 @@ fn median(samples: &[f64]) -> f64 {
     let mid = if n % 2 == 1 {
         v[n / 2]
     } else {
-        (v[n / 2 - 1] + v[n / 2]) / 2.0
+        f64::midpoint(v[n / 2 - 1], v[n / 2])
     };
     round3(mid)
 }

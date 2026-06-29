@@ -81,6 +81,21 @@ correctness = { level = "deny", priority = -1 }
 suspicious = { level = "deny", priority = -1 }
 complexity = { level = "deny", priority = -1 }
 perf = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+# Pedantic allow-list. Each entry carries a one-line reason; revisit case-by-case.
+must_use_candidate = "allow"         # Project-wide: factories and pure getters are obvious from their name; #[must_use] noise outweighs the benefit.
+doc_markdown = "allow"               # Plenty of legitimate prose tokens (ETag, MarkOverlay, DemoState) read fine without backticks.
+cast_precision_loss = "allow"        # All hits are usize↔f64 in audited percent/ratio math; not worth per-site allows.
+cast_sign_loss = "allow"             # All hits are .floor()/.round() back to usize after a guarded non-negative compute.
+cast_possible_truncation = "allow"   # Same audited percent/ratio sites as the cast_precision_loss/sign_loss pair.
+too_many_lines = "allow"             # Scenario builders and list_dir_all are deliberately flat; splitting them hides intent.
+duration_suboptimal_units = "allow"  # from_mins/from_hours stabilized in 1.96 but the from_secs(N) literals read fine in tests.
+unchecked_time_subtraction = "allow" # Hits are test code using Instant::now() - Duration with controlled inputs; no underflow risk.
+items_after_statements = "allow"     # Nested helper fns inside long render tests stay near their callsite for readability.
+similar_names = "allow"              # `marker` vs `marked` is intentional vocabulary, not a typo trap.
+if_not_else = "allow"                # Hot-path-first branch order is deliberate; flipping it hides the common case.
+single_match_else = "allow"          # Match-with-block-arms is clearer than if-let when the None arm is multi-statement.
+map_unwrap_or = "allow"              # `.map(f).unwrap_or(x)` reads more linearly than `.map_or(x, f)` when f is long.
 
 [lints.rust]
 missing_docs = "deny"

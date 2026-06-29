@@ -60,7 +60,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         let strings =
-            |items: &[&str]| -> Vec<String> { items.iter().map(|s| s.to_string()).collect() };
+            |items: &[&str]| -> Vec<String> { items.iter().map(ToString::to_string).collect() };
         Self {
             library_roots: Vec::new(),
             bind: "127.0.0.1".to_string(),

@@ -7,6 +7,7 @@
 //! library states. Loose root audio surfaces the root itself (see
 //! docs/adr/0005-library-root-itself-flaggable.md).
 
+use std::fmt::Write as _;
 use std::net::Ipv4Addr;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -97,10 +98,8 @@ fn catalog_listing() -> String {
     out.push_str(USAGE);
     out.push_str("\n\nscenarios:\n");
     for scenario in scenarios::catalog() {
-        out.push_str(&format!(
-            "  {:<14}{}\n",
-            scenario.name, scenario.description
-        ));
+        // Helper output, infallible write into a String.
+        let _ = writeln!(out, "  {:<14}{}", scenario.name, scenario.description);
     }
     out
 }
@@ -157,12 +156,9 @@ async fn main() -> ExitCode {
 
     // A missing or unknown scenario prints the catalog to stderr and exits
     // non-zero, so a typo lands you on the menu rather than a blank server.
-    let scenario = match args.scenario.as_deref().and_then(scenarios::find_scenario) {
-        Some(scenario) => scenario,
-        None => {
-            eprint!("{}", catalog_listing());
-            return ExitCode::from(2);
-        }
+    let Some(scenario) = args.scenario.as_deref().and_then(scenarios::find_scenario) else {
+        eprint!("{}", catalog_listing());
+        return ExitCode::from(2);
     };
 
     // Initialize tracing only once we are committed to serving, so the warnings
@@ -243,7 +239,7 @@ mod tests {
     use super::*;
 
     fn argv(parts: &[&str]) -> Vec<String> {
-        parts.iter().map(|s| s.to_string()).collect()
+        parts.iter().map(ToString::to_string).collect()
     }
 
     #[test]

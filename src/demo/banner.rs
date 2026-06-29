@@ -13,7 +13,7 @@ const BANNER_MARKER: &str = "me-demo-banner";
 /// Scoped styles for the banner's one-time sheen sweep. The block lives with the
 /// banner, not in app.css, so the bar still renders from the inline styles below
 /// if this is dropped. The sweep is off for reduced-motion visitors.
-const BANNER_STYLE: &str = r#"<style>.me-demo-sheen{position:absolute;top:0;bottom:0;left:0;width:38%;background:linear-gradient(100deg,transparent 0%,rgba(255,255,255,.38) 50%,transparent 100%);transform:translateX(-140%) skewX(-18deg);animation:me-demo-sheen-sweep 1.6s ease-in-out .25s 1 both;pointer-events:none}@keyframes me-demo-sheen-sweep{0%{transform:translateX(-140%) skewX(-18deg)}100%{transform:translateX(360%) skewX(-18deg)}}@media (prefers-reduced-motion:reduce){.me-demo-sheen{animation:none}}</style>"#;
+const BANNER_STYLE: &str = r"<style>.me-demo-sheen{position:absolute;top:0;bottom:0;left:0;width:38%;background:linear-gradient(100deg,transparent 0%,rgba(255,255,255,.38) 50%,transparent 100%);transform:translateX(-140%) skewX(-18deg);animation:me-demo-sheen-sweep 1.6s ease-in-out .25s 1 both;pointer-events:none}@keyframes me-demo-sheen-sweep{0%{transform:translateX(-140%) skewX(-18deg)}100%{transform:translateX(360%) skewX(-18deg)}}@media (prefers-reduced-motion:reduce){.me-demo-sheen{animation:none}}</style>";
 
 /// The banner markup, its self-contained styling, and the Reset control. The bar
 /// is full-bleed: negative margins cancel the body's 1.5rem padding, with a 1rem

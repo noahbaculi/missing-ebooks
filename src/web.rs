@@ -4,6 +4,7 @@
 //! affected root's section. htmx is vendored and served from `/static`.
 
 use std::convert::Infallible;
+use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -103,7 +104,7 @@ async fn mark(
             req.root,
             mode,
             links,
-            format!("Could not mark {}: {error}", req.rel),
+            format!("Could not mark {}: {error}", req.rel).as_str(),
         ),
     };
     tracing::debug!(
@@ -137,7 +138,7 @@ async fn unmark(
             req.root,
             mode,
             links,
-            format!("Could not undo {}: {error}", req.rel),
+            format!("Could not undo {}: {error}", req.rel).as_str(),
         ),
     };
     tracing::debug!(
@@ -166,10 +167,10 @@ fn in_section_alert(
     root: usize,
     mode: ViewMode,
     links: &[SearchLink],
-    message: String,
+    message: &str,
 ) -> axum::response::Response {
     let view = render::package_view(raw, mode);
-    let markup = render::render_section(&view[root], root, Some(&message), links, mode);
+    let markup = render::render_section(&view[root], root, Some(message), links, mode);
     section_response(markup, None)
 }
 
@@ -214,6 +215,10 @@ pub(crate) fn events_response(rx: mpsc::Receiver<Result<Event, Infallible>>) -> 
 /// seed the browser's `lastEventId` so any reconnect carries `Last-Event-ID`,
 /// which `events` uses to discriminate first connect from reconnect. See
 /// ADR-0030.
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "SSE senders take Result<Event, Infallible>; the wrap lets callers do tx.send(ack_event()) directly."
+)]
 pub(crate) fn ack_event() -> Result<Event, Infallible> {
     Ok(Event::default().event("ack").id("r"))
 }
@@ -221,6 +226,10 @@ pub(crate) fn ack_event() -> Result<Event, Infallible> {
 /// The SSE `snapshot` event. The `id: r` stamp is identical to every other
 /// event on the channel; the server only checks header presence on reconnect,
 /// not the id value. See ADR-0030.
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "SSE senders take Result<Event, Infallible>; the wrap lets callers do tx.send(snapshot_event(...)) directly."
+)]
 pub(crate) fn snapshot_event(payload: String) -> Result<Event, Infallible> {
     Ok(Event::default().event("snapshot").id("r").data(payload))
 }
@@ -267,7 +276,8 @@ fn ascii_escape(s: &str) -> String {
             out.push(c);
         } else {
             for unit in c.encode_utf16(&mut buf) {
-                out.push_str(&format!("\\u{unit:04x}"));
+                // Header values are ASCII; write! into a String is infallible.
+                let _ = write!(out, "\\u{unit:04x}");
             }
         }
     }

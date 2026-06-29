@@ -48,7 +48,7 @@ fn median(samples: &[f64]) -> f64 {
     let mid = if n % 2 == 1 {
         v[n / 2]
     } else {
-        (v[n / 2 - 1] + v[n / 2]) / 2.0
+        f64::midpoint(v[n / 2 - 1], v[n / 2])
     };
     round3(mid)
 }
@@ -874,7 +874,7 @@ fn resolve_config(args: &Args) -> Result<Config, String> {
         None => Config::default(),
     };
     if !args.roots.is_empty() {
-        config.library_roots = args.roots.clone();
+        config.library_roots.clone_from(&args.roots);
     }
     Ok(config)
 }
@@ -1256,7 +1256,7 @@ mod tests {
     }
 
     fn argv(parts: &[&str]) -> Vec<String> {
-        parts.iter().map(|s| s.to_string()).collect()
+        parts.iter().map(ToString::to_string).collect()
     }
 
     #[test]
@@ -1402,8 +1402,8 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
     }
 
     fn bench_settings() -> ScanSettings {
-        let audio: Vec<String> = [".mp3"].iter().map(|s| s.to_string()).collect();
-        let ebook: Vec<String> = [".epub"].iter().map(|s| s.to_string()).collect();
+        let audio: Vec<String> = [".mp3"].iter().map(ToString::to_string).collect();
+        let ebook: Vec<String> = [".epub"].iter().map(ToString::to_string).collect();
         ScanSettings::compile(missing_ebooks::scanner::ScanInputs {
             audio_exts: &audio,
             ebook_exts: &ebook,

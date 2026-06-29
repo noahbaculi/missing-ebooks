@@ -1035,7 +1035,7 @@ mod tests {
             "Arthur C. Clarke/The Fountains of Paradise",
         ]
         .iter()
-        .map(|s| s.to_string())
+        .map(ToString::to_string)
         .collect();
         assert_eq!(flagged(&roots[0]), want_library);
 
@@ -1052,7 +1052,7 @@ mod tests {
             "Ted Chiang/Exhalation",
         ]
         .iter()
-        .map(|s| s.to_string())
+        .map(ToString::to_string)
         .collect();
         assert_eq!(flagged(&roots[1]), want_external);
 
@@ -1090,7 +1090,7 @@ mod tests {
             "Brandon Sanderson/Mistborn/The Final Empire",
         ]
         .iter()
-        .map(|s| s.to_string())
+        .map(ToString::to_string)
         .collect();
         assert_eq!(flagged(&roots[0]), want);
     }
@@ -1116,7 +1116,7 @@ mod tests {
         let roots = materialize(&spec, dir.path());
         assert_eq!(roots.len(), 1);
         // Loose audio in the root is reported as the empty relative path (ADR-0005).
-        assert_eq!(flagged(&roots[0]), BTreeSet::from(["".to_string()]));
+        assert_eq!(flagged(&roots[0]), BTreeSet::from([String::new()]));
     }
 
     #[test]
@@ -1127,7 +1127,7 @@ mod tests {
         assert_eq!(roots.len(), 1);
         let want: BTreeSet<String> = ["Marked Author/Uncovered Book", "Plain Author/Plain Book"]
             .iter()
-            .map(|s| s.to_string())
+            .map(ToString::to_string)
             .collect();
         assert_eq!(flagged(&roots[0]), want);
     }

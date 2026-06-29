@@ -254,7 +254,7 @@ pub(super) fn mark_warn_template() -> Markup {
 /// `#roots` block, assembled by `render::render_view`). Pure shell: takes
 /// no domain types, only the current `ViewMode` for the navbar and the SSE
 /// query string.
-pub(crate) fn page(mode: ViewMode, body: Markup) -> Markup {
+pub(crate) fn page(mode: ViewMode, body: &Markup) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn index_links_an_inline_favicon() {
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // An inline SVG data-URI favicon, so the browser stops requesting
         // /favicon.ico and the tab gets an identity.
         assert!(html.contains(r#"rel="icon""#));
@@ -348,7 +348,7 @@ mod tests {
 
     #[test]
     fn index_links_the_stylesheet_and_inits_the_theme() {
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // The external stylesheet replaces the old inline <style> block.
         assert!(html.contains(r#"href="/static/app.css""#));
         // The pre-paint theme script is present and reads the OS preference.
@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn prepaint_bootstrap_handles_the_accent_preference() {
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // The inline pre-paint script reads the accent key and derives the ink
         // before first paint, so a custom accent never flashes the default ink.
         assert!(html.contains("getItem('accent')"));
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn page_carries_a_noscript_notice() {
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // The UI requires JavaScript; a <noscript> strip is the one thing a
         // scripting-disabled visitor sees.
         assert!(html.contains("<noscript>"));
@@ -392,7 +392,7 @@ mod tests {
         // The body-end <script> half of the original
         // `index_renders_the_marker_buttons_and_script` (the marker-button
         // half landed in render::tests during the cluster E migration).
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         assert!(html.contains(r#"src="/static/htmx.min.js""#));
         assert!(html.contains(r#"src="/static/htmx-sse.js""#));
         assert!(html.contains(r#"src="/static/app.js""#));
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn navbar_renders_a_settings_cog_with_theme_and_confirm_controls() {
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // A labelled cog opens the settings panel via the native popover API.
         assert!(html.contains(r#"class="btn btn-ghost btn-square settings-cog""#));
         assert!(html.contains(r#"aria-label="Settings""#));
@@ -440,7 +440,7 @@ mod tests {
 
     #[test]
     fn panel_renders_the_accent_color_control() {
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // A regular-weight row label, not a section header.
         assert!(html.contains(r#"<span class="settings-label">Accent Color</span>"#));
         // The native color picker, defaulting to the shipped amber.
@@ -468,21 +468,21 @@ mod tests {
     #[test]
     fn the_view_control_marks_the_active_segment() {
         // Gaps-only is the active view; "All folders" is the link to the other view.
-        let gaps = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let gaps = page(ViewMode::GapsOnly, &stub_body()).into_string();
         assert!(gaps.contains(r#"class="segmented""#));
         assert!(gaps.contains("Gaps only"));
         assert!(gaps.contains("All folders"));
         assert!(gaps.contains(r#"href="/?view=all""#));
 
         // Show-all is active; "Gaps only" links back to /.
-        let all = page(ViewMode::All, stub_body()).into_string();
+        let all = page(ViewMode::All, &stub_body()).into_string();
         assert!(all.contains(r#"href="/""#));
         assert!(all.contains(r#"aria-current="page""#));
     }
 
     #[test]
     fn navbar_renders_the_brand_mark_before_the_title() {
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // The title is a home link wrapping the brand glyph and the wordmark. The
         // single assertion fixes the link, the inline mark, and its leading position.
         assert!(html.contains(r#"<h1><a href="/"><svg class="brand-mark""#));
@@ -491,7 +491,7 @@ mod tests {
 
     #[test]
     fn decorative_icons_are_hidden_from_assistive_tech() {
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // The folder glyph renders on every node row; it must be hidden from the
         // a11y tree (it is paired with the folder name) and not be a tab stop.
         // The shell carries other icons that satisfy the same shape (cog, search,
@@ -502,7 +502,7 @@ mod tests {
 
     #[test]
     fn navbar_places_the_spacer_before_the_search_box() {
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // The flexible spacer sits right after the title, so the title alone pins to the
         // left and the search box groups with the controls on the right.
         let spacer = html
@@ -519,7 +519,7 @@ mod tests {
 
     #[test]
     fn index_renders_the_shortcuts_inside_the_settings_panel() {
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // The shortcuts are a read-only section inside the settings popover.
         assert!(html.contains(r#"class="settings-shortcuts""#));
         assert!(html.contains("Keyboard shortcuts"));
@@ -536,7 +536,7 @@ mod tests {
         // The navbar half of the original
         // `rescan_is_an_in_place_htmx_swap_with_a_progress_bar`. The scan-bar
         // id pin lives next to it as `scan_bar_carries_the_indicator_id`.
-        let html = page(ViewMode::GapsOnly, stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // Rescan posts via htmx and swaps the fresh sections into #roots.
         assert!(html.contains(r#"hx-post="/rescan""#));
         assert!(html.contains(r##"hx-target="#roots""##));

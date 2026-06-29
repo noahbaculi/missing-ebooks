@@ -28,6 +28,7 @@ use crate::marker::Marker;
 /// The raw, un-normalized lists one scan needs, as named fields so the four
 /// string lists cannot be passed in the wrong order. The caller builds this from
 /// a `Config`. The scanner stays config-agnostic, so its tests stay light.
+#[derive(Clone, Copy)]
 pub struct ScanInputs<'a> {
     /// Audio extensions; the leading dot is optional and case is ignored.
     pub audio_exts: &'a [String],
@@ -200,7 +201,7 @@ impl DirIndex {
     fn lock(&self) -> std::sync::MutexGuard<'_, std::collections::HashMap<PathBuf, CachedDir>> {
         self.entries
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// A clone of the cached entry for `dir`, if any. Returns by value because
@@ -659,13 +660,13 @@ mod tests {
     fn default_settings(exclude_globs: &[&str]) -> ScanSettings {
         let audio: Vec<String> = [".mp3", ".m4a", ".m4b", ".flac"]
             .iter()
-            .map(|s| s.to_string())
+            .map(ToString::to_string)
             .collect();
         let ebook: Vec<String> = [".epub", ".pdf", ".mobi", ".azw3"]
             .iter()
-            .map(|s| s.to_string())
+            .map(ToString::to_string)
             .collect();
-        let globs: Vec<String> = exclude_globs.iter().map(|s| s.to_string()).collect();
+        let globs: Vec<String> = exclude_globs.iter().map(ToString::to_string).collect();
         ScanSettings::compile(ScanInputs {
             audio_exts: &audio,
             ebook_exts: &ebook,
@@ -758,7 +759,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("01 - Loose Book.mp3"));
         let got = flagged_set(dir.path(), &default_settings(&[]));
-        assert_eq!(got, BTreeSet::from(["".to_string()]));
+        assert_eq!(got, BTreeSet::from([String::new()]));
     }
 
     #[test]
@@ -802,8 +803,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("@eaDir/01.mp3"));
         touch(&dir.path().join("Book/01.mp3"));
-        let audio: Vec<String> = [".mp3"].iter().map(|s| s.to_string()).collect();
-        let ebook: Vec<String> = [".epub"].iter().map(|s| s.to_string()).collect();
+        let audio: Vec<String> = [".mp3"].iter().map(ToString::to_string).collect();
+        let ebook: Vec<String> = [".epub"].iter().map(ToString::to_string).collect();
         let excluded: Vec<String> = vec!["@eadir".to_string()];
         let settings = ScanSettings::compile(ScanInputs {
             audio_exts: &audio,
@@ -987,8 +988,8 @@ mod tests {
         touch(&dir.path().join("@eaDir/01.mp3"));
         touch(&dir.path().join(".@__thumb/01.mp3"));
         touch(&dir.path().join("Book/01.mp3"));
-        let audio: Vec<String> = [".mp3"].iter().map(|s| s.to_string()).collect();
-        let ebook: Vec<String> = [".epub"].iter().map(|s| s.to_string()).collect();
+        let audio: Vec<String> = [".mp3"].iter().map(ToString::to_string).collect();
+        let ebook: Vec<String> = [".epub"].iter().map(ToString::to_string).collect();
         let excluded: Vec<String> = vec!["@eadir".to_string()];
         let settings = ScanSettings::compile(ScanInputs {
             audio_exts: &audio,
@@ -1268,8 +1269,8 @@ mod tests {
         touch(&dir.path().join("@eaDir/01.mp3"));
         touch(&dir.path().join("@eaDir/02.mp3"));
         touch(&dir.path().join("Book/01.mp3"));
-        let audio: Vec<String> = [".mp3"].iter().map(|s| s.to_string()).collect();
-        let ebook: Vec<String> = [".epub"].iter().map(|s| s.to_string()).collect();
+        let audio: Vec<String> = [".mp3"].iter().map(ToString::to_string).collect();
+        let ebook: Vec<String> = [".epub"].iter().map(ToString::to_string).collect();
         let excluded: Vec<String> = vec!["@eadir".to_string()];
         let settings = ScanSettings::compile(ScanInputs {
             audio_exts: &audio,
