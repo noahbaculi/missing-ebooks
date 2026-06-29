@@ -17,6 +17,7 @@ staged=$(git diff --cached --name-only --diff-filter=ACMR)
 rust_changed=$(printf '%s\n' "$staged" | grep -Eq '(\.rs$|(^|/)Cargo\.(toml|lock)$|(^|/)(rust-toolchain|rustfmt|\.rustfmt|clippy)\.toml$)' && echo 1 || true)
 js_changed=$(printf '%s\n' "$staged" | grep -Eq '((^|/)assets/app\.js$|\.d\.ts$|(^|/)tsconfig\.json$)' && echo 1 || true)
 accent_changed=$(printf '%s\n' "$staged" | grep -Eq '((^|/)assets/app\.(css|js)$|(^|/)tests/accent/)' && echo 1 || true)
+toml_changed=$(printf '%s\n' "$staged" | grep -Eq '\.toml$' && echo 1 || true)
 
 if [ -n "$rust_changed" ]; then
   if ! cargo fmt --check; then
@@ -29,6 +30,10 @@ if [ -n "$rust_changed" ]; then
   fi
   if ! RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --quiet; then
     echo "pre-commit: 'cargo doc -D warnings' failed. Fix the rustdoc warnings above, then re-stage and commit." >&2
+    exit 1
+  fi
+  if ! cargo machete; then
+    echo "pre-commit: 'cargo machete' found unused dependencies. Remove them from Cargo.toml, then re-stage and commit." >&2
     exit 1
   fi
 fi
@@ -45,4 +50,16 @@ if [ -n "$accent_changed" ]; then
     echo "pre-commit: 'mise run test:accent' failed. Fix the accent derivation above, then re-stage and commit." >&2
     exit 1
   fi
+fi
+
+if [ -n "$toml_changed" ]; then
+  if ! taplo format --check; then
+    echo "pre-commit: 'taplo format --check' failed. Run 'taplo format' to fix, then re-stage and commit." >&2
+    exit 1
+  fi
+fi
+
+if ! typos; then
+  echo "pre-commit: 'typos' found spelling issues above. Fix them (or extend the typos allow-list), then re-stage and commit." >&2
+  exit 1
 fi
