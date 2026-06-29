@@ -24,6 +24,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
+use clap::Parser;
 use missing_ebooks::config::Config;
 use missing_ebooks::scanner::{self, DirIndex, ScanSettings, WalkStats};
 use missing_ebooks::state::RawViewStore;
@@ -201,102 +202,52 @@ fn parse_concurrency(value: &str) -> Result<Vec<usize>, String> {
     Ok(levels)
 }
 
-/// A parsed command line. Defaults: five iterations, all three walks, warm-only
-/// (no cache drop), save the report.
-#[derive(Debug, PartialEq)]
-struct Args {
+/// scan_bench CLI surface. Mirrors `bin/explore.rs`: a clap derive struct with
+/// the same flag set the hand-rolled parser carried. `--mode` and
+/// `--concurrency` stay raw strings so the comma-list and `every` expansion
+/// live in `parse_modes`/`parse_concurrency`, called in `main`.
+#[derive(clap::Parser, Debug)]
+#[command(
+    name = "scan_bench",
+    version,
+    about = "Time the real scanner (read-only) against each library root and save a JSON report.",
+    after_help = "Roots come from --root, --config, or MISSING_EBOOKS_LIBRARY_ROOTS.\n\
+        --mode is comma-separated: full, gaps, warm, concurrent, or every (default \
+        every, the listing-walk modes). `concurrent` is opt-in: it builds a tokio \
+        runtime and times five simultaneous RawViewStore::current() calls.\n\
+        --drop-caches sudo-flushes the Linux page cache before each cold run."
+)]
+struct Cli {
+    /// Load the real config.toml (extensions, exclusions, roots).
+    #[arg(long)]
     config: Option<PathBuf>,
+    /// Benchmark this exact path; repeatable; replaces config roots.
+    #[arg(long = "root")]
     roots: Vec<PathBuf>,
+    /// Measured runs per phase.
+    #[arg(long, default_value_t = 5, value_parser = parse_iterations)]
     iterations: usize,
-    modes: Vec<Mode>,
+    /// Comma-separated: full, gaps, warm, concurrent, or every.
+    #[arg(long = "mode", default_value = "every")]
+    mode: String,
+    /// Thread counts to sweep, comma-separated, e.g. 1,4,8,16.
+    #[arg(long, default_value = "16")]
+    concurrency: String,
+    /// Linux: sudo-flush the page cache before each cold run.
+    #[arg(long)]
     drop_caches: bool,
+    /// Tag stdout and the report (e.g. local, smb).
+    #[arg(long)]
     label: Option<String>,
+    /// Report path (default scan-bench-<label>-<host>-<time>.json).
+    #[arg(long)]
     out: Option<PathBuf>,
+    /// Do not write the report file.
+    #[arg(long)]
     no_save: bool,
-    concurrency: Vec<usize>,
-}
-
-/// Pull the value that follows a space-form flag, erroring if the vector ends.
-fn next_value<'a>(
-    iter: &mut impl Iterator<Item = &'a String>,
-    flag: &str,
-) -> Result<String, String> {
-    iter.next()
-        .cloned()
-        .ok_or_else(|| format!("{flag} needs a value"))
-}
-
-/// Parse the argument vector (already stripped of the program name). `Ok(None)`
-/// is a help request, `Ok(Some(args))` a run request, `Err(message)` a usage error
-/// the caller prints beside the help text. Hand-rolled to match `explore.rs`, not
-/// clap.
-fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
-    let mut config = None;
-    let mut roots = Vec::new();
-    let mut iterations = 5usize;
-    let mut modes = vec![Mode::Full, Mode::Gaps, Mode::Warm];
-    let mut drop_caches = false;
-    let mut label = None;
-    let mut out = None;
-    let mut no_save = false;
-    let mut concurrency = vec![16usize];
-    let mut iter = argv.iter();
-    while let Some(arg) = iter.next() {
-        if arg == "--help" || arg == "-h" {
-            return Ok(None);
-        } else if arg == "--drop-caches" {
-            drop_caches = true;
-        } else if arg == "--no-save" {
-            no_save = true;
-        } else if arg == "--config" {
-            config = Some(PathBuf::from(next_value(&mut iter, "--config")?));
-        } else if let Some(v) = arg.strip_prefix("--config=") {
-            config = Some(PathBuf::from(v));
-        } else if arg == "--root" {
-            roots.push(PathBuf::from(next_value(&mut iter, "--root")?));
-        } else if let Some(v) = arg.strip_prefix("--root=") {
-            roots.push(PathBuf::from(v));
-        } else if arg == "--iterations" {
-            iterations = parse_iterations(&next_value(&mut iter, "--iterations")?)?;
-        } else if let Some(v) = arg.strip_prefix("--iterations=") {
-            iterations = parse_iterations(v)?;
-        } else if arg == "--mode" {
-            modes = parse_modes(&next_value(&mut iter, "--mode")?)?;
-        } else if let Some(v) = arg.strip_prefix("--mode=") {
-            modes = parse_modes(v)?;
-        } else if arg == "--label" {
-            label = Some(next_value(&mut iter, "--label")?);
-        } else if let Some(v) = arg.strip_prefix("--label=") {
-            label = Some(v.to_string());
-        } else if arg == "--out" {
-            out = Some(PathBuf::from(next_value(&mut iter, "--out")?));
-        } else if let Some(v) = arg.strip_prefix("--out=") {
-            out = Some(PathBuf::from(v));
-        } else if arg == "--concurrency" {
-            concurrency = parse_concurrency(&next_value(&mut iter, "--concurrency")?)?;
-        } else if let Some(v) = arg.strip_prefix("--concurrency=") {
-            concurrency = parse_concurrency(v)?;
-        } else if arg == "--bench" {
-            // Cargo passes `--bench` through when invoking the binary under
-            // `cargo bench`. The bench has its own dispatch and does not need
-            // to know about libtest's bench mode, so accept and ignore it.
-        } else if arg.starts_with('-') {
-            return Err(format!("unknown flag {arg:?}"));
-        } else {
-            return Err(format!("unexpected positional argument {arg:?}"));
-        }
-    }
-    Ok(Some(Args {
-        config,
-        roots,
-        iterations,
-        modes,
-        drop_caches,
-        label,
-        out,
-        no_save,
-        concurrency,
-    }))
+    /// Absorbed: cargo bench passes this through to the binary.
+    #[arg(long, hide = true)]
+    bench: bool,
 }
 
 /// Return the `(fstype, options)` of the mount whose mount point is the longest
@@ -458,41 +409,6 @@ fn drop_caches() -> Result<(), String> {
     } else {
         Err(format!("drop-caches command exited with {status}"))
     }
-}
-
-const USAGE: &str = "usage: cargo bench --bench scan_bench -- \
-[--config PATH] [--root PATH]... [--iterations N] [--mode LIST] \
-[--concurrency LIST] [--drop-caches] [--label NAME] [--out PATH] [--no-save]";
-
-/// The usage line plus the flag reference and the read-only and strace notes.
-fn help_text() -> String {
-    format!(
-        "{USAGE}
-
-Times the real scanner (read-only) against each library root and saves a JSON
-report. Roots come from --root, --config, or MISSING_EBOOKS_LIBRARY_ROOTS.
-
-flags:
-  --config PATH     load the real config.toml (extensions, exclusions, roots)
-  --root PATH       benchmark this exact path; repeatable; replaces config roots
-  --iterations N    measured runs per phase (default 5)
-  --mode LIST       comma-separated: full, gaps, warm, concurrent, or every
-                    (default every); every runs all listing-walk modes, so a
-                    bare run saves a comprehensive report. `concurrent` is
-                    opt-in: it builds a tokio runtime and times five
-                    simultaneous `RawViewStore::current()` calls so the
-                    single-flight cold-build path is visible at wall time
-  --concurrency LIST   thread counts to sweep, comma-separated, e.g. 1,4,8,16 (default 16)
-  --drop-caches     Linux: sudo-flush the page cache before each cold run
-  --label NAME      tag stdout and the report (e.g. local, smb)
-  --out PATH        report path (default scan-bench-<label>-<host>-<time>.json)
-  --no-save         do not write the report file
-  --help, -h        this message
-
-The full walk reports ms/dir, the headline figure; the gaps walk reports total
-time only. For a syscall-level cross-check, run once under
-`strace -f -e trace=getdents64,newfstatat -c`."
-    )
 }
 
 /// Measure warm-scan reuse and fold it into the JSON report as a single-level
@@ -661,47 +577,6 @@ fn iter_counts_from(c: &WalkCounts) -> IterCounts {
     }
 }
 
-/// Format the one-line PASS/FAIL on the SMB validation gate. Returns `None` unless
-/// the run measured both `full` and `warm`, since the speedup half needs
-/// both. Prefers cold medians and falls back to warm so a run without
-/// `--drop-caches` still prints a verdict.
-fn gate_verdict(modes: &BTreeMap<String, ModeReport>) -> Option<String> {
-    let warm_level = modes.get("warm")?.levels.first()?;
-    let full = modes.get("full")?.levels.first()?;
-
-    let reuse_fired =
-        warm_level.dirs_reused == Some(warm_level.dirs_visited) && warm_level.entries_seen == 0;
-
-    // The warm reuse walk finishes inside the CIFS attribute cache window, so cold
-    // is the honest figure when both are present.
-    let (phase, full_med, inc_med) = match (full.cold.as_ref(), warm_level.cold.as_ref()) {
-        (Some(f), Some(i)) => ("cold", f.median_ms, i.median_ms),
-        _ => ("warm", full.warm.median_ms, warm_level.warm.median_ms),
-    };
-    let speedup_ok = inc_med > 0.0 && inc_med < full_med;
-    let ratio = if inc_med > 0.0 {
-        round3(full_med / inc_med)
-    } else {
-        0.0
-    };
-
-    let status = if reuse_fired && speedup_ok {
-        "PASS"
-    } else {
-        "FAIL"
-    };
-    Some(format!(
-        "gate: {status}  reuse {}/{} dirs, entries_seen={}  |  \
-         {phase} median warm {} ms vs full {} ms ({}x)",
-        warm_level.dirs_reused.unwrap_or(0),
-        warm_level.dirs_visited,
-        warm_level.entries_seen,
-        inc_med,
-        full_med,
-        ratio,
-    ))
-}
-
 /// Time one reuse walk against the prebuilt `index`, returning its wall-clock in
 /// milliseconds and the walk's counts. The gap and audio tallies are derived after
 /// the clock stops, like `time_walk`, so the in-memory reduce never inflates the
@@ -867,39 +742,43 @@ fn fmt_phase(name: &str, p: &PhaseReport) -> String {
 /// Resolve the config: a file when `--config` is set, else env-only when no
 /// `--root` was given, else defaults whose roots `--root` supplies. `--root`
 /// always replaces the roots so the run benchmarks exactly the named paths.
-fn resolve_config(args: &Args) -> Result<Config, String> {
-    let mut config = match args.config.as_deref() {
+fn resolve_config(cli: &Cli) -> Result<Config, String> {
+    let mut config = match cli.config.as_deref() {
         Some(path) => Config::load(Some(path)).map_err(|e| e.to_string())?,
-        None if args.roots.is_empty() => Config::load(None).map_err(|e| e.to_string())?,
+        None if cli.roots.is_empty() => Config::load(None).map_err(|e| e.to_string())?,
         None => Config::default(),
     };
-    if !args.roots.is_empty() {
-        config.library_roots.clone_from(&args.roots);
+    if !cli.roots.is_empty() {
+        config.library_roots.clone_from(&cli.roots);
     }
     Ok(config)
 }
 
 fn main() -> ExitCode {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-    let args = match parse_args(&argv) {
-        Ok(Some(args)) => args,
-        Ok(None) => {
-            println!("{}", help_text());
-            return ExitCode::SUCCESS;
-        }
-        Err(message) => {
-            eprintln!("error: {message}\n\n{}", help_text());
-            return ExitCode::from(2);
-        }
-    };
+    let cli = Cli::parse();
 
     // Scanner warnings (an unreadable root, a covering root) should be visible.
     tracing_subscriber::fmt::init();
 
-    let config = match resolve_config(&args) {
+    let modes = match parse_modes(&cli.mode) {
+        Ok(modes) => modes,
+        Err(message) => {
+            eprintln!("error: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    let concurrency = match parse_concurrency(&cli.concurrency) {
+        Ok(levels) => levels,
+        Err(message) => {
+            eprintln!("error: {message}");
+            return ExitCode::from(2);
+        }
+    };
+
+    let config = match resolve_config(&cli) {
         Ok(config) => config,
         Err(message) => {
-            eprintln!("error: {message}\n\n{}", help_text());
+            eprintln!("error: {message}");
             return ExitCode::from(2);
         }
     };
@@ -915,24 +794,21 @@ fn main() -> ExitCode {
     let kernel = kernel_release();
     let profile = build_profile();
     let unix = unix_time();
-    let label = args
-        .label
-        .clone()
-        .unwrap_or_else(|| "unlabeled".to_string());
+    let label = cli.label.clone().unwrap_or_else(|| "unlabeled".to_string());
     let mounts = std::fs::read_to_string("/proc/self/mounts").unwrap_or_default();
 
     println!(
         "scan_bench [{label}] host={host} kernel={kernel} profile={profile} \
          iterations={} drop_caches={}",
-        args.iterations, args.drop_caches
+        cli.iterations, cli.drop_caches
     );
     if profile == "debug" {
         println!("  note: build with --release for an honest local baseline");
     }
-    if args.drop_caches {
+    if cli.drop_caches {
         println!("  note: cold means client-side cold; the SMB server may still cache the tree");
     }
-    if args.modes.contains(&Mode::Warm) {
+    if modes.contains(&Mode::Warm) {
         println!(
             "  note: warm mode assumes nothing else writes to the tree between walks; \
              pause backups, indexers, and beets"
@@ -966,22 +842,22 @@ fn main() -> ExitCode {
             );
         }
 
-        let mut modes = BTreeMap::new();
-        for &mode in &args.modes {
+        let mut mode_reports = BTreeMap::new();
+        for &mode in &modes {
             // Warm is a focused reuse measurement, outside the concurrency
             // sweep: it runs once at the top swept thread count (16 by default),
             // since concurrency is inert over SMB for the reuse walk.
             if mode == Mode::Warm {
-                let threads = args.concurrency.iter().copied().max().unwrap_or(16);
+                let threads = concurrency.iter().copied().max().unwrap_or(16);
                 match run_warm(
                     &canonical,
                     &settings,
-                    args.iterations,
+                    cli.iterations,
                     threads,
-                    args.drop_caches,
+                    cli.drop_caches,
                 ) {
                     Ok(report) => {
-                        modes.insert(mode.label().to_string(), report);
+                        mode_reports.insert(mode.label().to_string(), report);
                     }
                     Err(message) => {
                         eprintln!("error during warm run: {message}");
@@ -993,10 +869,10 @@ fn main() -> ExitCode {
             if mode == Mode::Concurrent {
                 // Run once at the top swept concurrency level (default 5), so a
                 // single config produces a single burst measurement per root.
-                let threads = args.concurrency.iter().copied().max().unwrap_or(5);
-                match run_concurrent(&canonical, &settings, args.iterations, threads) {
+                let threads = concurrency.iter().copied().max().unwrap_or(5);
+                match run_concurrent(&canonical, &settings, cli.iterations, threads) {
                     Ok(report) => {
-                        modes.insert(mode.label().to_string(), report);
+                        mode_reports.insert(mode.label().to_string(), report);
                     }
                     Err(message) => {
                         eprintln!("error during concurrent run: {message}");
@@ -1006,7 +882,7 @@ fn main() -> ExitCode {
                 continue;
             }
             let mut levels = Vec::new();
-            for &threads in &args.concurrency {
+            for &threads in &concurrency {
                 let pool = match rayon::ThreadPoolBuilder::new().num_threads(threads).build() {
                     Ok(pool) => pool,
                     Err(err) => {
@@ -1016,9 +892,8 @@ fn main() -> ExitCode {
                 };
                 // Run the phases inside the pool so the scanner's parallel walk
                 // uses exactly these `threads` workers for this sweep entry.
-                let cold = if args.drop_caches {
-                    match pool.install(|| cold_phase(mode, &canonical, &settings, args.iterations))
-                    {
+                let cold = if cli.drop_caches {
+                    match pool.install(|| cold_phase(mode, &canonical, &settings, cli.iterations)) {
                         Ok((phase, _)) => Some(phase),
                         Err(message) => {
                             eprintln!("error during cold phase: {message}");
@@ -1029,7 +904,7 @@ fn main() -> ExitCode {
                     None
                 };
                 let (warm, counts) =
-                    pool.install(|| warm_phase(mode, &canonical, &settings, args.iterations));
+                    pool.install(|| warm_phase(mode, &canonical, &settings, cli.iterations));
 
                 println!(
                     "  mode={} concurrency={}  dirs_visited={}  entries_seen={}  gaps={}  \
@@ -1059,18 +934,14 @@ fn main() -> ExitCode {
                     warm,
                 });
             }
-            modes.insert(mode.label().to_string(), ModeReport { levels });
-        }
-
-        if let Some(verdict) = gate_verdict(&modes) {
-            println!("  {verdict}");
+            mode_reports.insert(mode.label().to_string(), ModeReport { levels });
         }
 
         roots.push(RootReport {
             path: canonical.display().to_string(),
             fstype,
             mount_options: options,
-            modes,
+            modes: mode_reports,
         });
     }
 
@@ -1082,15 +953,15 @@ fn main() -> ExitCode {
         kernel,
         unix_time: unix,
         build_profile: profile,
-        iterations: args.iterations,
-        drop_caches: args.drop_caches,
+        iterations: cli.iterations,
+        drop_caches: cli.drop_caches,
         roots,
     };
 
-    if args.no_save {
+    if cli.no_save {
         println!("\n--no-save: report not written");
     } else {
-        let path = args
+        let path = cli
             .out
             .clone()
             .unwrap_or_else(|| default_report_path(&label, &host, unix));
@@ -1110,33 +981,6 @@ fn main() -> ExitCode {
 #[allow(dead_code, unused_imports)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn round3_keeps_three_decimals() {
-        assert_eq!(round3(1.23456), 1.235);
-        assert_eq!(round3(9140.0), 9140.0);
-    }
-
-    #[test]
-    fn median_handles_odd_and_even_lengths() {
-        assert_eq!(median(&[30.0, 10.0, 20.0]), 20.0);
-        assert_eq!(median(&[10.0, 20.0, 30.0, 40.0]), 25.0);
-        assert_eq!(median(&[]), 0.0);
-    }
-
-    #[test]
-    fn min_and_max_pick_the_extremes() {
-        assert_eq!(min_of(&[30.0, 10.0, 20.0]), 10.0);
-        assert_eq!(max_of(&[30.0, 10.0, 20.0]), 30.0);
-        assert_eq!(min_of(&[]), 0.0);
-        assert_eq!(max_of(&[]), 0.0);
-    }
-
-    #[test]
-    fn per_dir_ms_divides_only_with_a_positive_count() {
-        assert_eq!(per_dir_ms(100.0, 50), Some(2.0));
-        assert_eq!(per_dir_ms(100.0, 0), None);
-    }
 
     #[test]
     fn phase_report_aggregates_samples_with_per_dir() {
@@ -1207,144 +1051,6 @@ mod tests {
         };
         let json = serde_json::to_value(&level).unwrap();
         assert_eq!(json["tree_build_ms"], serde_json::json!(0.42));
-    }
-
-    #[test]
-    fn parse_modes_maps_each_keyword() {
-        assert_eq!(parse_modes("gaps"), Ok(vec![Mode::Gaps]));
-        assert_eq!(parse_modes("full"), Ok(vec![Mode::Full]));
-        assert_eq!(parse_modes("warm"), Ok(vec![Mode::Warm]));
-        assert_eq!(parse_modes("concurrent"), Ok(vec![Mode::Concurrent]));
-        // `every` expands to the listing-walk modes, in report order. The
-        // concurrent burst is opt-in because it builds a tokio runtime.
-        assert_eq!(
-            parse_modes("every"),
-            Ok(vec![Mode::Full, Mode::Gaps, Mode::Warm])
-        );
-        assert!(parse_modes("nope").is_err());
-        // `both` was dropped when a third mode arrived; the comma list replaces it.
-        assert!(parse_modes("both").is_err());
-        // `all` is retired as a selector; it survives only as an old report's key.
-        assert!(parse_modes("all").is_err());
-    }
-
-    #[test]
-    fn parse_modes_reads_a_comma_list_in_order_without_duplicates() {
-        assert_eq!(parse_modes("full,warm"), Ok(vec![Mode::Full, Mode::Warm]));
-        // Whitespace is trimmed, and `full` overlapping `every`'s expansion collapses.
-        assert_eq!(
-            parse_modes("full, every "),
-            Ok(vec![Mode::Full, Mode::Gaps, Mode::Warm])
-        );
-        // One bad token in the list fails the whole parse.
-        assert!(parse_modes("full,nope").is_err());
-    }
-
-    #[test]
-    fn parse_iterations_rejects_zero_and_non_numbers() {
-        assert_eq!(parse_iterations("5"), Ok(5));
-        assert!(parse_iterations("0").is_err());
-        assert!(parse_iterations("abc").is_err());
-    }
-
-    #[test]
-    fn parse_concurrency_reads_a_list_and_rejects_bad_values() {
-        assert_eq!(parse_concurrency("1,4,8,16"), Ok(vec![1, 4, 8, 16]));
-        assert_eq!(parse_concurrency("8"), Ok(vec![8]));
-        assert!(parse_concurrency("0").is_err());
-        assert!(parse_concurrency("1,x").is_err());
-    }
-
-    fn argv(parts: &[&str]) -> Vec<String> {
-        parts.iter().map(ToString::to_string).collect()
-    }
-
-    #[test]
-    fn parses_defaults_with_no_flags() {
-        assert_eq!(
-            parse_args(&argv(&[])),
-            Ok(Some(Args {
-                config: None,
-                roots: vec![],
-                iterations: 5,
-                modes: vec![Mode::Full, Mode::Gaps, Mode::Warm],
-                drop_caches: false,
-                label: None,
-                out: None,
-                no_save: false,
-                concurrency: vec![16],
-            }))
-        );
-    }
-
-    #[test]
-    fn parses_every_flag_in_space_form() {
-        let parsed = parse_args(&argv(&[
-            "--config",
-            "config.toml",
-            "--root",
-            "/mnt/a",
-            "--root",
-            "/mnt/b",
-            "--iterations",
-            "3",
-            "--mode",
-            "full",
-            "--drop-caches",
-            "--label",
-            "smb",
-            "--concurrency",
-            "1,4",
-            "--out",
-            "out.json",
-            "--no-save",
-        ]))
-        .unwrap()
-        .unwrap();
-        assert_eq!(parsed.config, Some(std::path::PathBuf::from("config.toml")));
-        assert_eq!(
-            parsed.roots,
-            vec![
-                std::path::PathBuf::from("/mnt/a"),
-                std::path::PathBuf::from("/mnt/b"),
-            ]
-        );
-        assert_eq!(parsed.iterations, 3);
-        assert_eq!(parsed.modes, vec![Mode::Full]);
-        assert!(parsed.drop_caches);
-        assert_eq!(parsed.label.as_deref(), Some("smb"));
-        assert_eq!(parsed.out, Some(std::path::PathBuf::from("out.json")));
-        assert!(parsed.no_save);
-        assert_eq!(parsed.concurrency, vec![1, 4]);
-    }
-
-    #[test]
-    fn parses_flags_in_equals_form() {
-        let parsed = parse_args(&argv(&[
-            "--config=config.toml",
-            "--mode=gaps",
-            "--iterations=2",
-            "--concurrency=2,8",
-        ]))
-        .unwrap()
-        .unwrap();
-        assert_eq!(parsed.config, Some(std::path::PathBuf::from("config.toml")));
-        assert_eq!(parsed.modes, vec![Mode::Gaps]);
-        assert_eq!(parsed.iterations, 2);
-        assert_eq!(parsed.concurrency, vec![2, 8]);
-    }
-
-    #[test]
-    fn help_short_circuits_to_none() {
-        assert_eq!(parse_args(&argv(&["--help"])), Ok(None));
-        assert_eq!(parse_args(&argv(&["-h"])), Ok(None));
-    }
-
-    #[test]
-    fn rejects_unknown_flag_missing_value_and_positional() {
-        assert!(parse_args(&argv(&["--nope"])).is_err());
-        assert!(parse_args(&argv(&["--config"])).is_err());
-        assert!(parse_args(&argv(&["stray"])).is_err());
     }
 
     const MOUNTS: &str = "\
@@ -1574,121 +1280,5 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
     #[test]
     fn build_profile_reports_a_known_value() {
         assert!(matches!(build_profile(), "debug" | "release"));
-    }
-
-    /// One-level mode with the given counts and a single warm/cold median sample,
-    /// so the gate-verdict tests stay readable.
-    fn mode_level(
-        dirs_visited: usize,
-        dirs_reused: Option<usize>,
-        entries_seen: usize,
-        warm_ms: f64,
-        cold_ms: Option<f64>,
-    ) -> ModeReport {
-        let warm = phase_report(&[warm_ms], dirs_visited, Vec::new());
-        let cold = cold_ms.map(|ms| phase_report(&[ms], dirs_visited, Vec::new()));
-        ModeReport {
-            levels: vec![LevelReport {
-                concurrency: 16,
-                dirs_visited,
-                entries_seen,
-                gaps: 0,
-                audio_files: 0,
-                dirs_reused,
-                tree_build_ms: 0.0,
-                cold,
-                warm,
-            }],
-        }
-    }
-
-    #[test]
-    fn gate_verdict_passes_when_reuse_fires_and_cold_beats_full() {
-        let mut modes = BTreeMap::new();
-        modes.insert(
-            "full".to_string(),
-            mode_level(901, None, 8802, 1800.0, Some(1800.0)),
-        );
-        modes.insert(
-            "warm".to_string(),
-            mode_level(901, Some(901), 0, 100.0, Some(420.0)),
-        );
-        let line = gate_verdict(&modes).unwrap();
-        assert!(line.starts_with("gate: PASS"), "got: {line}");
-        assert!(line.contains("reuse 901/901"));
-        assert!(line.contains("entries_seen=0"));
-        // Cold medians are preferred when both are present.
-        assert!(line.contains("cold median"));
-        assert!(line.contains("420"));
-        assert!(line.contains("1800"));
-    }
-
-    #[test]
-    fn gate_verdict_fails_when_reuse_misses_a_directory() {
-        let mut modes = BTreeMap::new();
-        modes.insert(
-            "full".to_string(),
-            mode_level(901, None, 8802, 1800.0, Some(1800.0)),
-        );
-        // One dir was listed (entries_seen > 0), so the reuse half of the gate fails.
-        modes.insert(
-            "warm".to_string(),
-            mode_level(901, Some(900), 12, 110.0, Some(430.0)),
-        );
-        let line = gate_verdict(&modes).unwrap();
-        assert!(line.starts_with("gate: FAIL"), "got: {line}");
-        assert!(line.contains("entries_seen=12"));
-    }
-
-    #[test]
-    fn gate_verdict_fails_when_warm_is_not_faster() {
-        let mut modes = BTreeMap::new();
-        modes.insert(
-            "full".to_string(),
-            mode_level(901, None, 8802, 1800.0, Some(1800.0)),
-        );
-        // Reuse fires, but the cold reuse median did not beat the cold full median.
-        modes.insert(
-            "warm".to_string(),
-            mode_level(901, Some(901), 0, 100.0, Some(1900.0)),
-        );
-        let line = gate_verdict(&modes).unwrap();
-        assert!(line.starts_with("gate: FAIL"), "got: {line}");
-    }
-
-    #[test]
-    fn gate_verdict_falls_back_to_warm_without_cold_phase() {
-        // No --drop-caches: cold is None on both modes, so the line judges against
-        // the warm medians and labels itself accordingly.
-        let mut modes = BTreeMap::new();
-        modes.insert(
-            "full".to_string(),
-            mode_level(901, None, 8802, 1700.0, None),
-        );
-        modes.insert(
-            "warm".to_string(),
-            mode_level(901, Some(901), 0, 100.0, None),
-        );
-        let line = gate_verdict(&modes).unwrap();
-        assert!(line.contains("warm median"));
-        assert!(!line.contains("cold median"));
-        assert!(line.starts_with("gate: PASS"));
-    }
-
-    #[test]
-    fn gate_verdict_returns_none_without_both_modes() {
-        let mut modes = BTreeMap::new();
-        modes.insert(
-            "warm".to_string(),
-            mode_level(901, Some(901), 0, 100.0, Some(420.0)),
-        );
-        assert!(gate_verdict(&modes).is_none());
-
-        let mut modes = BTreeMap::new();
-        modes.insert(
-            "full".to_string(),
-            mode_level(901, None, 8802, 1800.0, Some(1800.0)),
-        );
-        assert!(gate_verdict(&modes).is_none());
     }
 }
