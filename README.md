@@ -37,32 +37,12 @@ By default the page shows only the gaps. A "Show all folders" toggle beside the 
 
 ## Getting started
 
+> [!WARNING]
+> The server has no authentication. It binds to loopback by default; binding to a non-loopback address logs a warning at startup.
+
 Docker is the supported distribution path (see [Run with Docker](#run-with-docker) below).
 
 Set at least one library root and run the server. It exits if no root is configured in any layer.
-
-### From source
-
-Build from source with the toolchain pinned in `rust-toolchain.toml` (rustc 1.96). Clone the repo and run `cargo build --release` (or `cargo run --release` to start the server in one step).
-
-Or install just the server binary with cargo:
-
-```shell
-cargo install --git https://github.com/noahbaculi/missing-ebooks --bin missing-ebooks
-```
-
-Dropping `--bin missing-ebooks` installs all three binaries (`missing-ebooks`, `missing-ebooks-demo`, and `explore`); the flag above installs only the server.
-
-This crate is not published to crates.io (`publish = false`), so `cargo install missing-ebooks` will not work; use `--git` or Docker.
-
-```shell
-MISSING_EBOOKS_LIBRARY_ROOTS="/mnt/nas/Audiobooks" cargo run --release
-```
-
-It binds to `127.0.0.1:13379` by default. Open http://127.0.0.1:13379.
-
-> [!NOTE]
-> The server has no authentication. It binds to loopback by default; binding to a non-loopback address logs a warning at startup.
 
 ## Run with Docker
 
@@ -94,7 +74,7 @@ Then open http://127.0.0.1:13379.
 > [!WARNING]
 > The app has no authentication. The compose file above binds the host port to `127.0.0.1`, so it is reachable only from the machine running it. To reach it from the LAN, change the mapping to `"13379:13379"`, and put a reverse proxy with authentication in front of it before exposing it beyond your network.
 >
-> The `/events` SSE endpoint serves long-lived `text/event-stream` connections with a 15-second keepalive. A reverse proxy in front must not buffer this path and must hold the connection open past the keepalive interval. For nginx, that means `proxy_buffering off;` and `proxy_read_timeout 60s;` (or longer) on the `/events` location, plus passing the `X-Accel-Buffering: no` response header through. The server sets that header itself, so a proxy that respects it needs no extra config.
+> The `/events` SSE endpoint serves long-lived `text/event-stream` connections with a 15-second keepalive. The server sets `X-Accel-Buffering: no` on that response; any reverse proxy that honors the header passes it through with no extra config. nginx is the explicit exception: it ignores the header for response buffering, so add `proxy_buffering off;` and `proxy_read_timeout 60s;` (or longer) on the `/events` location.
 
 ## Configuration
 
@@ -209,6 +189,8 @@ For a live-reload loop while iterating on the UI, run `bacon explore` instead. I
 After cloning, run `mise install` to provision the pinned tools. With mise's shell integration active, the next time you cd into the repo `core.hooksPath` is set to `.githooks` automatically, so the committed pre-commit hook runs without further setup. Contributors who do not use mise shell integration can run `mise run setup` once per clone (and once per worktree) to point git at the same hooks.
 
 With the hook active, any commit that touches Rust or build-config files runs `cargo fmt`, `cargo clippy`, and `cargo doc -D warnings` first, and any commit that touches `assets/app.{css,js}` or `tests/accent/` runs `mise run test:accent`. These are the same checks CI enforces, run locally so the failures surface before push. Run them yourself any time with `mise run lint` (fmt and clippy) or by hand. Commits that touch only docs skip every check.
+
+Requires Rust 1.96 or newer (matches `rust-toolchain.toml`). See [`CONTRIBUTING.md`](CONTRIBUTING.md) for full dev setup.
 
 ## License
 
