@@ -694,8 +694,8 @@ mod tests {
         let overlay = MarkOverlay::new(&empty);
         let derived = package_view_with_overlay(&state.base_raw, &overlay, ViewMode::GapsOnly);
         assert_eq!(
-            serde_json::to_value(&plain).unwrap(),
-            serde_json::to_value(&derived).unwrap(),
+            render_view_html(&plain, &state.search_links, ViewMode::GapsOnly).into_string(),
+            render_view_html(&derived, &state.search_links, ViewMode::GapsOnly).into_string(),
             "with no marks, overlay must match a direct render"
         );
 
@@ -703,10 +703,9 @@ mod tests {
         marks.insert((0, "Book".to_string(), Marker::NoEbook));
         let overlay = MarkOverlay::new(&marks);
         let after = package_view_with_overlay(&state.base_raw, &overlay, ViewMode::GapsOnly);
-        let after_json = serde_json::to_value(&after).unwrap();
-        let plain_json = serde_json::to_value(&plain).unwrap();
         assert_ne!(
-            after_json, plain_json,
+            render_view_html(&plain, &state.search_links, ViewMode::GapsOnly).into_string(),
+            render_view_html(&after, &state.search_links, ViewMode::GapsOnly).into_string(),
             "replaying a mark must change the view"
         );
     }

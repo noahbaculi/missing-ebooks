@@ -3,7 +3,6 @@
 //! the test surface and `web.rs` stays handlers and glue.
 
 use maud::{Markup, PreEscaped, html};
-use serde::Serialize;
 
 use crate::config::SearchLink;
 use crate::query::clean_query;
@@ -17,7 +16,7 @@ use crate::tree::{RootState, ViewMode};
 pub type FlaggedView = Vec<RootSection>;
 
 /// One library root's outcome, labeled with the path the scanner walked.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RootSection {
     /// The canonical root path when it resolved, else the configured path.
     pub path: String,
@@ -1766,27 +1765,6 @@ mod tests {
         assert_eq!(names, vec!["Covered", "Gap"]);
     }
 
-    #[test]
-    fn root_states_serialize_to_stable_json() {
-        let clean = serde_json::to_value(RootState::Clean).unwrap();
-        assert_eq!(clean, serde_json::json!("clean"));
-
-        let err = serde_json::to_value(RootState::Error("nope".to_string())).unwrap();
-        assert_eq!(err, serde_json::json!({ "error": "nope" }));
-
-        let section = RootSection {
-            path: "/lib".to_string(),
-            state: RootState::Clean,
-            total_audiobooks: 0,
-            gaps_within: 0,
-        };
-        let value = serde_json::to_value(&section).unwrap();
-        assert_eq!(
-            value,
-            serde_json::json!({ "path": "/lib", "state": "clean", "total_audiobooks": 0, "gaps_within": 0 })
-        );
-    }
-
     /// Render byte-equality is a load-bearing invariant: two reads of the
     /// same mode must serialize identically, a mode flip must change the
     /// bytes, and a mark+undo round trip on the same folder must restore the
@@ -1820,16 +1798,16 @@ mod tests {
         let raw_two = state.store.current().await;
         let gaps_two = package_view(&raw_two, ViewMode::GapsOnly);
         assert_eq!(
-            serde_json::to_vec(&gaps_one).unwrap(),
-            serde_json::to_vec(&gaps_two).unwrap(),
+            render_view(&gaps_one, &links, ViewMode::GapsOnly).into_string(),
+            render_view(&gaps_two, &links, ViewMode::GapsOnly).into_string(),
             "two reads of the same mode must produce byte-equal renders",
         );
 
         // A mode flip on the same warm cache must produce a different shape.
         let all_one = package_view(&raw_one, ViewMode::All);
         assert_ne!(
-            serde_json::to_vec(&gaps_one).unwrap(),
-            serde_json::to_vec(&all_one).unwrap(),
+            render_view(&gaps_one, &links, ViewMode::GapsOnly).into_string(),
+            render_view(&all_one, &links, ViewMode::All).into_string(),
             "gaps and show-all must render to different bytes on a non-clean scenario",
         );
 
@@ -1844,8 +1822,8 @@ mod tests {
         assert!(applied.created, "the picked leaf was not already marked");
         let after_mark = package_view(&applied.raw, ViewMode::GapsOnly);
         assert_ne!(
-            serde_json::to_vec(&gaps_one).unwrap(),
-            serde_json::to_vec(&after_mark).unwrap(),
+            render_view(&gaps_one, &links, ViewMode::GapsOnly).into_string(),
+            render_view(&after_mark, &links, ViewMode::GapsOnly).into_string(),
             "the mark must change the gaps view",
         );
 
@@ -1856,8 +1834,8 @@ mod tests {
             .expect("unmark succeeds");
         let restored = package_view(&restored_raw, ViewMode::GapsOnly);
         assert_eq!(
-            serde_json::to_vec(&gaps_one).unwrap(),
-            serde_json::to_vec(&restored).unwrap(),
+            render_view(&gaps_one, &links, ViewMode::GapsOnly).into_string(),
+            render_view(&restored, &links, ViewMode::GapsOnly).into_string(),
             "undoing the mark must restore the gaps view byte-for-byte",
         );
 

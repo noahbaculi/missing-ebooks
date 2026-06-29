@@ -8,16 +8,16 @@
 //! `Book 2` precedes `Book 10`. The empty relative path is the library root
 //! itself (loose root audio, see ADR-0005): when it directly holds audio it
 //! becomes a node named after the root with relative path `.`, pinned ahead of
-//! the forest. The types derive `Serialize` for a future JSON API.
+//! the forest.
 
 use std::path::Component;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// One folder in a rendered tree. Two orthogonal facts describe it: whether it
 /// directly holds audio, and whether it is missing an ebook (uncovered). The gap
 /// the tool surfaces is the derived `needs_ebook()`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Node {
     /// The folder's own name (its last path component).
     pub name: String,
@@ -104,8 +104,7 @@ impl ViewMode {
 }
 
 /// The result of scanning one root.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RootState {
     /// Flagged gaps were found. The forest is non-empty.
     Forest(Vec<Node>),
