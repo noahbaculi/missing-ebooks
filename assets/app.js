@@ -540,6 +540,82 @@
     });
   }
 
+  // undo: expand the restored row back in
+
+  // How long expandRow holds its inline max-height/opacity before cleanup, just
+  // past the 250ms max-height transition in app.css so the slide finishes first.
+  var ENTER_CLEANUP_MS = 300;
+
+  /**
+   * Slide a restored row, and the single-child spine above it, back into the gaps
+   * list: the inverse of collapseRow. Undo swaps the whole section in at full
+   * height, so we measure each spine row, drop it to zero before paint, then
+   * release it next frame. li.entering owns the timing, fade, and reduced-motion.
+   * @param {Element | null} li
+   */
+  function expandRow(li) {
+    if (!li || li.classList.contains("entering")) return;
+    // Walk the same single-child spine collapseRow collapses, so a re-created
+    // Author or Series wrapper expands together with its restored book instead of
+    // popping in at full height above a sliding leaf.
+    /** @type {HTMLElement[]} */
+    var rows = [];
+    /** @type {HTMLElement | null} */
+    var node = /** @type {HTMLElement} */ (li);
+    while (node) {
+      rows.push(node);
+      /** @type {HTMLElement | null} */
+      var list = node.parentElement;
+      if (!list || list.querySelectorAll(":scope > li").length > 1) break;
+      node = list.parentElement && list.parentElement.closest("li");
+    }
+    // Measure every row at its natural height before zeroing any, so an outer
+    // wrapper's target height already includes its inner content.
+    /** @type {number[]} */
+    var heights = rows.map(function (row) {
+      return row.scrollHeight;
+    });
+    // Drop to zero in the same synchronous pass, before the browser paints the
+    // freshly swapped section, so the row never flashes at full height first.
+    rows.forEach(function (row) {
+      row.classList.add("entering");
+      row.style.maxHeight = "0";
+      row.style.opacity = "0";
+    });
+    requestAnimationFrame(function () {
+      rows.forEach(function (row, i) {
+        row.style.maxHeight = heights[i] + "px";
+        row.style.opacity = "1";
+      });
+    });
+    rows.forEach(finishEntering);
+  }
+
+  /**
+   * Clear a row's expand-in once it finishes: drop the inline max-height/opacity
+   * and the .entering class, or a leftover overflow:hidden with a fixed max-height
+   * would clip a later fold-open. transitionend fires the moment the slide ends; a
+   * timeout backs it up for reduced-motion, where the transition never fires.
+   * @param {HTMLElement} row
+   */
+  function finishEntering(row) {
+    var done = false;
+    function clear() {
+      if (done) return;
+      done = true;
+      row.removeEventListener("transitionend", onEnd);
+      row.classList.remove("entering");
+      row.style.maxHeight = "";
+      row.style.opacity = "";
+    }
+    /** @param {TransitionEvent} evt */
+    function onEnd(evt) {
+      if (evt.target === row && evt.propertyName === "max-height") clear();
+    }
+    row.addEventListener("transitionend", onEnd);
+    setTimeout(clear, ENTER_CLEANUP_MS);
+  }
+
   /**
    * Toggle a gaps-only row's in-flight "saving" state: dim it, hide its actions, and
    * show a spinner with a "Saving…" label. Idempotent, so a retry's beforeRequest is a
@@ -1529,12 +1605,42 @@
     recomputeSummary();
   });
 
-  // An undo and the delayed mark swap both land as a section swap; a rescan
-  // swaps all of #roots. Recompute after any of them, and re-apply an active
-  // filter to the fresh rows so the new tree respects the query.
-  document.body.addEventListener("htmx:afterSwap", function () {
+  /**
+   * After an undo's section swap lands in gaps view, find the restored leaf and
+   * slide it, and its spine, back in. Gated to the /unmark request: a mark or
+   * rescan swap is left alone, and show-all undo flips a covered row in place.
+   * @param {CustomEvent<HtmxAfterSwapDetail>} evt
+   */
+  function animateUndoRestore(evt) {
+    var cfg = evt.detail && evt.detail.requestConfig;
+    if (!cfg || cfg.path !== "/unmark" || !cfg.parameters) return;
+    if (cfg.parameters.view !== "gaps") return;
+    var section = document.querySelector(
+      'section.root[data-root="' + cfg.parameters.root + '"]'
+    );
+    if (!section) return;
+    var rel = cfg.parameters.rel;
+    // rel can carry quotes or slashes, so match on the marker form's hidden input
+    // value rather than build an attribute selector from it.
+    var forms = section.querySelectorAll("form.mark");
+    for (var i = 0; i < forms.length; i++) {
+      var input = /** @type {HTMLInputElement | null} */ (
+        forms[i].querySelector('input[name="rel"]')
+      );
+      if (input && input.value === rel) {
+        expandRow(forms[i].closest("li"));
+        return;
+      }
+    }
+  }
+
+  // An undo and the delayed mark swap both land as a section swap; a rescan swaps
+  // all of #roots. Recompute after any of them, re-apply an active filter to the
+  // fresh rows, and slide the restored row in when the swap was an undo.
+  document.body.addEventListener("htmx:afterSwap", function (evt) {
     recomputeSummary();
     if (searchInput && searchInput.value.trim() !== "") applyFilter();
+    animateUndoRestore(evt);
   });
 
   // keyboard shortcuts

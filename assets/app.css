@@ -1167,6 +1167,22 @@ li.leaving {
   }
 }
 
+/* undo: expand the restored row */
+/* The inverse of li.leaving. Undo brings a marked folder back into the gaps list;
+   app.js measures the restored row's height, drops it to zero, then releases it
+   next frame so the spine slides open over the same curve it left on. The inline
+   max-height and opacity are cleared once the slide ends. Motion-sensitive users
+   get the row instantly, no slide. */
+li.entering {
+  overflow: hidden;
+  transition: max-height 250ms ease, opacity 180ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  li.entering {
+    transition: none;
+  }
+}
+
 /* rescan button */
 /* The button keeps its "Rescan" label throughout. hx-disabled-elt disables it for
    the request so a second click cannot double-scan. The JS retry hold keeps it

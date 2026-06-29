@@ -216,6 +216,15 @@ mod tests {
     }
 
     #[test]
+    fn app_assets_animate_the_undo_restore() {
+        // Undo's restore mirrors the mark departure: app.css carries `li.entering`
+        // (the inverse of `li.leaving`) and app.js runs `expandRow` off the
+        // `/unmark` afterSwap to slide the restored spine back into the gaps list.
+        assert!(APP_CSS_BYTES.contains("li.entering"));
+        assert!(APP_JS_BYTES.contains("expandRow"));
+    }
+
+    #[test]
     fn app_script_wires_the_online_event_to_flash_or_hide() {
         // The window `online` handler reads `bannerShowsProblem()` (which
         // checks the three connection-banner states) and calls

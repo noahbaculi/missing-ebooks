@@ -35,9 +35,17 @@ interface HtmxRequestDetail {
 }
 
 // htmx:afterSwap fires after a response is swapped in; detail.target is the
-// element that received the swap.
+// element that received the swap. requestConfig carries the originating
+// request's path and POST parameters, used by animateUndoRestore to gate
+// the expand animation to /unmark responses in gaps view.
+interface HtmxRequestConfig {
+  path?: string;
+  parameters?: Record<string, string>;
+}
+
 interface HtmxAfterSwapDetail {
   target?: Element;
+  requestConfig?: HtmxRequestConfig;
 }
 
 // The app's own success event, dispatched from the HX-Trigger header on /mark.
