@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use axum::http::{HeaderValue, header};
 use axum::response::Response;
+use clap::Parser;
 use missing_ebooks::config::Config;
 use missing_ebooks::scanner::ScanSettings;
 use missing_ebooks::scenarios;
@@ -21,82 +22,35 @@ use missing_ebooks::state::AppState;
 use missing_ebooks::web;
 use tokio::net::TcpListener;
 
-/// The usage line, printed beside the scenario catalog on a bad or absent name.
-const USAGE: &str = "usage: cargo run --bin explore -- <scenario> [--port N] [--ttl SECS] [--keep]";
-
-/// A parsed command line. `scenario` is `None` when no positional name was given,
-/// which the catalog lookup treats the same as an unknown name.
-#[derive(Debug, PartialEq)]
-struct Args {
+/// Explore-harness CLI surface. Mirrors `bin/demo.rs` and `main.rs`: a clap
+/// derive struct with the same flag set the hand-rolled parser carried
+/// (positional scenario, `--port`, `--ttl`, `--keep`, `--help`, `--version`).
+#[derive(clap::Parser, Debug)]
+#[command(
+    name = "explore",
+    version,
+    about = "Serve the production UI against a seeded synthetic library for eyeballing.",
+    after_help = "Scenarios: mixed-forest, messy-shelf, clean-error, root-flagged, \
+        pre-marked, big-library.\n\nRun with no scenario to print the catalog and exit."
+)]
+struct Cli {
+    /// Scenario name (one of: mixed-forest, messy-shelf, clean-error, root-flagged, pre-marked, big-library).
     scenario: Option<String>,
+    /// Bind an exact port instead of the default 13379.
+    #[arg(long)]
     port: Option<u16>,
+    /// Scan-cache staleness window in seconds (default 0, cache off).
+    #[arg(long = "ttl", default_value_t = 0)]
     ttl_seconds: u64,
+    /// Keep the seeded files on exit and print where they landed.
+    #[arg(long)]
     keep: bool,
 }
 
-/// Parse the argument vector (already stripped of the program name). `Ok(None)`
-/// means help was requested; `Ok(Some(args))` is a run request; `Err(message)` is
-/// a usage error the caller prints beside the catalog. Hand-rolled to match the
-/// `--config` / `--print-config` handling in `main.rs`; no clap.
-fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
-    let mut scenario = None;
-    let mut port = None;
-    let mut ttl_seconds = 0u64;
-    let mut keep = false;
-    let mut iter = argv.iter();
-    while let Some(arg) = iter.next() {
-        if arg == "--help" || arg == "-h" {
-            return Ok(None);
-        } else if arg == "--keep" {
-            keep = true;
-        } else if arg == "--port" {
-            let value = iter
-                .next()
-                .ok_or_else(|| "--port needs a value".to_string())?;
-            port = Some(parse_port(value)?);
-        } else if let Some(value) = arg.strip_prefix("--port=") {
-            port = Some(parse_port(value)?);
-        } else if arg == "--ttl" {
-            let value = iter
-                .next()
-                .ok_or_else(|| "--ttl needs a value".to_string())?;
-            ttl_seconds = parse_ttl(value)?;
-        } else if let Some(value) = arg.strip_prefix("--ttl=") {
-            ttl_seconds = parse_ttl(value)?;
-        } else if arg.starts_with('-') {
-            return Err(format!("unknown flag {arg:?}"));
-        } else if scenario.is_some() {
-            return Err(format!("unexpected extra argument {arg:?}"));
-        } else {
-            scenario = Some(arg.clone());
-        }
-    }
-    Ok(Some(Args {
-        scenario,
-        port,
-        ttl_seconds,
-        keep,
-    }))
-}
-
-fn parse_port(value: &str) -> Result<u16, String> {
-    value
-        .parse()
-        .map_err(|_| format!("--port: {value:?} is not a valid port number"))
-}
-
-fn parse_ttl(value: &str) -> Result<u64, String> {
-    value
-        .parse()
-        .map_err(|_| format!("--ttl: {value:?} is not a valid number of seconds"))
-}
-
-/// The usage line followed by every scenario name and its description. Printed to
-/// stdout for `--help` and to stderr for a missing or unknown scenario name.
+/// Every scenario name and its description. Printed to stderr when a missing or
+/// unknown scenario name leaves nothing to serve; clap renders its own help.
 fn catalog_listing() -> String {
-    let mut out = String::new();
-    out.push_str(USAGE);
-    out.push_str("\n\nscenarios:\n");
+    let mut out = String::from("scenarios:\n");
     for scenario in scenarios::catalog() {
         // Helper output, infallible write into a String.
         let _ = writeln!(out, "  {:<14}{}", scenario.name, scenario.description);
@@ -139,24 +93,11 @@ async fn no_store(mut response: Response) -> Response {
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-    let args = match parse_args(&argv) {
-        Ok(Some(args)) => args,
-        Ok(None) => {
-            // --help / -h: the listing goes to stdout and we exit cleanly.
-            print!("{}", catalog_listing());
-            return ExitCode::SUCCESS;
-        }
-        Err(message) => {
-            eprintln!("error: {message}\n");
-            eprint!("{}", catalog_listing());
-            return ExitCode::from(2);
-        }
-    };
+    let cli = Cli::parse();
 
     // A missing or unknown scenario prints the catalog to stderr and exits
     // non-zero, so a typo lands you on the menu rather than a blank server.
-    let Some(scenario) = args.scenario.as_deref().and_then(scenarios::find_scenario) else {
+    let Some(scenario) = cli.scenario.as_deref().and_then(scenarios::find_scenario) else {
         eprint!("{}", catalog_listing());
         return ExitCode::from(2);
     };
@@ -182,7 +123,7 @@ async fn main() -> ExitCode {
     // its own listener below, preferring the app's default port.
     let config = Config {
         library_roots: roots,
-        ttl_seconds: args.ttl_seconds,
+        ttl_seconds: cli.ttl_seconds,
         ..Default::default()
     };
     let settings = match ScanSettings::compile(config.scan_inputs()) {
@@ -203,7 +144,7 @@ async fn main() -> ExitCode {
     // Bind 127.0.0.1. With no --port, prefer the app's default so the printed
     // URL matches a real deployment, falling back to an OS-assigned port only if
     // the default is already taken. --port pins an exact port for a stable URL.
-    let listener = match bind_harness_listener(args.port, Config::default().port).await {
+    let listener = match bind_harness_listener(cli.port, Config::default().port).await {
         Ok(listener) => listener,
         Err(err) => {
             eprintln!("could not bind 127.0.0.1: {err}");
@@ -227,7 +168,7 @@ async fn main() -> ExitCode {
 
     // On exit, keep the seeded files when asked (and print where they landed),
     // otherwise let the TempDir drop and remove them.
-    if args.keep {
+    if cli.keep {
         let kept = temp.keep();
         println!("kept the seeded library at {}", kept.display());
     }
@@ -238,96 +179,9 @@ async fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    fn argv(parts: &[&str]) -> Vec<String> {
-        parts.iter().map(ToString::to_string).collect()
-    }
-
     #[test]
-    fn parses_a_bare_scenario_name_with_defaults() {
-        assert_eq!(
-            parse_args(&argv(&["mixed-forest"])),
-            Ok(Some(Args {
-                scenario: Some("mixed-forest".to_string()),
-                port: None,
-                ttl_seconds: 0,
-                keep: false,
-            }))
-        );
-    }
-
-    #[test]
-    fn parses_every_flag_in_space_form() {
-        assert_eq!(
-            parse_args(&argv(&[
-                "clean-error",
-                "--port",
-                "9000",
-                "--ttl",
-                "30",
-                "--keep"
-            ])),
-            Ok(Some(Args {
-                scenario: Some("clean-error".to_string()),
-                port: Some(9000),
-                ttl_seconds: 30,
-                keep: true,
-            }))
-        );
-    }
-
-    #[test]
-    fn parses_port_and_ttl_in_equals_form() {
-        let parsed = parse_args(&argv(&["root-flagged", "--port=8081", "--ttl=5"])).unwrap();
-        let args = parsed.unwrap();
-        assert_eq!(args.port, Some(8081));
-        assert_eq!(args.ttl_seconds, 5);
-    }
-
-    #[test]
-    fn help_short_circuits_to_none() {
-        assert_eq!(parse_args(&argv(&["--help"])), Ok(None));
-        assert_eq!(parse_args(&argv(&["-h"])), Ok(None));
-        assert_eq!(parse_args(&argv(&["mixed-forest", "--help"])), Ok(None));
-    }
-
-    #[test]
-    fn missing_scenario_is_a_run_with_no_name() {
-        assert_eq!(
-            parse_args(&argv(&[])),
-            Ok(Some(Args {
-                scenario: None,
-                port: None,
-                ttl_seconds: 0,
-                keep: false,
-            }))
-        );
-    }
-
-    #[test]
-    fn rejects_an_unknown_flag() {
-        assert!(parse_args(&argv(&["mixed-forest", "--nope"])).is_err());
-    }
-
-    #[test]
-    fn rejects_a_flag_missing_its_value() {
-        assert!(parse_args(&argv(&["mixed-forest", "--port"])).is_err());
-    }
-
-    #[test]
-    fn rejects_a_non_numeric_port_or_ttl() {
-        assert!(parse_args(&argv(&["mixed-forest", "--port", "abc"])).is_err());
-        assert!(parse_args(&argv(&["mixed-forest", "--ttl", "-5"])).is_err());
-    }
-
-    #[test]
-    fn rejects_a_second_positional() {
-        assert!(parse_args(&argv(&["mixed-forest", "extra"])).is_err());
-    }
-
-    #[test]
-    fn the_listing_carries_the_usage_line_and_every_name() {
+    fn catalog_listing_carries_every_scenario_name() {
         let listing = catalog_listing();
-        assert!(listing.contains(USAGE));
         for name in [
             "mixed-forest",
             "messy-shelf",
@@ -338,6 +192,41 @@ mod tests {
         ] {
             assert!(listing.contains(name), "listing is missing {name}");
         }
+    }
+
+    #[test]
+    fn cli_parses_bare_scenario_with_defaults() {
+        let cli = Cli::try_parse_from(["explore", "mixed-forest"]).unwrap();
+        assert_eq!(cli.scenario.as_deref(), Some("mixed-forest"));
+        assert_eq!(cli.port, None);
+        assert_eq!(cli.ttl_seconds, 0);
+        assert!(!cli.keep);
+    }
+
+    #[test]
+    fn cli_parses_every_flag() {
+        let cli = Cli::try_parse_from([
+            "explore",
+            "clean-error",
+            "--port",
+            "9000",
+            "--ttl",
+            "30",
+            "--keep",
+        ])
+        .unwrap();
+        assert_eq!(cli.scenario.as_deref(), Some("clean-error"));
+        assert_eq!(cli.port, Some(9000));
+        assert_eq!(cli.ttl_seconds, 30);
+        assert!(cli.keep);
+    }
+
+    #[test]
+    fn cli_help_and_version_exit() {
+        let help_err = Cli::try_parse_from(["explore", "--help"]).unwrap_err();
+        assert_eq!(help_err.kind(), clap::error::ErrorKind::DisplayHelp);
+        let version_err = Cli::try_parse_from(["explore", "--version"]).unwrap_err();
+        assert_eq!(version_err.kind(), clap::error::ErrorKind::DisplayVersion);
     }
 
     #[tokio::test]
