@@ -23,7 +23,7 @@ run = "git config core.hooksPath .githooks"
 description = "Run fmt, clippy, typos, taplo, and the unused-dep check"
 run = [
   "cargo fmt --check",
-  "cargo clippy --locked --all-targets -- -D warnings",
+  "cargo clippy --locked --all-targets",
   "typos",
   "taplo format --check",
   "cargo machete",

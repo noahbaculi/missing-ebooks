@@ -77,13 +77,13 @@ sha2 = "0.10"
 tower = { version = "0.5.3", default-features = false, features = ["util"] }
 
 [lints.clippy]
-correctness = "deny"
-suspicious = "warn"
-complexity = "warn"
-perf = "warn"
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+complexity = { level = "deny", priority = -1 }
+perf = { level = "deny", priority = -1 }
 
 [lints.rust]
-missing_docs = "warn"
+missing_docs = "deny"
 
 # panic = "unwind" (the default, kept deliberately): tokio catches a per-task
 # panic and the server survives, so a single bad request never aborts the
