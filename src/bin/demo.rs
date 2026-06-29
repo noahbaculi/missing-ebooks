@@ -64,7 +64,7 @@ fn load_config(cli: &Cli) -> anyhow::Result<DemoConfig> {
     Ok(DemoConfig {
         bind,
         scenario,
-        max_sessions: var_or("DEMO_MAX_SESSIONS", "1000").parse()?,
+        max_sessions: var_or("DEMO_MAX_SESSIONS", "300").parse()?,
         idle: Duration::from_secs(var_or("DEMO_IDLE_SECS", "1200").parse()?),
         cookie_name: var_or("DEMO_COOKIE_NAME", "me_demo_sid"),
     })

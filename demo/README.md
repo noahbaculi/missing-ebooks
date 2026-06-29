@@ -37,11 +37,16 @@ docker compose -f demo/docker-compose.yml --env-file demo/.env up -d --build
 
 Then open https://demo-missing-ebooks.noahbaculi.com. The first request mints a session and drops you into the live UI with the demo banner.
 
+## Required edge protection
+
+The demo ships no in-app rate limiter, so all request throttling lives at the Cloudflare edge. Set this up before going live, in the Cloudflare dashboard for `noahbaculi.com`:
+
+- **Add a rate-limiting rule scoped to the demo hostname.** This one is required. It is the only thing bounding how fast a single client can mint sessions toward the global cap.
+
 ## Edge protections (recommended)
 
-In the Cloudflare dashboard for `noahbaculi.com`:
+Also in the Cloudflare dashboard:
 
-- Add a rate-limiting rule scoped to the demo hostname.
 - Enable Bot Fight Mode.
 - Leave the managed WAF ruleset on.
 
@@ -59,7 +64,7 @@ Tune the demo by editing the `DEMO_*` environment values in `demo/docker-compose
 | --- | --- | --- |
 | `DEMO_BIND` | IP:port to bind | `127.0.0.1:8080` |
 | `DEMO_SCENARIO` | Seeded scenario name | `mixed-forest` |
-| `DEMO_MAX_SESSIONS` | Hard cap on concurrent sessions | `1000` |
+| `DEMO_MAX_SESSIONS` | Hard cap on concurrent sessions | `300` |
 | `DEMO_IDLE_SECS` | Session idle window before the reaper drops it | `1200` |
 | `DEMO_COOKIE_NAME` | Session cookie name | `me_demo_sid` |
 
