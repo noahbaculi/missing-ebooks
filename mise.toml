@@ -20,10 +20,13 @@ description = "Point this clone's git at the committed hooks in .githooks"
 run = "git config core.hooksPath .githooks"
 
 [tasks.lint]
-description = "Run the fmt and clippy checks the pre-commit hook enforces"
+description = "Run fmt, clippy, typos, taplo, and the unused-dep check"
 run = [
   "cargo fmt --check",
   "cargo clippy --locked --all-targets -- -D warnings",
+  "typos",
+  "taplo format --check",
+  "cargo machete",
 ]
 
 [tasks.typecheck]
@@ -49,3 +52,20 @@ run = "node tests/accent/derive.test.mjs"
 # is already correct, so re-entering the directory does not churn .git/config.
 # Each worktree has its own .git/config, so this fires per worktree.
 enter = "[ \"$(git config core.hooksPath)\" = .githooks ] || git config core.hooksPath .githooks"
+
+[tasks.test]
+description = "Run the test suite with nextest plus doctests"
+run = [
+  "cargo nextest run --locked",
+  "cargo test --doc --locked",
+]
+
+[tasks.check]
+description = "Run the full pre-commit-equivalent check set"
+run = [
+  "mise run lint",
+  "RUSTDOCFLAGS=\"-D warnings\" cargo doc --no-deps --quiet",
+  "mise run typecheck",
+  "mise run test:accent",
+  "mise run test",
+]

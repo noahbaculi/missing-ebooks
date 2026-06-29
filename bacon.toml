@@ -14,8 +14,14 @@
 
 [jobs.explore]
 command = [
-    "cargo", "run", "--bin", "explore", "--",
-    "mixed-forest", "--port", "13380",
+  "cargo",
+  "run",
+  "--bin",
+  "explore",
+  "--",
+  "mixed-forest",
+  "--port",
+  "13380",
 ]
 need_stdout = true
 allow_warnings = true

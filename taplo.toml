@@ -1,0 +1,11 @@
+# taplo formatter config. See https://taplo.tamasfe.dev/configuration/file.html.
+#
+# column_width = 120 keeps short feature/dep specs (the tokio / futures-util
+# style in Cargo.toml) on one line instead of wrapping each feature.
+# array_auto_collapse = false keeps existing multi-line arrays multi-line, so
+# long lists (deny.toml's license allow-list, mise.toml's run blocks) stay
+# easy to diff line-by-line.
+
+[formatting]
+column_width = 120
+array_auto_collapse = false

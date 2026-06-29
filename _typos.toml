@@ -1,0 +1,22 @@
+# typos configuration. See https://github.com/crate-ci/typos.
+#
+# Allow-listed identifiers and excluded paths exist because the noise here is
+# real-world data (audiobook filenames preserved verbatim in test fixtures) and
+# vendored minified assets, not actual misspellings to fix in source.
+
+[files]
+extend-exclude = [
+  # Vendored minified htmx; we ship it byte-for-byte from htmx-org's release.
+  "assets/htmx.min.js",
+  # Audiobook filename snapshot from a real NAS; misspellings (Foward,
+  # Continum, Sentinal, colapse, catagories, Csae, Forgivness, ...) come
+  # from the actual filenames the scanner has to handle.
+  "tests/fixtures/example-nas/audiobooks.snapshot",
+]
+
+[default.extend-identifiers]
+# File-extension identifiers we treat as opaque strings, not English words.
+# `.caf` is Apple's Core Audio Format, in Audiobookshelf's audio_exts set.
+# `.opf` is the Open Packaging Format (EPUB metadata sidecar).
+caf = "caf"
+opf = "opf"
