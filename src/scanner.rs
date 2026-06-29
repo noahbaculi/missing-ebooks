@@ -130,17 +130,10 @@ fn classify_file(name: &OsStr, settings: &ScanSettings) -> FileKind {
     }
     match Path::new(name).extension().and_then(OsStr::to_str) {
         Some(ext) => {
-            if settings
-                .ebook_exts
-                .iter()
-                .any(|e| e.eq_ignore_ascii_case(ext))
-            {
+            let ext = ext.to_ascii_lowercase();
+            if settings.ebook_exts.contains(&ext) {
                 FileKind::Ebook
-            } else if settings
-                .audio_exts
-                .iter()
-                .any(|e| e.eq_ignore_ascii_case(ext))
-            {
+            } else if settings.audio_exts.contains(&ext) {
                 FileKind::Audio
             } else {
                 FileKind::Other
@@ -174,7 +167,9 @@ pub struct CachedDir {
     /// this still matches.
     pub mtime: std::time::SystemTime,
     /// The non-excluded children, paths in the same form the walk emitted them.
-    pub subdirs: Vec<PathBuf>,
+    /// Shared as `Arc<[PathBuf]>` so a warm reuse copies a pointer rather than
+    /// deep-cloning every child path.
+    pub subdirs: std::sync::Arc<[PathBuf]>,
     /// Audio filenames, already natural-sorted (the same order a fresh listing
     /// produces).
     pub audio_files: std::sync::Arc<[String]>,
@@ -432,8 +427,8 @@ fn walk_all(
             if let Some(folder) = dir.folder.take() {
                 out.push(folder);
             }
-            for child in dir.children.drain(..) {
-                next.push((child, dir.child_covered));
+            for child in dir.children.iter() {
+                next.push((child.clone(), dir.child_covered));
             }
         }
         frontier = next;
@@ -446,7 +441,7 @@ fn walk_all(
 /// inherit, the walk counts, and (when listed under an index) the entry to cache.
 struct AllDir {
     folder: Option<ScannedFolder>,
-    children: Vec<PathBuf>,
+    children: std::sync::Arc<[PathBuf]>,
     child_covered: bool,
     stats: WalkStats,
     /// The path this `AllDir` describes, so the driver can key the index.
@@ -496,7 +491,7 @@ fn reuse_dir_all(root: &Path, dir: &Path, covered_from_above: bool, cached: &Cac
     });
     AllDir {
         folder,
-        children: cached.subdirs.clone(),
+        children: std::sync::Arc::clone(&cached.subdirs),
         child_covered: covered,
         stats: WalkStats {
             dirs_visited: 1,
@@ -523,7 +518,7 @@ fn list_dir_all(
             tracing::warn!(dir = %dir.display(), error = %err, "skipping unreadable directory");
             return AllDir {
                 folder: None,
-                children: Vec::new(),
+                children: std::sync::Arc::from([]),
                 child_covered: covered_from_above,
                 stats: WalkStats::default(),
                 path: dir.to_path_buf(),
@@ -608,7 +603,7 @@ fn list_dir_all(
     audio_files.sort_by(|a, b| lexical_sort::natural_lexical_cmp(a, b));
     let audio_files: std::sync::Arc<[String]> = audio_files.into();
 
-    let children: Vec<PathBuf> = subdirs
+    let children: std::sync::Arc<[PathBuf]> = subdirs
         .into_iter()
         .filter(|sub| !is_excluded(root, sub, settings))
         .collect();
@@ -623,7 +618,7 @@ fn list_dir_all(
 
     let cache_update = store_mtime.map(|mtime| CachedDir {
         mtime,
-        subdirs: children.clone(),
+        subdirs: std::sync::Arc::clone(&children),
         audio_files,
         cover_files,
     });

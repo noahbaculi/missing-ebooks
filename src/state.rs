@@ -700,7 +700,7 @@ mod tests {
             synthetic_path.clone(),
             scanner::CachedDir {
                 mtime: std::time::UNIX_EPOCH,
-                subdirs: Vec::new(),
+                subdirs: std::sync::Arc::from(Vec::<std::path::PathBuf>::new()),
                 cover_files: std::sync::Arc::from(Vec::<String>::new()),
                 audio_files: std::sync::Arc::from(Vec::<String>::new()),
             },
