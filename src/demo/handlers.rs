@@ -181,10 +181,22 @@ async fn index(
     response
 }
 
-async fn mark(
-    State(state): State<Arc<DemoState>>,
-    headers: HeaderMap,
-    Form(req): Form<MarkRequest>,
+/// Which way a `/mark` or `/unmark` edits the session's mark set.
+#[derive(Clone, Copy)]
+enum MarkOp {
+    Insert,
+    Remove,
+}
+
+/// Shared body of `/mark` and `/unmark`. Validates the (root, rel) against the
+/// base view, resolves or mints the session, applies `op` to its mark set, then
+/// renders the affected section under the resulting overlay. The two handlers
+/// differ only in `op`.
+fn apply_mark(
+    state: &Arc<DemoState>,
+    headers: &HeaderMap,
+    req: &MarkRequest,
+    op: MarkOp,
 ) -> Response {
     let mode = req.view;
     // The UI only ever submits a root index from a rendered button, so an
@@ -192,19 +204,26 @@ async fn mark(
     if req.root >= state.num_roots() {
         return (StatusCode::BAD_REQUEST, "unknown library root").into_response();
     }
-    // Reject paths that do not exist in the base view, so garbage marks
-    // never reach the session set. Audit item #2: caps per-session size
-    // structurally at `|markable folders x marker kinds|`.
+    // Reject paths absent from the base view, so garbage marks never reach the
+    // session set. This caps per-session size at |markable folders x kinds|.
     if !folder_exists_in_base(&state.base_raw, req.root, &req.rel) {
         return (StatusCode::BAD_REQUEST, "unknown folder").into_response();
     }
     let now = Instant::now();
-    let existing = read_cookie(&headers, &state.config.cookie_name);
+    let existing = read_cookie(headers, &state.config.cookie_name);
     let resolved = {
         let mut store = state.lock_sessions();
         match resolve_in_store(&mut store, &state.config, existing, now) {
             Some((sid, set_cookie)) => {
-                store.insert_mark(&sid, (req.root, req.rel.clone(), req.kind));
+                let key = (req.root, req.rel.clone(), req.kind);
+                match op {
+                    MarkOp::Insert => {
+                        store.insert_mark(&sid, key);
+                    }
+                    MarkOp::Remove => {
+                        store.remove_mark(&sid, &key);
+                    }
+                }
                 let marks = store.marks(&sid).clone();
                 Some((set_cookie, marks))
             }
@@ -224,42 +243,20 @@ async fn mark(
     response
 }
 
+async fn mark(
+    State(state): State<Arc<DemoState>>,
+    headers: HeaderMap,
+    Form(req): Form<MarkRequest>,
+) -> Response {
+    apply_mark(&state, &headers, &req, MarkOp::Insert)
+}
+
 async fn unmark(
     State(state): State<Arc<DemoState>>,
     headers: HeaderMap,
     Form(req): Form<MarkRequest>,
 ) -> Response {
-    let mode = req.view;
-    if req.root >= state.num_roots() {
-        return (StatusCode::BAD_REQUEST, "unknown library root").into_response();
-    }
-    if !folder_exists_in_base(&state.base_raw, req.root, &req.rel) {
-        return (StatusCode::BAD_REQUEST, "unknown folder").into_response();
-    }
-    let now = Instant::now();
-    let existing = read_cookie(&headers, &state.config.cookie_name);
-    let resolved = {
-        let mut store = state.lock_sessions();
-        match resolve_in_store(&mut store, &state.config, existing, now) {
-            Some((sid, set_cookie)) => {
-                store.remove_mark(&sid, &(req.root, req.rel.clone(), req.kind));
-                let marks = store.marks(&sid).clone();
-                Some((set_cookie, marks))
-            }
-            None => None,
-        }
-    };
-    let Some((set_cookie, marks)) = resolved else {
-        return capacity_response();
-    };
-    let overlay = MarkOverlay::new(&marks);
-    let view = package_view_with_overlay(&state.base_raw, &overlay, mode);
-    let markup = render_section(&view[req.root], req.root, None, &state.search_links, mode);
-    let mut response = Html(markup.into_string()).into_response();
-    if let Some(cookie) = set_cookie {
-        response.headers_mut().append(header::SET_COOKIE, cookie);
-    }
-    response
+    apply_mark(&state, &headers, &req, MarkOp::Remove)
 }
 
 /// Redirect to the page for `mode`. Used after a POST so a refresh re-issues a
