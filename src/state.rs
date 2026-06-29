@@ -233,16 +233,30 @@ impl RawViewStore {
             return Arc::clone(&entry.raw);
         }
         tracing::debug!("cache miss");
-        self.build_coalesced().await
+        self.build_coalesced(true).await
     }
 
     /// Start a build, or join the one already running. The first caller owns
     /// the build and stores the result (bumping `rebuild_count` once).
     /// Joiners share the same future and return its output without a second
     /// walk or a second count bump.
-    async fn build_coalesced(&self) -> Arc<RawView> {
+    ///
+    /// `recheck_fresh`: when true (the `current` read path), re-check the cache
+    /// under the lock and return a fresh entry instead of starting a new walk.
+    /// This closes the cold-burst race where the owning build stored a fresh
+    /// entry and dropped its in-flight handle while this caller waited for the
+    /// lock, which would otherwise trigger a redundant second full walk. The
+    /// `refresh`/`rescan`/edit-fallback callers pass false: they must rebuild
+    /// regardless of a live TTL.
+    async fn build_coalesced(&self, recheck_fresh: bool) -> Arc<RawView> {
         let (handle, owns) = {
             let mut slot = self.inflight.lock().await;
+            if recheck_fresh
+                && let Some(entry) = self.cache.load_full()
+                && is_fresh(&entry, self.ttl)
+            {
+                return Arc::clone(&entry.raw);
+            }
             if let Some(existing) = slot.as_ref().and_then(Weak::upgrade) {
                 (existing, false)
             } else {
@@ -272,7 +286,7 @@ impl RawViewStore {
     /// path: the loop calls this each tick to pick up filesystem changes
     /// without forcing a cold walk.
     pub(crate) async fn refresh(&self) -> Arc<RawView> {
-        self.build_coalesced().await
+        self.build_coalesced(false).await
     }
 
     /// Force a cold scan: clear every per-root index, then rebuild. Ignores
@@ -281,7 +295,7 @@ impl RawViewStore {
         for index in &self.dir_indices {
             index.clear();
         }
-        self.build_coalesced().await
+        self.build_coalesced(false).await
     }
 
     /// Build the raw view for every configured root, in config order.
@@ -498,16 +512,25 @@ impl RawViewStore {
         // A self-delete may not bump the folder mtime, so force a re-list.
         self.invalidate_index(root, &canonical_root, rel);
 
-        let raw = {
+        // Walk the one affected root BEFORE taking the lock. The per-root walk
+        // can be slow on a network mount, and ADR-0027 keeps the inflight lock
+        // held for microseconds only. The dir index is warm (we just
+        // invalidated one entry), so this is the cheap re-list of that subtree.
+        let section = build_section(
+            root_path.clone(),
+            Arc::clone(&self.settings),
+            Arc::clone(&self.dir_indices[root]),
+        )
+        .await;
+
+        // Splice the freshly walked section into the cached view, holding the
+        // lock only for the load-clone-splice-store. The lock doubles as the
+        // edit-coordination lock against a concurrent cold build's store and
+        // another concurrent edit.
+        let spliced = {
             let _edit = self.inflight.lock().await;
             match self.cache.load_full() {
                 Some(entry) if is_fresh(&entry, self.ttl) => {
-                    let section = build_section(
-                        root_path.clone(),
-                        Arc::clone(&self.settings),
-                        Arc::clone(&self.dir_indices[root]),
-                    )
-                    .await;
                     let mut next = (*entry.raw).clone();
                     if root < next.len() {
                         next[root] = section;
@@ -517,12 +540,18 @@ impl RawViewStore {
                         stored_at: entry.stored_at,
                         raw: Arc::clone(&next),
                     })));
-                    next
+                    Some(next)
                 }
-                _ => self.store_fresh(Arc::new(self.build_view().await)),
+                _ => None,
             }
         };
-        Ok(raw)
+        match spliced {
+            Some(raw) => Ok(raw),
+            // Cold or stale slot: rebuild through the single-flight coalescer
+            // with no lock held across the walk. recheck_fresh is false because
+            // the slot was just observed not-fresh and we want the rebuild.
+            None => Ok(self.build_coalesced(false).await),
+        }
     }
 }
 
@@ -869,6 +898,126 @@ mod tests {
             .find(|f| f.rel_path.to_str() == Some("Book"))
             .unwrap();
         assert!(book.missing_ebook, "remove_mark re-flagged the folder");
+    }
+
+    #[tokio::test]
+    async fn store_remove_mark_fresh_path_splices_without_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        let _warm = store.current().await;
+        let _ = store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        let before = store.rebuild_count();
+
+        let after = store.remove_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        assert_eq!(
+            store.rebuild_count(),
+            before,
+            "a warm undo splices in place; it must not rebuild the slot",
+        );
+        let scanner::RootScan::Walked { folders, .. } = &after[0] else {
+            panic!("expected Walked");
+        };
+        let book = folders
+            .iter()
+            .find(|f| f.rel_path.to_str() == Some("Book"))
+            .unwrap();
+        assert!(book.missing_ebook, "the undo re-flagged the folder");
+    }
+
+    #[tokio::test]
+    async fn store_remove_mark_cold_slot_rebuilds_via_coalesced() {
+        // ttl 0 means the slot is never fresh, so the splice arm is skipped and
+        // the cold fallback rebuilds through build_coalesced.
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(None, dir.path().to_path_buf());
+
+        // Create the marker on disk, then undo it. The undo's fallback build
+        // must produce a view with the folder re-flagged.
+        let _ = store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        let before = store.rebuild_count();
+        let after = store.remove_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        assert!(
+            store.rebuild_count() > before,
+            "a cold undo must rebuild through build_coalesced",
+        );
+        let scanner::RootScan::Walked { folders, .. } = &after[0] else {
+            panic!("expected Walked");
+        };
+        assert!(
+            folders.iter().any(|f| f.missing_ebook),
+            "the rebuilt view shows the re-flagged gap",
+        );
+    }
+
+    #[tokio::test]
+    async fn store_concurrent_read_coexists_with_an_undo() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = Arc::new(test_store(
+            Some(Duration::from_secs(600)),
+            dir.path().to_path_buf(),
+        ));
+
+        let _warm = store.current().await;
+        let _ = store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        let before = store.rebuild_count();
+
+        let s_undo = Arc::clone(&store);
+        let s_read = Arc::clone(&store);
+        let (undo, read) = tokio::join!(
+            s_undo.remove_mark(0, "Book", Marker::NoEbook),
+            s_read.current(),
+        );
+        undo.unwrap();
+        assert_eq!(
+            read.len(),
+            1,
+            "the concurrent read returns one section per root"
+        );
+        assert_eq!(
+            store.rebuild_count(),
+            before,
+            "a warm read concurrent with a warm undo must not rebuild",
+        );
+    }
+
+    #[tokio::test]
+    async fn build_coalesced_recheck_returns_fresh_without_rebuild() {
+        // The current() path passes recheck_fresh=true: a fresh slot observed
+        // under the lock is returned without a redundant second walk.
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        let _warm = store.current().await;
+        let before = store.rebuild_count();
+        let _ = store.build_coalesced(true).await;
+        assert_eq!(
+            store.rebuild_count(),
+            before,
+            "recheck_fresh must short-circuit on a fresh slot, not rebuild",
+        );
+    }
+
+    #[tokio::test]
+    async fn build_coalesced_without_recheck_rebuilds_even_when_fresh() {
+        // refresh()/rescan() pass recheck_fresh=false so they pick up disk
+        // changes regardless of a live TTL: a fresh slot must not short-circuit.
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        let _warm = store.current().await;
+        let before = store.rebuild_count();
+        let _ = store.build_coalesced(false).await;
+        assert_eq!(
+            store.rebuild_count(),
+            before + 1,
+            "a forced build must rebuild even when the slot is fresh",
+        );
     }
 
     #[tokio::test]
