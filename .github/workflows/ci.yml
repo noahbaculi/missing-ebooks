@@ -15,22 +15,15 @@ permissions:
   contents: read
 
 jobs:
-  fmt:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install toolchain from rust-toolchain.toml
-        run: rustup toolchain install
-      - run: cargo fmt --check
-
-  clippy:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --locked --all-targets -- -D warnings
+      - uses: jdx/mise-action@v2
+      - run: mise run lint
 
   typecheck:
     runs-on: ubuntu-latest
@@ -56,7 +49,11 @@ jobs:
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --locked
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - run: cargo nextest run --locked
+      - run: cargo test --doc --locked
       - run: cargo test --benches --locked --no-run
 
   msrv:
