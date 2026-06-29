@@ -22,7 +22,7 @@ A reverse proxy needs to allow SSE: long-lived connection, `text/event-stream`, 
 
 `ttl_seconds` keeps its role as the between-session staleness backstop: while a tab is subscribed, autosync rebuilds the cache far more often than the TTL would expire it. When the last tab closes, TTL is what governs how stale the cache can be when the next visitor arrives.
 
-The demo binary disables autosync per session (`autosync_interval_seconds = 0`) because the session sweep's idle signal does not yet track SSE traffic. A follow-up captures showcasing autosync in the demo.
+The demo binary disables autosync per session (`autosync_interval_seconds = 0`) because the session sweep's idle signal does not yet track SSE traffic.
 
 ## Alternatives considered
 

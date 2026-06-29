@@ -105,8 +105,7 @@ async fn main() -> anyhow::Result<()> {
     // production AppState would build one (ADR-0023). The demo never builds an
     // AppState today, so this is a placeholder that documents the choice: the
     // session sweep's idle signal does not yet track SSE traffic, so per-session
-    // loops would extend sessions inappropriately. A follow-up captures
-    // showcasing autosync in the demo properly.
+    // loops would extend sessions inappropriately.
     let config = Config {
         library_roots: roots,
         autosync_interval_seconds: 0,
