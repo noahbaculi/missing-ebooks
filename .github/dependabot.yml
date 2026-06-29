@@ -1,0 +1,29 @@
+# Dependabot configuration.
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+updates:
+  # Rust crate dependencies. Group minor + patch updates into a single weekly
+  # PR so the maintainer triages one diff instead of one per crate.
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Dockerfile base image pins (rust:1.96.0-alpine and alpine:3.21).
+  # When the rust image bumps, also bump rust-toolchain.toml in the same PR;
+  # see the comment in Dockerfile.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  # GitHub Actions `uses:` pins across .github/workflows/.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
