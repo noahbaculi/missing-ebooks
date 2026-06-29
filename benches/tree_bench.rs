@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;
 
+use clap::Parser;
 use missing_ebooks::scanner;
 use missing_ebooks::synthetic;
 use missing_ebooks::tree;
@@ -51,116 +52,36 @@ struct Row {
     build_all_ms: f64,
 }
 
-/// CLI knobs. Each is `Some` to pin a single value, `None` to sweep its default.
-#[derive(Debug, PartialEq)]
-struct Args {
+/// tree_bench CLI surface. Mirrors `bin/explore.rs`: each axis is `Some` to pin
+/// a single value, `None` to sweep its default. `--bench` is absorbed because
+/// cargo bench passes it through to the binary.
+#[derive(clap::Parser, Debug)]
+#[command(
+    name = "tree_bench",
+    version,
+    about = "Synthetic shape sweep over the tree builders. No filesystem, no scenarios.",
+    after_help = "Unpinned axes sweep their defaults: --total 100,1000,10000; \
+        --depth 2,4,8; --fanout 3,10,50; --gap-rate 0.5."
+)]
+struct Cli {
+    /// Total folders to generate (default sweep 100, 1000, 10000).
+    #[arg(long)]
     total: Option<usize>,
+    /// Directory nesting depth (default sweep 2, 4, 8).
+    #[arg(long)]
     depth: Option<usize>,
+    /// Children per intermediate node (default sweep 3, 10, 50).
+    #[arg(long)]
     fanout: Option<usize>,
+    /// Fraction of leaf folders that are gaps (default 0.5).
+    #[arg(long = "gap-rate")]
     gap_rate: Option<f64>,
+    /// Measured render passes per shape.
+    #[arg(long, default_value_t = 5)]
     iterations: usize,
-}
-
-const USAGE: &str = "usage: cargo bench --bench tree_bench -- \
-[--total N] [--depth N] [--fanout N] [--gap-rate F] [--iterations N]";
-
-fn help_text() -> String {
-    format!(
-        "{USAGE}
-
-Synthetic shape sweep over the tree builders. No filesystem, no scenarios.
-
-flags:
-  --total N        total folders to generate (default sweep 100, 1000, 10000)
-  --depth N        directory nesting depth (default sweep 2, 4, 8)
-  --fanout N       children per intermediate node (default sweep 3, 10, 50)
-  --gap-rate F     fraction of leaf folders that are gaps (default 0.5)
-  --iterations N   measured render passes per shape (default 5)
-  --help, -h       this message"
-    )
-}
-
-fn next_value<'a>(
-    iter: &mut impl Iterator<Item = &'a String>,
-    flag: &str,
-) -> Result<String, String> {
-    iter.next()
-        .cloned()
-        .ok_or_else(|| format!("{flag} needs a value"))
-}
-
-fn parse_args(argv: &[String]) -> Result<Option<Args>, String> {
-    let mut total = None;
-    let mut depth = None;
-    let mut fanout = None;
-    let mut gap_rate = None;
-    let mut iterations = 5usize;
-    let mut iter = argv.iter();
-    while let Some(arg) = iter.next() {
-        if arg == "--help" || arg == "-h" {
-            return Ok(None);
-        } else if arg == "--total" {
-            total = Some(
-                next_value(&mut iter, "--total")?
-                    .parse()
-                    .map_err(|e| format!("--total: {e}"))?,
-            );
-        } else if let Some(v) = arg.strip_prefix("--total=") {
-            total = Some(v.parse().map_err(|e| format!("--total: {e}"))?);
-        } else if arg == "--depth" {
-            depth = Some(
-                next_value(&mut iter, "--depth")?
-                    .parse()
-                    .map_err(|e| format!("--depth: {e}"))?,
-            );
-        } else if let Some(v) = arg.strip_prefix("--depth=") {
-            depth = Some(v.parse().map_err(|e| format!("--depth: {e}"))?);
-        } else if arg == "--fanout" {
-            fanout = Some(
-                next_value(&mut iter, "--fanout")?
-                    .parse()
-                    .map_err(|e| format!("--fanout: {e}"))?,
-            );
-        } else if let Some(v) = arg.strip_prefix("--fanout=") {
-            fanout = Some(v.parse().map_err(|e| format!("--fanout: {e}"))?);
-        } else if arg == "--gap-rate" {
-            gap_rate = Some(
-                next_value(&mut iter, "--gap-rate")?
-                    .parse()
-                    .map_err(|e| format!("--gap-rate: {e}"))?,
-            );
-        } else if let Some(v) = arg.strip_prefix("--gap-rate=") {
-            gap_rate = Some(v.parse().map_err(|e| format!("--gap-rate: {e}"))?);
-        } else if arg == "--iterations" {
-            iterations = next_value(&mut iter, "--iterations")?
-                .parse()
-                .map_err(|e| format!("--iterations: {e}"))?;
-            if iterations == 0 {
-                return Err("--iterations must be at least 1".to_string());
-            }
-        } else if let Some(v) = arg.strip_prefix("--iterations=") {
-            iterations = v.parse().map_err(|e| format!("--iterations: {e}"))?;
-            if iterations == 0 {
-                return Err("--iterations must be at least 1".to_string());
-            }
-        } else if arg.starts_with('-') {
-            return Err(format!("unknown flag {arg:?}"));
-        } else {
-            return Err(format!("unexpected positional argument {arg:?}"));
-        }
-    }
-    if let Some(rate) = gap_rate
-        && !(0.0..=1.0).contains(&rate)
-    {
-        return Err("--gap-rate must be between 0 and 1 inclusive".to_string());
-    }
-    Ok(Some(Args {
-        total,
-        depth,
-        fanout,
-        gap_rate,
-        iterations,
-    }))
+    /// Absorbed: cargo bench passes this through to the binary.
+    #[arg(long, hide = true)]
+    bench: bool,
 }
 
 /// Time one shape: build the input once, then run the two renders `iterations`
@@ -224,38 +145,37 @@ fn print_table(rows: &[Row]) {
 }
 
 fn main() -> ExitCode {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-    let args = match parse_args(&argv) {
-        Ok(Some(args)) => args,
-        Ok(None) => {
-            println!("{}", help_text());
-            return ExitCode::SUCCESS;
-        }
-        Err(message) => {
-            eprintln!("error: {message}\n\n{}", help_text());
-            return ExitCode::from(2);
-        }
-    };
+    let cli = Cli::parse();
+    if cli.iterations == 0 {
+        eprintln!("error: --iterations must be at least 1");
+        return ExitCode::from(2);
+    }
+    if let Some(rate) = cli.gap_rate
+        && !(0.0..=1.0).contains(&rate)
+    {
+        eprintln!("error: --gap-rate must be between 0 and 1 inclusive");
+        return ExitCode::from(2);
+    }
 
-    let totals: Vec<usize> = args
+    let totals: Vec<usize> = cli
         .total
         .map(|t| vec![t])
         .unwrap_or_else(|| TOTAL_SWEEP.to_vec());
-    let depths: Vec<usize> = args
+    let depths: Vec<usize> = cli
         .depth
         .map(|d| vec![d])
         .unwrap_or_else(|| DEPTH_SWEEP.to_vec());
-    let fanouts: Vec<usize> = args
+    let fanouts: Vec<usize> = cli
         .fanout
         .map(|f| vec![f])
         .unwrap_or_else(|| FANOUT_SWEEP.to_vec());
-    let gap_rate = args.gap_rate.unwrap_or(DEFAULT_GAP_RATE);
+    let gap_rate = cli.gap_rate.unwrap_or(DEFAULT_GAP_RATE);
 
     let mut rows = Vec::new();
     for &total in &totals {
         for &depth in &depths {
             for &fanout in &fanouts {
-                rows.push(run_shape(total, depth, fanout, gap_rate, args.iterations));
+                rows.push(run_shape(total, depth, fanout, gap_rate, cli.iterations));
             }
         }
     }
@@ -284,38 +204,5 @@ mod tests {
         let row = run_shape(10_000, 2, 3, 0.5, 1);
         assert_eq!(row.total, 10_000);
         assert_eq!(row.actual, 12);
-    }
-
-    #[test]
-    fn parse_args_accepts_defaults() {
-        assert_eq!(
-            parse_args(&[]),
-            Ok(Some(Args {
-                total: None,
-                depth: None,
-                fanout: None,
-                gap_rate: None,
-                iterations: 5,
-            }))
-        );
-    }
-
-    #[test]
-    fn parse_args_rejects_out_of_range_gap_rate() {
-        assert!(parse_args(&["--gap-rate".to_string(), "1.5".to_string()]).is_err());
-        assert!(parse_args(&["--gap-rate=-0.1".to_string()]).is_err());
-    }
-
-    #[test]
-    fn parse_args_pins_individual_axes() {
-        let argv: Vec<String> = ["--total=200", "--depth=3", "--fanout=5", "--gap-rate=0.25"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let parsed = parse_args(&argv).unwrap().unwrap();
-        assert_eq!(parsed.total, Some(200));
-        assert_eq!(parsed.depth, Some(3));
-        assert_eq!(parsed.fanout, Some(5));
-        assert_eq!(parsed.gap_rate, Some(0.25));
     }
 }
