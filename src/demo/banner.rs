@@ -18,11 +18,12 @@ const BANNER_STYLE: &str = r"<style>.me-demo-sheen{position:absolute;top:0;botto
 /// The banner markup, its self-contained styling, and the Reset control. The bar
 /// is full-bleed: negative margins cancel the body's 1.5rem padding, with a 1rem
 /// gap below before the navbar. Gradient, shadow, and the one-time sheen from
-/// [`BANNER_STYLE`] style it without app.css. The reset form carries the current
-/// view so a reset lands the visitor where they were.
+/// [`BANNER_STYLE`] style it without app.css. The centered notice is flanked by
+/// the self-host CTA and Reset button on the right. The reset form carries the
+/// current view so a reset lands the visitor where they were.
 fn banner_html(mode: ViewMode) -> String {
     format!(
-        r#"{BANNER_STYLE}<div class="me-demo-banner" style="position:sticky;top:0;z-index:9999;margin:-1.5rem -1.5rem 1rem;display:flex;align-items:center;justify-content:center;gap:12px;overflow:hidden;background:linear-gradient(110deg,#5a57e6 0%,#4f8fd0 100%);color:#fff;font:14px/1.4 system-ui,sans-serif;padding:9px 16px;text-align:center;text-shadow:0 1px 1px rgba(0,0,0,.14);box-shadow:0 4px 12px -7px rgba(0,0,0,.38)"><span class="me-demo-sheen" aria-hidden="true"></span><span style="position:relative;z-index:1">Demo sandbox with sample data. Changes are private and reset when idle.</span><form method="post" action="/reset" style="margin:0;position:relative;z-index:1"><input type="hidden" name="view" value="{view}"><button type="submit" style="cursor:pointer;border:1px solid rgba(255,255,255,.85);background:transparent;color:#fff;font:inherit;border-radius:6px;padding:2px 10px">Reset</button></form></div>"#,
+        r#"{BANNER_STYLE}<div class="me-demo-banner" style="position:sticky;top:0;z-index:9999;margin:-1.5rem -1.5rem 1rem;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:14px;overflow:hidden;background:linear-gradient(110deg,#5a57e6 0%,#4f8fd0 100%);color:#fff;font:14px/1.4 system-ui,sans-serif;padding:9px 16px;text-align:center;text-shadow:0 1px 1px rgba(0,0,0,.14);box-shadow:0 4px 12px -7px rgba(0,0,0,.38)"><span class="me-demo-sheen" aria-hidden="true"></span><span style="position:relative;z-index:1">Live sandbox; changes reset when idle.</span><span style="position:relative;z-index:1;display:inline-flex;align-items:center;gap:10px"><a href="https://github.com/noahbaculi/missing-ebooks#getting-started" style="background:#fff;color:#3b39c4;font:inherit;font-weight:700;text-decoration:none;border-radius:6px;padding:4px 14px">Self-host this</a><form method="post" action="/reset" style="margin:0"><input type="hidden" name="view" value="{view}"><button type="submit" style="cursor:pointer;border:1px solid rgba(255,255,255,.55);background:transparent;color:#fff;font:inherit;border-radius:6px;padding:3px 10px">Reset</button></form></span></div>"#,
         view = mode.as_query()
     )
 }
@@ -83,8 +84,14 @@ mod tests {
         // The reset form posts the current view.
         assert!(out.contains(r#"action="/reset""#));
         assert!(out.contains(r#"name="view" value="all""#));
-        // The notice text survives the splice.
-        assert!(out.contains("Changes are private and reset when idle"));
+        // The shortened sandbox notice survives the splice; the old longer copy is gone.
+        assert!(out.contains("Live sandbox; changes reset when idle."));
+        assert!(!out.contains("Changes are private and reset when idle"));
+        // The self-host CTA links to the README Getting Started section.
+        assert!(
+            out.contains(r#"href="https://github.com/noahbaculi/missing-ebooks#getting-started""#)
+        );
+        assert!(out.contains("Self-host this"));
         // The sheen markup is spliced in alongside the notice.
         assert!(out.contains("me-demo-sheen"));
     }
