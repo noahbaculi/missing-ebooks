@@ -280,7 +280,7 @@ pub(super) fn mark_warn_template() -> Markup {
 pub(super) fn intro_card() -> Markup {
     html! {
         section.intro-card id="intro-card" aria-labelledby="intro-title" {
-            button.intro-dismiss id="intro-dismiss" type="button" aria-label="Dismiss" { "\u{00D7}" }
+            button.intro-dismiss id="intro-dismiss" type="button" aria-label="Dismiss introduction" { "\u{00D7}" }
             h2.intro-title id="intro-title" {
                 (PreEscaped(include_str!("../../assets/svg/help.svg")))
                 span { "Audiobooks missing an ebook" }
@@ -782,6 +782,9 @@ mod tests {
             r#"<section class="intro-card" id="intro-card" aria-labelledby="intro-title">"#
         ));
         assert!(html.contains(r#"id="intro-dismiss""#));
+        // The dismiss button names what it dismisses, since a screen-reader
+        // user navigating to it standalone would otherwise hear only "Dismiss".
+        assert!(html.contains(r#"aria-label="Dismiss introduction""#));
         // The body names the real row controls so the text maps onto the tree.
         assert!(html.contains("No ebook"));
         assert!(html.contains("Elsewhere"));
