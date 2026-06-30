@@ -858,6 +858,9 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   .navbar .spacer {
     order: 1;
   }
+  .navbar .intro-help {
+    order: 2;
+  }
   .navbar .settings-cog {
     order: 2;
   }

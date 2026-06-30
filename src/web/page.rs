@@ -43,6 +43,19 @@ pub(super) fn view_toggle(mode: ViewMode) -> Markup {
     }
 }
 
+/// The navbar help control: a "?" icon button beside the settings cog. Clicking
+/// it clears the dismissal flag and re-shows the intro card, so dismissing the
+/// card is not a one-way door. Behavior lives in `app.js`, bound by the id. The
+/// button takes its own job rather than the `?` key, which already opens the
+/// settings popover.
+pub(super) fn help_button() -> Markup {
+    html! {
+        button.btn.btn-ghost.btn-square.intro-help id="intro-help" type="button"
+            aria-label="How this works"
+            title="How this works" { (PreEscaped(include_str!("../../assets/svg/help.svg"))) }
+    }
+}
+
 /// The navbar settings control: a cog opening a popover with the theme choice, the
 /// confirm-before-marking toggle, the folder-depth switches, and a read-only
 /// keyboard shortcuts reference. The native popover API drives open/close. Behavior
@@ -314,6 +327,7 @@ pub(crate) fn page(mode: ViewMode, body: &Markup) -> Markup {
                     span.spacer {}
                     (search_box())
                     (view_toggle(mode))
+                    (help_button())
                     (settings_menu())
                     form hx-target="#roots" hx-swap="innerHTML"
                         hx-indicator="#scan-bar, #rescan-btn"
@@ -685,5 +699,24 @@ mod tests {
         assert!(html.contains(concat!("v", env!("CARGO_PKG_VERSION"))));
         // A path home to the source.
         assert!(html.contains(r#"href="https://github.com/noahbaculi/missing-ebooks""#));
+    }
+
+    #[test]
+    fn navbar_renders_the_help_button() {
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        // A labelled "?" icon button that re-shows the intro card. It takes its
+        // own job rather than the `?` key, which already opens settings.
+        assert!(html.contains(r#"id="intro-help""#));
+        assert!(html.contains(r#"aria-label="How this works""#));
+        assert!(html.contains(r#"class="btn btn-ghost btn-square intro-help""#));
+        // It sits beside the settings cog, before it in the navbar.
+        let help_at = html.find(r#"id="intro-help""#).unwrap();
+        let cog_at = html
+            .find(r#"class="btn btn-ghost btn-square settings-cog""#)
+            .unwrap();
+        assert!(
+            help_at < cog_at,
+            "the help button should sit just before the settings cog"
+        );
     }
 }
