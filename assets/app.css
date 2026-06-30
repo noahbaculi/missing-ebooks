@@ -1876,54 +1876,6 @@ li.entering {
   background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
-/* footer */
-/* The page footer, in every deployment. Matches the centered 52rem column the
-   navbar and summary use, sits muted below the content, and reads as one quiet
-   row: brand on the left, links on the right, wrapping to stacked on a phone. */
-.site-footer {
-  max-width: 52rem;
-  margin: 2rem auto 0.5rem;
-  padding: 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  border-top: var(--border) solid var(--color-border);
-  color: var(--color-muted);
-  font-size: 0.8rem;
-}
-.footer-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.footer-brand .brand-mark {
-  width: 1.1rem;
-  height: 1.1rem;
-}
-.footer-name {
-  font-weight: 600;
-  color: var(--color-base-content);
-}
-.footer-links {
-  display: inline-flex;
-  align-items: center;
-  gap: 1rem;
-}
-.site-footer a {
-  color: var(--color-muted);
-  text-decoration: none;
-}
-.site-footer a:hover {
-  color: var(--color-base-content);
-  text-decoration: underline;
-}
-.site-footer a:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-  border-radius: var(--radius-field);
-}
 /* intro card */
 /* The orientation card above the coverage strip, sharing its centered 52rem
    column. A primary border over a faint primary wash, lifted by a tinted
@@ -2000,4 +1952,53 @@ li.entering {
 .intro-dismiss:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* footer */
+/* The page footer, in every deployment. Matches the centered 52rem column the
+   navbar and summary use, sits muted below the content, and reads as one quiet
+   row: brand on the left, links on the right, wrapping to stacked on a phone. */
+.site-footer {
+  max-width: 52rem;
+  margin: 2rem auto 0.5rem;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  border-top: var(--border) solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+.footer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.footer-brand .brand-mark {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.footer-name {
+  font-weight: 600;
+  color: var(--color-base-content);
+}
+.footer-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+}
+.site-footer a {
+  color: var(--color-muted);
+  text-decoration: none;
+}
+.site-footer a:hover {
+  color: var(--color-base-content);
+  text-decoration: underline;
+}
+.site-footer a:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-field);
 }
