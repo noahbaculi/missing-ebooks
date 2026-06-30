@@ -852,11 +852,15 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   .navbar {
     flex-wrap: wrap;
   }
-  /* phone navbar lays out in two rows: the title with the settings cog and
-     rescan on top, the view toggle as a full-width segmented control below.
+  /* phone navbar lays out in two rows: the title with the help, settings cog
+     and rescan on top, the view toggle as a full-width segmented control below.
      flex `order` moves the controls without reordering the markup. each control
-     is matched by class (.spacer, .settings-cog, form, > .segmented) so a later
-     navbar addition can't silently inherit a row's order. the view toggle uses a
+     is matched by class (.spacer, .intro-help, .settings-cog, form, > .segmented)
+     so a later navbar addition can't silently inherit a row's order. .intro-help
+     and .settings-cog deliberately share order 2 — the two chrome icon buttons
+     pair into one cluster (the negative margin above ties them visually), so a
+     future third icon button sitting between them must opt in explicitly with
+     its own .intro-help/.settings-cog-class rule. the view toggle uses a
      child combinator so the settings panel's nested theme segmented control,
      which lives in the same navbar, is left out of this row layout. the leading
      spacer keeps growing on the top row, so the cog and rescan stay pinned to the
