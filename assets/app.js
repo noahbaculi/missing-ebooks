@@ -426,6 +426,48 @@
     }
   });
 
+  // intro card: dismiss is per-device and reversible. Dismissing sets the flag
+  // and hides the card via the same data-intro attribute the pre-paint bootstrap
+  // sets, so a reload keeps it hidden. The navbar "?" button clears the flag and
+  // shows the card again, moving focus into it so keyboard and screen-reader users
+  // land on the restored content.
+  var INTRO_KEY = "introDismissed";
+
+  /**
+   * @param {boolean} on
+   */
+  function setIntroDismissed(on) {
+    var root = document.documentElement;
+    if (on) {
+      localStorage.setItem(INTRO_KEY, "true");
+      root.dataset.intro = "dismissed";
+    } else {
+      localStorage.removeItem(INTRO_KEY);
+      root.removeAttribute("data-intro");
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    var dismiss = document.getElementById("intro-dismiss");
+    if (dismiss) {
+      dismiss.addEventListener("click", function () {
+        setIntroDismissed(true);
+        // The card just left; hand focus to the control that brings it back.
+        var help = document.getElementById("intro-help");
+        if (help) help.focus();
+      });
+    }
+    var help = document.getElementById("intro-help");
+    if (help) {
+      help.addEventListener("click", function () {
+        setIntroDismissed(false);
+        // Move focus into the restored card so its return is announced.
+        var dismissBtn = document.getElementById("intro-dismiss");
+        if (dismissBtn) dismissBtn.focus();
+      });
+    }
+  });
+
   // marker-write confirmation
 
   /** @type {HTMLDialogElement | null} */
