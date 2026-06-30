@@ -1915,19 +1915,21 @@ li.entering {
   border-radius: var(--radius-field);
 }
 /* intro card */
-/* The orientation card above the coverage strip. Matches the centered 52rem
-   column, a soft base-100 surface with the box radius, and a dismiss button
-   pinned top-right. The body names the row controls so a cold reader recognizes
-   them. Hidden before first paint by the [data-intro="dismissed"] rule when the
-   per-device flag is set. */
+/* The orientation card above the coverage strip, sharing its centered 52rem
+   column. A primary border over a faint primary wash, lifted by a tinted
+   shadow, so it reads apart from the coverage strip's neutral surface below.
+   A dismiss button is pinned top-right. The body names the row controls so a
+   cold reader recognizes them. Hidden before first paint by the
+   [data-intro="dismissed"] rule when the per-device flag is set. */
 .intro-card {
   position: relative;
   max-width: 52rem;
   margin: 0 auto 1rem;
   padding: 1rem 1.25rem;
-  background: var(--color-base-100);
-  border: var(--border) solid var(--color-border);
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--color-base-100));
+  border: 2px solid var(--color-primary);
   border-radius: var(--radius-box);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 /* A dismissed card is hidden before first paint by the pre-paint bootstrap, which
    sets data-intro on <html>; app.js sets and clears the same attribute when the
