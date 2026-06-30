@@ -430,7 +430,9 @@
   // and hides the card via the same data-intro attribute the pre-paint bootstrap
   // sets, so a reload keeps it hidden. The navbar "?" button toggles the card:
   // it shows it again (moving focus into it so keyboard and screen-reader users
-  // land on the restored content) and hides it when it is already showing.
+  // land on the restored content) and hides it when it is already showing. The
+  // button's aria-expanded mirrors the card's visibility, so assistive tech
+  // hears the toggle change state.
   var INTRO_KEY = "introDismissed";
 
   /**
@@ -445,9 +447,21 @@
       localStorage.removeItem(INTRO_KEY);
       root.removeAttribute("data-intro");
     }
+    var help = document.getElementById("intro-help");
+    if (help) help.setAttribute("aria-expanded", on ? "false" : "true");
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    // Reconcile the toggle's aria-expanded against the per-device flag the
+    // pre-paint bootstrap already reflected onto <html>. The markup ships
+    // aria-expanded="true" (the default render), so this only flips when the
+    // visitor previously dismissed the card.
+    var helpInit = document.getElementById("intro-help");
+    if (helpInit) {
+      var initiallyDismissed =
+        document.documentElement.dataset.intro === "dismissed";
+      helpInit.setAttribute("aria-expanded", initiallyDismissed ? "false" : "true");
+    }
     var dismiss = document.getElementById("intro-dismiss");
     if (dismiss) {
       dismiss.addEventListener("click", function () {

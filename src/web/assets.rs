@@ -272,6 +272,19 @@ mod tests {
     }
 
     #[test]
+    fn app_script_syncs_help_button_aria_expanded_with_the_intro_flag() {
+        // The intro-card help button advertises its toggle state to assistive
+        // tech. The reconcile happens at two sites in app.js: the per-toggle
+        // write inside `setIntroDismissed`, and the DOMContentLoaded hookup
+        // that aligns the markup's default `aria-expanded="true"` with the
+        // pre-paint `dataset.intro` flag for a returning visitor. Pin both so
+        // a future refactor can't silently drop one half of the contract.
+        assert!(APP_JS_BYTES.contains(r#"help.setAttribute("aria-expanded""#));
+        assert!(APP_JS_BYTES.contains(r#"helpInit.setAttribute("aria-expanded""#));
+        assert!(APP_JS_BYTES.contains(r#"dataset.intro === "dismissed""#));
+    }
+
+    #[test]
     fn app_script_uses_the_search_empty_id() {
         // `search-empty` is the DOM id emitted by `search_empty()` in
         // page.rs; the filter reveals it when nothing matches.

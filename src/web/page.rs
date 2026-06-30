@@ -48,11 +48,19 @@ pub(super) fn view_toggle(mode: ViewMode) -> Markup {
 /// showing, so dismissing the card is not a one-way door. Behavior lives in
 /// `app.js`, bound by the id. The button takes its own job rather than the `?`
 /// key, which already opens the settings popover.
+///
+/// The `aria-controls` pair points at the card the button toggles, and
+/// `aria-expanded` advertises the toggle's current state. The initial value
+/// matches the default render (card shown), and `app.js` reconciles it against
+/// the per-device dismissal flag on `DOMContentLoaded` and keeps it in sync as
+/// the visitor toggles, so screen-reader users hear the right state.
 pub(super) fn help_button() -> Markup {
     html! {
         button.btn.btn-ghost.btn-square.intro-help id="intro-help" type="button"
             aria-label="How this works"
-            title="How this works" { (PreEscaped(include_str!("../../assets/svg/help.svg"))) }
+            title="How this works"
+            aria-controls="intro-card"
+            aria-expanded="true" { (PreEscaped(include_str!("../../assets/svg/help.svg"))) }
     }
 }
 
@@ -748,6 +756,12 @@ mod tests {
         assert!(html.contains(r#"id="intro-help""#));
         assert!(html.contains(r#"aria-label="How this works""#));
         assert!(html.contains(r#"class="btn btn-ghost btn-square intro-help""#));
+        // The toggle advertises its target and current state to assistive tech.
+        // The initial value matches the default render (card shown); app.js
+        // reconciles it against the per-device dismissal flag on
+        // DOMContentLoaded and keeps it in sync on every toggle.
+        assert!(html.contains(r#"aria-controls="intro-card""#));
+        assert!(html.contains(r#"aria-expanded="true""#));
         // It sits beside the settings cog, before it in the navbar.
         let help_at = html.find(r#"id="intro-help""#).unwrap();
         let cog_at = html
