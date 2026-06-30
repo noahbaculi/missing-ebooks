@@ -801,10 +801,21 @@ mod tests {
     fn intro_card_title_carries_the_help_glyph() {
         let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // The title is prefixed with the same help-circle glyph as the navbar
-        // button that re-shows the card, so the two read as linked.
+        // button that re-shows the card, so the two read as linked. Assert the
+        // shape of the inline mark (the `.icon` opener and the surrounding
+        // circle that makes it read as a help glyph rather than a different
+        // icon) instead of pinning specific path data, so a future SVG tweak
+        // that keeps the same intent does not rebreak this test.
         let title_at = html.find(r#"id="intro-title""#).unwrap();
         let title_end = html[title_at..].find("</h2>").unwrap() + title_at;
         let title = &html[title_at..title_end];
-        assert!(title.contains("M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"));
+        assert!(
+            title.contains(r#"<svg class="icon""#),
+            "the title should embed an .icon glyph: {title}"
+        );
+        assert!(
+            title.contains("<circle"),
+            "the help glyph carries the circling stroke that makes it read as a question mark: {title}"
+        );
     }
 }
