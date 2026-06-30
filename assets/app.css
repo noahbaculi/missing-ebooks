@@ -1929,6 +1929,12 @@ li.entering {
   border: var(--border) solid var(--color-border);
   border-radius: var(--radius-box);
 }
+/* A dismissed card is hidden before first paint by the pre-paint bootstrap, which
+   sets data-intro on <html>; app.js sets and clears the same attribute when the
+   visitor dismisses or re-shows the card. */
+[data-intro="dismissed"] .intro-card {
+  display: none;
+}
 .intro-title {
   margin: 0 2rem 0.35rem 0;
   font-size: 1rem;

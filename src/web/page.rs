@@ -439,6 +439,16 @@ mod tests {
     }
 
     #[test]
+    fn prepaint_bootstrap_hides_a_dismissed_intro_card() {
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        // The pre-paint bootstrap reads the per-device dismissal flag and reflects
+        // it onto <html> before first paint, so a repeat visitor never flashes the
+        // card. Same dataset pattern as the depth preferences.
+        assert!(html.contains("introDismissed"));
+        assert!(html.contains("dataset.intro"));
+    }
+
+    #[test]
     fn page_carries_a_noscript_notice() {
         let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // The UI requires JavaScript; a <noscript> strip is the one thing a

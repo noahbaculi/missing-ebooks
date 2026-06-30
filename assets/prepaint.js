@@ -10,6 +10,9 @@
   if (localStorage.getItem('italicNestedFolders') === 'off') {
     document.documentElement.dataset.italicNested = 'off';
   }
+  if (localStorage.getItem('introDismissed') === 'true') {
+    document.documentElement.dataset.intro = 'dismissed';
+  }
 
   // ACCENT-DERIVE:BEGIN. Mirrored in assets/app.js, parity checked by tests/accent/derive.test.mjs.
   function luminance(hex) {
