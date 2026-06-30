@@ -261,6 +261,30 @@ pub(super) fn mark_warn_template() -> Markup {
     }
 }
 
+/// The dismissible intro card, above the coverage strip in every deployment. It
+/// orients a cold visitor who landed on the tool without reading the README: it
+/// names the concept (each row is an audiobook with no ebook) and the two actions
+/// (mark it handled, or follow a search link), and labels the controls so the
+/// tree reads. Dismissal is a per-device `localStorage` flag; the pre-paint
+/// bootstrap hides this card before first paint when the flag is set, so a repeat
+/// visitor never sees it flash. The help button re-shows it.
+pub(super) fn intro_card() -> Markup {
+    html! {
+        section.intro-card id="intro-card" aria-labelledby="intro-title" {
+            button.intro-dismiss id="intro-dismiss" type="button" aria-label="Dismiss" { "\u{00D7}" }
+            h2.intro-title id="intro-title" { "Audiobooks missing an ebook" }
+            p.intro-body {
+                "Each row below is an audiobook with no ebook beside it. "
+                "Mark one as handled once you have the book, or follow a search link to go find it."
+            }
+            div.intro-actions {
+                span.intro-chip { "Mark handled" }
+                span.intro-chip { "Search links" }
+            }
+        }
+    }
+}
+
 /// The page footer, present in every deployment. Carries the brand mark, the
 /// product name, the crate version, and a link to the source. Because it ships
 /// in the core shell, it gives a demo visitor a second path home alongside the
@@ -342,6 +366,7 @@ pub(crate) fn page(mode: ViewMode, body: &Markup) -> Markup {
                             hx-post="/rescan" hx-include="closest form" { "Rescan" }
                     }
                 }
+                (intro_card())
                 (body)
                 (confirm_dialog())
                 (toast())
@@ -717,6 +742,27 @@ mod tests {
         assert!(
             help_at < cog_at,
             "the help button should sit just before the settings cog"
+        );
+    }
+
+    #[test]
+    fn page_renders_the_intro_card_above_the_body() {
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        // A dismissible card that orients a cold visitor: it names the concept and
+        // the two actions, and labels the controls so the tree reads.
+        assert!(html.contains(
+            r#"<section class="intro-card" id="intro-card" aria-labelledby="intro-title">"#
+        ));
+        assert!(html.contains(r#"id="intro-dismiss""#));
+        // The two action labels mirror the controls in the tree.
+        assert!(html.contains("Mark handled"));
+        assert!(html.contains("Search links"));
+        // It sits above the coverage strip: before the stub body in the shell.
+        let card_at = html.find(r#"id="intro-card""#).unwrap();
+        let body_at = html.find(r#"id="stub""#).unwrap();
+        assert!(
+            card_at < body_at,
+            "the intro card should render above the body"
         );
     }
 }
