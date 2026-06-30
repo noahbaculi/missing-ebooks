@@ -1946,6 +1946,16 @@ li.entering {
   font-size: 0.9rem;
   line-height: 1.45;
 }
+/* Inline marks for the literal row-control labels named in the body, so the
+   text maps onto the buttons in the tree. nowrap keeps a two-word label whole. */
+.intro-mark {
+  font-weight: 600;
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius-field);
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+  white-space: nowrap;
+}
 .intro-dismiss {
   position: absolute;
   top: 0.5rem;

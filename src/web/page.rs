@@ -275,7 +275,11 @@ pub(super) fn intro_card() -> Markup {
             h2.intro-title id="intro-title" { "Audiobooks missing an ebook" }
             p.intro-body {
                 "Each row below is an audiobook folder with no ebook beside it. "
-                "Use the search links to look for the ebook, or mark the folder No ebook if none exists or Elsewhere if it lives in another folder."
+                "Use the search links to look for the ebook, or mark the folder "
+                span.intro-mark { "No ebook" }
+                " if none exists or "
+                span.intro-mark { "Elsewhere" }
+                " if it lives in another folder."
             }
         }
     }
