@@ -124,6 +124,12 @@ details > summary::-webkit-details-marker {
 .navbar form {
   margin: 0;
 }
+/* The help and settings buttons are both chrome, not functional toolbar controls,
+   so pull the cog toward the help button to read as one grouped pair rather than
+   inheriting the navbar's full inter-control gap. */
+.navbar .settings-cog {
+  margin-left: -0.5rem;
+}
 
 /* buttons */
 .btn {
