@@ -1938,9 +1938,17 @@ li.entering {
   display: none;
 }
 .intro-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   margin: 0 2rem 0.35rem 0;
   font-size: 1rem;
   font-weight: 700;
+}
+/* The help-circle glyph mirrors the navbar help button that re-shows this card.
+   Recolor the muted .icon default to primary so it ties to the frame. */
+.intro-title .icon {
+  color: var(--color-primary);
 }
 .intro-body {
   margin: 0;

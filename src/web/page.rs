@@ -268,11 +268,15 @@ pub(super) fn mark_warn_template() -> Markup {
 /// controls so the tree reads. Dismissal is a per-device `localStorage` flag; the
 /// pre-paint bootstrap hides this card before first paint when the flag is set, so
 /// a repeat visitor never sees it flash. The help button toggles it back.
+/// The title carries that same help-circle glyph to link the card to the button.
 pub(super) fn intro_card() -> Markup {
     html! {
         section.intro-card id="intro-card" aria-labelledby="intro-title" {
             button.intro-dismiss id="intro-dismiss" type="button" aria-label="Dismiss" { "\u{00D7}" }
-            h2.intro-title id="intro-title" { "Audiobooks missing an ebook" }
+            h2.intro-title id="intro-title" {
+                (PreEscaped(include_str!("../../assets/svg/help.svg")))
+                span { "Audiobooks missing an ebook" }
+            }
             p.intro-body {
                 "Each row below is an audiobook folder with no ebook beside it. "
                 "Use the search links to look for the ebook, or mark the folder "
@@ -774,5 +778,16 @@ mod tests {
             card_at < body_at,
             "the intro card should render above the body"
         );
+    }
+
+    #[test]
+    fn intro_card_title_carries_the_help_glyph() {
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        // The title is prefixed with the same help-circle glyph as the navbar
+        // button that re-shows the card, so the two read as linked.
+        let title_at = html.find(r#"id="intro-title""#).unwrap();
+        let title_end = html[title_at..].find("</h2>").unwrap() + title_at;
+        let title = &html[title_at..title_end];
+        assert!(title.contains("M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"));
     }
 }
