@@ -1917,9 +1917,9 @@ li.entering {
 /* intro card */
 /* The orientation card above the coverage strip. Matches the centered 52rem
    column, a soft base-100 surface with the box radius, and a dismiss button
-   pinned top-right. The action chips echo the tree's controls so a cold reader
-   recognizes them. Hidden before first paint by the [data-intro="dismissed"]
-   rule when the per-device flag is set. */
+   pinned top-right. The body names the row controls so a cold reader recognizes
+   them. Hidden before first paint by the [data-intro="dismissed"] rule when the
+   per-device flag is set. */
 .intro-card {
   position: relative;
   max-width: 52rem;
@@ -1941,23 +1941,10 @@ li.entering {
   font-weight: 700;
 }
 .intro-body {
-  margin: 0 0 0.75rem;
+  margin: 0;
   color: var(--color-muted);
   font-size: 0.9rem;
   line-height: 1.45;
-}
-.intro-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.intro-chip {
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.2rem 0.6rem;
-  border-radius: var(--radius-field);
-  background: var(--color-base-200);
-  color: var(--color-base-content);
 }
 .intro-dismiss {
   position: absolute;

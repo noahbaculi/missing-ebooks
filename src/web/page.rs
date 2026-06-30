@@ -277,10 +277,6 @@ pub(super) fn intro_card() -> Markup {
                 "Each row below is an audiobook folder with no ebook beside it. "
                 "Use the search links to look for the ebook, or mark the folder No ebook if none exists or Elsewhere if it lives in another folder."
             }
-            div.intro-actions {
-                span.intro-chip { "Mark handled" }
-                span.intro-chip { "Search links" }
-            }
         }
     }
 }
@@ -759,14 +755,14 @@ mod tests {
     fn page_renders_the_intro_card_above_the_body() {
         let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
         // A dismissible card that orients a cold visitor: it names the concept and
-        // the two actions, and labels the controls so the tree reads.
+        // the actions, naming the row controls so the tree reads.
         assert!(html.contains(
             r#"<section class="intro-card" id="intro-card" aria-labelledby="intro-title">"#
         ));
         assert!(html.contains(r#"id="intro-dismiss""#));
-        // The two action labels mirror the controls in the tree.
-        assert!(html.contains("Mark handled"));
-        assert!(html.contains("Search links"));
+        // The body names the real row controls so the text maps onto the tree.
+        assert!(html.contains("No ebook"));
+        assert!(html.contains("Elsewhere"));
         // It sits above the coverage strip: before the stub body in the shell.
         let card_at = html.find(r#"id="intro-card""#).unwrap();
         let body_at = html.find(r#"id="stub""#).unwrap();
