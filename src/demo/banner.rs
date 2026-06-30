@@ -18,12 +18,14 @@ const BANNER_STYLE: &str = r"<style>.me-demo-sheen{position:absolute;top:0;botto
 /// The banner markup, its self-contained styling, and the Reset control. The bar
 /// is full-bleed: negative margins cancel the body's 1.5rem padding, with a 1rem
 /// gap below before the navbar. Gradient, shadow, and the one-time sheen from
-/// [`BANNER_STYLE`] style it without app.css. The centered notice is flanked by
-/// the self-host CTA and Reset button on the right. The reset form carries the
-/// current view so a reset lands the visitor where they were.
+/// [`BANNER_STYLE`] style it without app.css. The bar splits in two: the sandbox
+/// notice and the Reset button group on the left, since the notice explains the
+/// reset the button performs; the self-host link sits alone on the right and
+/// opens GitHub in a new tab. The reset form carries the current view so a reset
+/// lands the visitor where they were.
 fn banner_html(mode: ViewMode) -> String {
     format!(
-        r#"{BANNER_STYLE}<div class="me-demo-banner" style="position:sticky;top:0;z-index:9999;margin:-1.5rem -1.5rem 1rem;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:14px;overflow:hidden;background:linear-gradient(110deg,#5a57e6 0%,#4f8fd0 100%);color:#fff;font:14px/1.4 system-ui,sans-serif;padding:9px 16px;text-align:center;text-shadow:0 1px 1px rgba(0,0,0,.14);box-shadow:0 4px 12px -7px rgba(0,0,0,.38)"><span class="me-demo-sheen" aria-hidden="true"></span><span style="position:relative;z-index:1">Live sandbox; changes reset when idle.</span><span style="position:relative;z-index:1;display:inline-flex;align-items:center;gap:10px"><a href="https://github.com/noahbaculi/missing-ebooks#getting-started" style="background:#fff;color:#3b39c4;font:inherit;font-weight:700;text-decoration:none;border-radius:6px;padding:4px 14px">Self-host this</a><form method="post" action="/reset" style="margin:0"><input type="hidden" name="view" value="{view}"><button type="submit" style="cursor:pointer;border:1px solid rgba(255,255,255,.55);background:transparent;color:#fff;font:inherit;border-radius:6px;padding:3px 10px">Reset</button></form></span></div>"#,
+        r#"{BANNER_STYLE}<div class="me-demo-banner" style="position:sticky;top:0;z-index:9999;margin:-1.5rem -1.5rem 1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;overflow:hidden;background:linear-gradient(110deg,#5a57e6 0%,#4f8fd0 100%);color:#fff;font:14px/1.4 system-ui,sans-serif;padding:9px 16px;text-align:center;text-shadow:0 1px 1px rgba(0,0,0,.14);box-shadow:0 4px 12px -7px rgba(0,0,0,.38)"><span class="me-demo-sheen" aria-hidden="true"></span><span style="position:relative;z-index:1;display:inline-flex;align-items:center;gap:11px"><span>Isolated sandbox: changes reset when idle</span><form method="post" action="/reset" style="margin:0"><input type="hidden" name="view" value="{view}"><button type="submit" style="cursor:pointer;border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;font:inherit;border-radius:6px;padding:3px 10px">Reset</button></form></span><a href="https://github.com/noahbaculi/missing-ebooks#getting-started" target="_blank" rel="noopener" style="position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;flex:none;border:1px solid rgba(255,255,255,.6);background:rgba(255,255,255,.14);color:#fff;font:inherit;font-weight:600;text-decoration:none;border-radius:6px;padding:4px 12px"><svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>Self-host</a></div>"#,
         view = mode.as_query()
     )
 }
@@ -84,14 +86,20 @@ mod tests {
         // The reset form posts the current view.
         assert!(out.contains(r#"action="/reset""#));
         assert!(out.contains(r#"name="view" value="all""#));
-        // The shortened sandbox notice survives the splice; the old longer copy is gone.
-        assert!(out.contains("Live sandbox; changes reset when idle."));
+        // The approved sandbox notice replaces the old live-sandbox copy.
+        assert!(out.contains("Isolated sandbox: changes reset when idle"));
+        assert!(!out.contains("Isolated sandbox: changes reset when idle."));
+        assert!(!out.contains("Live sandbox; changes reset when idle."));
         assert!(!out.contains("Changes are private and reset when idle"));
-        // The self-host CTA links to the README Getting Started section.
+        // The self-host CTA links to the README Getting Started section and opens a new tab.
         assert!(
             out.contains(r#"href="https://github.com/noahbaculi/missing-ebooks#getting-started""#)
         );
-        assert!(out.contains("Self-host this"));
+        assert!(out.contains(r#"target="_blank""#));
+        assert!(out.contains(r#"rel="noopener""#));
+        // The label is trimmed to "Self-host"; the old "Self-host this" is gone.
+        assert!(out.contains("Self-host</a>"));
+        assert!(!out.contains("Self-host this"));
         // The sheen markup is spliced in alongside the notice.
         assert!(out.contains("me-demo-sheen"));
     }
