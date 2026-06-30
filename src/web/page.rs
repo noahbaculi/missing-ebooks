@@ -248,6 +248,27 @@ pub(super) fn mark_warn_template() -> Markup {
     }
 }
 
+/// The page footer, present in every deployment. Carries the brand mark, the
+/// product name, the crate version, and a link to the source. Because it ships
+/// in the core shell, it gives a demo visitor a second path home alongside the
+/// banner CTA, and a self-hoster a way back to the source. The version is the
+/// compile-time `CARGO_PKG_VERSION`, so the shell stays free of domain types
+/// and runtime state.
+pub(super) fn footer() -> Markup {
+    html! {
+        footer.site-footer {
+            span.footer-brand {
+                (PreEscaped(include_str!("../../assets/svg/brand.svg")))
+                span.footer-name { "Missing Ebooks" }
+                span.footer-version { "v" (env!("CARGO_PKG_VERSION")) }
+            }
+            nav.footer-links aria-label="About" {
+                a href="https://github.com/noahbaculi/missing-ebooks" { "GitHub" }
+            }
+        }
+    }
+}
+
 /// The HTML document shell: head, noscript notice, connection banner, SSE
 /// listener, navbar, confirm dialog, toast machinery, and the script tags.
 /// Wraps a prebuilt `body` markup (typically the gap summary plus the
@@ -311,6 +332,7 @@ pub(crate) fn page(mode: ViewMode, body: &Markup) -> Markup {
                 (confirm_dialog())
                 (toast())
                 (mark_warn_template())
+                (footer())
                 script src="/static/htmx.min.js" {}
                 script src="/static/htmx-sse.js" {}
                 script src="/static/app.js" {}
@@ -651,5 +673,17 @@ mod tests {
         assert!(html.contains(r#"id="mark-warn-tpl""#));
         // The glyph itself rides in: the SVG asset's distinctive viewBox.
         assert!(html.contains("viewBox=\"0 0 24 24\""));
+    }
+
+    #[test]
+    fn page_renders_a_footer_with_version_and_links() {
+        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        // The footer ships in the core shell, so every deployment gets it.
+        assert!(html.contains(r#"<footer class="site-footer">"#));
+        // It names the product and stamps the crate version.
+        assert!(html.contains("Missing Ebooks"));
+        assert!(html.contains(concat!("v", env!("CARGO_PKG_VERSION"))));
+        // A path home to the source.
+        assert!(html.contains(r#"href="https://github.com/noahbaculi/missing-ebooks""#));
     }
 }
