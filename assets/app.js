@@ -428,9 +428,9 @@
 
   // intro card: dismiss is per-device and reversible. Dismissing sets the flag
   // and hides the card via the same data-intro attribute the pre-paint bootstrap
-  // sets, so a reload keeps it hidden. The navbar "?" button clears the flag and
-  // shows the card again, moving focus into it so keyboard and screen-reader users
-  // land on the restored content.
+  // sets, so a reload keeps it hidden. The navbar "?" button toggles the card:
+  // it shows it again (moving focus into it so keyboard and screen-reader users
+  // land on the restored content) and hides it when it is already showing.
   var INTRO_KEY = "introDismissed";
 
   /**
@@ -460,10 +460,16 @@
     var help = document.getElementById("intro-help");
     if (help) {
       help.addEventListener("click", function () {
-        setIntroDismissed(false);
-        // Move focus into the restored card so its return is announced.
-        var dismissBtn = document.getElementById("intro-dismiss");
-        if (dismissBtn) dismissBtn.focus();
+        // Toggle: hide the card if it is showing, show it if it is hidden.
+        var dismissed =
+          document.documentElement.dataset.intro === "dismissed";
+        setIntroDismissed(!dismissed);
+        if (dismissed) {
+          // We just brought it back; move focus into the restored card.
+          var dismissBtn = document.getElementById("intro-dismiss");
+          if (dismissBtn) dismissBtn.focus();
+        }
+        // If we just hid it, focus stays on the "?" button that hid it.
       });
     }
   });

@@ -44,10 +44,10 @@ pub(super) fn view_toggle(mode: ViewMode) -> Markup {
 }
 
 /// The navbar help control: a "?" icon button beside the settings cog. Clicking
-/// it clears the dismissal flag and re-shows the intro card, so dismissing the
-/// card is not a one-way door. Behavior lives in `app.js`, bound by the id. The
-/// button takes its own job rather than the `?` key, which already opens the
-/// settings popover.
+/// it toggles the intro card: it shows the card when hidden and hides it when
+/// showing, so dismissing the card is not a one-way door. Behavior lives in
+/// `app.js`, bound by the id. The button takes its own job rather than the `?`
+/// key, which already opens the settings popover.
 pub(super) fn help_button() -> Markup {
     html! {
         button.btn.btn-ghost.btn-square.intro-help id="intro-help" type="button"
@@ -263,19 +263,19 @@ pub(super) fn mark_warn_template() -> Markup {
 
 /// The dismissible intro card, above the coverage strip in every deployment. It
 /// orients a cold visitor who landed on the tool without reading the README: it
-/// names the concept (each row is an audiobook with no ebook) and the two actions
-/// (mark it handled, or follow a search link), and labels the controls so the
-/// tree reads. Dismissal is a per-device `localStorage` flag; the pre-paint
-/// bootstrap hides this card before first paint when the flag is set, so a repeat
-/// visitor never sees it flash. The help button re-shows it.
+/// names the concept (each row is an audiobook folder with no ebook) and the
+/// actions (search links, or the No ebook / Elsewhere markers), naming the row
+/// controls so the tree reads. Dismissal is a per-device `localStorage` flag; the
+/// pre-paint bootstrap hides this card before first paint when the flag is set, so
+/// a repeat visitor never sees it flash. The help button toggles it back.
 pub(super) fn intro_card() -> Markup {
     html! {
         section.intro-card id="intro-card" aria-labelledby="intro-title" {
             button.intro-dismiss id="intro-dismiss" type="button" aria-label="Dismiss" { "\u{00D7}" }
             h2.intro-title id="intro-title" { "Audiobooks missing an ebook" }
             p.intro-body {
-                "Each row below is an audiobook with no ebook beside it. "
-                "Mark one as handled once you have the book, or follow a search link to go find it."
+                "Each row below is an audiobook folder with no ebook beside it. "
+                "Use the search links to look for the ebook, or mark the folder No ebook if none exists or Elsewhere if it lives in another folder."
             }
             div.intro-actions {
                 span.intro-chip { "Mark handled" }
