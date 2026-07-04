@@ -9,6 +9,7 @@
   --color-base-300: #e5e6e9;
   --color-base-content: #1f2733;
   --color-muted: #6b7480;
+  --color-surface-raised: #ffffff;
   --color-primary: #605dff;
   --color-primary-content: #ffffff;
   /* The gap / needs-attention role, amber. The base tints the soft pills and is
@@ -39,6 +40,7 @@
   --color-base-300: #14181d;
   --color-base-content: #c7ccd4;
   --color-muted: #a8b1be;
+  --color-surface-raised: #2b3139;
   --color-primary: #7c79ff;
   --color-primary-content: #14181d;
   --color-warning: #f5a524;
@@ -583,7 +585,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   margin: auto;
   min-width: 15rem;
   padding: 0.4rem;
-  background: var(--color-base-100);
+  background: var(--color-surface-raised);
   /* a popover's UA color is CanvasText (black), not the inherited theme color.
      restore it so panel text reads in dark, as .confirm-dialog does. */
   color: var(--color-base-content);
@@ -591,8 +593,15 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   border-radius: var(--radius-field);
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
 }
+/* Modal separation runs on two cues that survive both themes: (1) the panel sits
+   on --color-surface-raised, a step lighter than the page in dark and flush white
+   in light, so elevation reads by tone; (2) a light 45% scrim dims the page. The
+   scrim stays deliberately soft so live previews behind the panel keep working:
+   the accent picker retints the page in real time and the user needs to see that
+   update while the panel is still open. Elevation via surface tone, not scrim
+   opacity, is what carries the separation in dark. See docs/adr/0031. */
 .settings-panel::backdrop {
-  background: rgb(0 0 0 / 35%);
+  background: rgb(0 0 0 / 45%);
 }
 .settings-head {
   padding: 0.3rem 0.5rem 0.4rem;
@@ -785,14 +794,14 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 .confirm-dialog {
   width: min(22rem, calc(100vw - 2rem));
   padding: 1.1rem 1.15rem 1rem;
-  background: var(--color-base-100);
+  background: var(--color-surface-raised);
   color: var(--color-base-content);
   border: var(--border) solid var(--color-border);
   border-radius: var(--radius-box);
   box-shadow: 0 16px 48px rgb(0 0 0 / 28%);
 }
 .confirm-dialog::backdrop {
-  background: rgb(0 0 0 / 40%);
+  background: rgb(0 0 0 / 45%);
 }
 .confirm-title {
   margin: 0 0 0.5rem;
@@ -967,7 +976,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     flex-direction: column;
     gap: 0.1rem;
     padding: 0.5rem 0.75rem calc(0.85rem + env(safe-area-inset-bottom));
-    background: var(--color-base-100);
+    background: var(--color-surface-raised);
     border: none;
     border-radius: var(--radius-box) var(--radius-box) 0 0;
     box-shadow: 0 -8px 24px rgb(0 0 0 / 18%);
@@ -995,7 +1004,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 
   /* dim the page behind the open sheet */
   .actions-group::backdrop {
-    background: rgb(0 0 0 / 40%);
+    background: rgb(0 0 0 / 45%);
   }
 
   /* reveal the sheet chrome the desktop cluster hides */
@@ -1158,7 +1167,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     }
   }
   .settings-panel::backdrop {
-    background: rgb(0 0 0 / 40%);
+    background: rgb(0 0 0 / 45%);
   }
 }
 
