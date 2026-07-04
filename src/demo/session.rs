@@ -1,5 +1,5 @@
 //! In-memory session table for the demo: which cookie maps to which set of marks,
-//! and when each session was last seen. Bounded by a global cap; idle sessions
+//! and when each session was last seen. Bounded by a global cap. Idle sessions
 //! are reaped on a timer. Nothing here touches disk.
 
 use std::collections::{HashMap, HashSet};
@@ -62,7 +62,7 @@ impl SessionStore {
     }
 
     /// Bump an existing session's last-seen to `now`. Returns whether the session
-    /// existed; a `false` result means the cookie is unknown or was reaped.
+    /// existed. A `false` result means the cookie is unknown or was reaped.
     pub fn touch(&mut self, sid: &SessionId, now: Instant) -> bool {
         match self.sessions.get_mut(sid) {
             Some(session) => {
@@ -133,7 +133,7 @@ impl SessionStore {
             .unwrap_or_else(|| EMPTY.get_or_init(HashSet::new))
     }
 
-    /// Drop every session idle for at least `idle` as of `now`; returns how many
+    /// Drop every session idle for at least `idle` as of `now`. Returns how many
     /// were dropped.
     pub fn reap_idle(&mut self, now: Instant, idle: Duration) -> usize {
         let before = self.sessions.len();

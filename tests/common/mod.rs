@@ -2,7 +2,7 @@
 //! `tests/common/` for test discovery, so each test crate declares
 //! `mod common;` and uses the items here directly.
 //!
-//! Each test compiles `mod common` independently; a helper used by only some
+//! Each test compiles `mod common` independently. A helper used by only some
 //! tests still gets imported by every `mod common`, so unused-warning gates
 //! apply per test crate. `#[allow(dead_code)]` here keeps the lint clean
 //! across every test target that pulls the module in.

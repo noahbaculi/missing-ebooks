@@ -30,7 +30,7 @@ use crate::marker::Marker;
 /// a `Config`. The scanner stays config-agnostic, so its tests stay light.
 #[derive(Clone, Copy)]
 pub struct ScanInputs<'a> {
-    /// Audio extensions; the leading dot is optional and case is ignored.
+    /// Audio extensions. The leading dot is optional and case is ignored.
     pub audio_exts: &'a [String],
     /// Ebook extensions that count as coverage.
     pub ebook_exts: &'a [String],
@@ -828,7 +828,7 @@ mod tests {
         touch(&dir.path().join("Cycle (Abridged)/Book/01.m4b"));
         touch(&dir.path().join("Cycle (Unabridged)/01.m4b"));
         let got = flagged_set(dir.path(), &default_settings(&["**/*(abridged)*"]));
-        // The abridged subtree is pruned; (Unabridged) must survive.
+        // The abridged subtree is pruned. (Unabridged) must survive.
         assert_eq!(got, BTreeSet::from(["Cycle (Unabridged)".to_string()]));
     }
 
@@ -1107,7 +1107,7 @@ mod tests {
         touch(&dir.path().join("Covered/Book.epub"));
         let (_folders, stats) = scan_warm(dir.path(), &default_settings(&[]), &DirIndex::new());
         assert_eq!(stats.dirs_visited, 3); // root, Gap, Covered
-        assert_eq!(stats.entries_seen, 6); // root sees 2 subdirs; Gap and Covered 2 files each
+        assert_eq!(stats.entries_seen, 6); // root sees 2 subdirs, Gap and Covered 2 files each
     }
 
     #[test]
@@ -1117,7 +1117,7 @@ mod tests {
     }
 
     /// Run the full walk twice against one index. The first call lists everything
-    /// and fills the index; the second reuses it with no filesystem change.
+    /// and fills the index. The second reuses it with no filesystem change.
     #[test]
     fn warm_scan_reuses_unchanged_dirs_and_matches_the_cold_walk() {
         let dir = tempfile::tempdir().unwrap();
@@ -1287,7 +1287,7 @@ mod tests {
         let (_folders, stats) = scan_warm(dir.path(), &settings, &DirIndex::new());
         // @eaDir is pruned: root and Book are read, the excluded dir is not.
         assert_eq!(stats.dirs_visited, 2); // root, Book
-        assert_eq!(stats.entries_seen, 3); // root sees @eaDir + Book; Book sees 01.mp3
+        assert_eq!(stats.entries_seen, 3); // root sees @eaDir + Book, Book sees 01.mp3
     }
 
     #[test]

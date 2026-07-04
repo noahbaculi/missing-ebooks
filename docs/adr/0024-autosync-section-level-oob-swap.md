@@ -18,7 +18,7 @@ A section fade on swap is desirable but cannot live inside `hx-swap-oob`. The ro
 
 ## Consequences
 
-A change deep inside a section (one new folder in a large author) re-renders the whole section and replaces the DOM node. On the reference scenarios this is microseconds and bytes; on a future flagship library with thousands of folders per section it may become measurable. Per-row OOB swaps are the deferred next step if this hurts in practice: they require stable per-folder DOM ids, add/remove plumbing for insertions and deletions, and a richer event protocol. None of that earns its complexity at v1.
+A change deep inside a section (one new folder in a large author) re-renders the whole section and replaces the DOM node. On the reference scenarios this is microseconds and bytes. On a future library with thousands of folders per section it may become measurable. Per-row OOB swaps are the deferred next step if this hurts in practice: they require stable per-folder DOM ids, add/remove plumbing for insertions and deletions, and a richer event protocol. None of that earns its complexity at v1.
 
 The byte-equal invariant tested by `tests/cache_render_byte_equal.rs` extends to cover SSE payloads: the section a tab receives via SSE equals the section it would get from clicking Rescan.
 
@@ -26,6 +26,6 @@ The per-broadcast dedup is computed from the packaged section (`web::render::Roo
 
 ## Alternatives considered
 
-- **Per-row OOB swap**: minimal DOM churn but a real refactor; revisit if real workloads show section-level swaps cause noticeable jank.
-- **Push a "rescanned" event and let the client GET /**: simplest server but defeats the point because the client does the work and the page flickers.
-- **Push every section every tick**: see ADR-0023.
+- Per-row OOB swap: minimal DOM churn but a real refactor. Revisit if real workloads show section-level swaps cause noticeable jank.
+- Push a "rescanned" event and let the client GET /: simplest server but defeats the point because the client does the work and the page flickers.
+- Push every section every tick: see ADR-0023.

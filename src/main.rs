@@ -88,7 +88,7 @@ async fn main() -> ExitCode {
     // count: the directory walk is bound by network round-trip latency, so the
     // threads mostly wait on the wire and stay useful well above the CPU count
     // (and survive a container CPU limit). build_global is called once per
-    // process; a failure leaves rayon's default pool in place.
+    // process. A failure leaves rayon's default pool in place.
     if let Err(err) = rayon::ThreadPoolBuilder::new()
         .num_threads(config.scan_concurrency.max(1))
         .build_global()
@@ -110,14 +110,14 @@ async fn main() -> ExitCode {
 
     // Warm the default (gaps-only) view in the background so the first viewer
     // after a restart does not pay the cold scan, which is slow over a network
-    // mount. The server starts serving immediately; a request that arrives
+    // mount. The server starts serving immediately. A request that arrives
     // before the warm finishes single-flights on the same cache lock, so this
     // never double-scans. The show-all slot stays lazy until first asked.
     tokio::spawn({
         let state = Arc::clone(&state);
         async move {
-            // Warm the gaps-mode slot. The packaging is cheap; the cache
-            // slot side effect is what we want.
+            // Warm the gaps-mode slot. The packaging is cheap. The cache
+            // slot side effect is the point.
             state.warm().await;
             tracing::debug!("startup cache warm complete");
         }

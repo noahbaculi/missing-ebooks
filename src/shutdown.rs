@@ -1,6 +1,6 @@
 //! Process-lifecycle signal handling. Resolves on the first relevant
 //! termination signal so `axum::serve` can drain in-flight requests before
-//! exit. Listens for SIGINT and SIGTERM on Unix; Ctrl-C on Windows.
+//! exit. Listens for SIGINT and SIGTERM on Unix, Ctrl-C on Windows.
 
 /// Resolves when the process receives SIGINT or SIGTERM (Unix) or Ctrl-C
 /// (Windows). Logs which signal fired before returning. Intended to be
@@ -46,7 +46,7 @@ mod tests {
         let task = tokio::spawn(signal());
         // Yield once so the signal handler is installed before we raise.
         tokio::task::yield_now().await;
-        // SAFETY: libc::raise sends a signal to the current process; safe to
+        // SAFETY: libc::raise sends a signal to the current process, safe to
         // call from any thread. We have just installed a handler that will
         // observe SIGTERM and complete the spawned future.
         unsafe {

@@ -21,7 +21,7 @@ pub struct DemoConfig {
     pub scenario: String,
     /// Hard ceiling on concurrent in-memory sessions.
     pub max_sessions: usize,
-    /// How long a session may sit idle before the reaper drops it; also the
+    /// How long a session may sit idle before the reaper drops it. Also the
     /// cookie `Max-Age`.
     pub idle: Duration,
     /// Name of the session cookie.

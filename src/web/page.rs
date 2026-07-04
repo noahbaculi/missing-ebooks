@@ -9,7 +9,7 @@ use crate::tree::ViewMode;
 
 /// The favicon as an inline SVG data URI, so the tab gets an identity and the
 /// browser stops requesting `/favicon.ico`. The "book wearing headphones" glyph,
-/// no backdrop. It draws in `currentColor`; an embedded `<style>` binds that to
+/// no backdrop. It draws in `currentColor`. An embedded `<style>` binds that to
 /// indigo `%23605dff` on light tab strips and a lighter `%23c7c5ff` on dark ones
 /// via `prefers-color-scheme`. WARN: Chrome, Firefox, and Edge honor the media
 /// query inside a favicon, Safari ignores it and shows the light-mode indigo
@@ -273,7 +273,7 @@ pub(super) fn mark_warn_template() -> Markup {
 /// orients a cold visitor who landed on the tool without reading the README: it
 /// names the concept (each row is an audiobook folder with no ebook) and the
 /// actions (search links, or the No ebook / Elsewhere markers), naming the row
-/// controls so the tree reads. Dismissal is a per-device `localStorage` flag; the
+/// controls so the tree reads. Dismissal is a per-device `localStorage` flag. The
 /// pre-paint bootstrap hides this card before first paint when the flag is set, so
 /// a repeat visitor never sees it flash. The help button toggles it back.
 /// The title carries that same help-circle glyph to link the card to the button.
@@ -333,7 +333,7 @@ pub(crate) fn page(mode: ViewMode, body: &Markup) -> Markup {
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Missing Ebooks" }
                 link rel="icon" href=(FAVICON_HREF);
-                // Pre-paint bootstrap; see assets/prepaint.js. The
+                // Pre-paint bootstrap. See assets/prepaint.js. The
                 // `deriveWarningInk` helper inside is the parity copy of the
                 // one in assets/app.js, checked by tests/accent/derive.test.mjs.
                 script { (PreEscaped(include_str!("../../assets/prepaint.js"))) }
@@ -463,7 +463,7 @@ mod tests {
     #[test]
     fn page_carries_a_noscript_notice() {
         let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
-        // The UI requires JavaScript; a <noscript> strip is the one thing a
+        // The UI requires JavaScript. A <noscript> strip is the one thing a
         // scripting-disabled visitor sees.
         assert!(html.contains("<noscript>"));
         assert!(html.contains(r#"<div class="noscript-notice">"#));
@@ -550,14 +550,14 @@ mod tests {
 
     #[test]
     fn the_view_control_marks_the_active_segment() {
-        // Gaps-only is the active view; "All folders" is the link to the other view.
+        // Gaps-only is the active view. "All folders" is the link to the other view.
         let gaps = page(ViewMode::GapsOnly, &stub_body()).into_string();
         assert!(gaps.contains(r#"class="segmented""#));
         assert!(gaps.contains("Gaps only"));
         assert!(gaps.contains("All folders"));
         assert!(gaps.contains(r#"href="/?view=all""#));
 
-        // Show-all is active; "Gaps only" links back to /.
+        // Show-all is active. "Gaps only" links back to /.
         let all = page(ViewMode::All, &stub_body()).into_string();
         assert!(all.contains(r#"href="/""#));
         assert!(all.contains(r#"aria-current="page""#));
@@ -575,7 +575,7 @@ mod tests {
     #[test]
     fn decorative_icons_are_hidden_from_assistive_tech() {
         let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
-        // The folder glyph renders on every node row; it must be hidden from the
+        // The folder glyph renders on every node row. It must be hidden from the
         // a11y tree (it is paired with the folder name) and not be a tab stop.
         // The shell carries other icons that satisfy the same shape (cog, search,
         // check, ebook-elsewhere, no-entry), so calling `page` with a stub body
@@ -640,7 +640,7 @@ mod tests {
     #[test]
     fn scan_bar_carries_the_indicator_id() {
         // The bar is wired as the rescan indicator. The page shell embeds it via
-        // `render_view`; calling `scan_bar` directly pins the id without that detour.
+        // `render_view`. Calling `scan_bar` directly pins the id without that detour.
         let html = scan_bar().into_string();
         assert!(html.contains(r#"id="scan-bar""#));
     }
@@ -652,7 +652,7 @@ mod tests {
         // `render_view` drops next to the roots block.
         let box_html = search_box().into_string();
         // A filter input with an accessible name. The box renders visible from first
-        // paint so it never reflows in; the input renders `disabled` and app.js clears
+        // paint so it never reflows in. The input renders `disabled` and app.js clears
         // that once the tree and handler are wired, so the box is greyed but never a
         // dead box the user can type into before it works.
         assert!(box_html.contains(r#"id="search-input""#));
@@ -757,7 +757,7 @@ mod tests {
         assert!(html.contains(r#"aria-label="How this works""#));
         assert!(html.contains(r#"class="btn btn-ghost btn-square intro-help""#));
         // The toggle advertises its target and current state to assistive tech.
-        // The initial value matches the default render (card shown); app.js
+        // The initial value matches the default render (card shown). app.js
         // reconciles it against the per-device dismissal flag on
         // DOMContentLoaded and keeps it in sync on every toggle.
         assert!(html.contains(r#"aria-controls="intro-card""#));

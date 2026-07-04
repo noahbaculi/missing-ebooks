@@ -1,7 +1,7 @@
 //! Configuration: built-in defaults, an optional `config.toml`, and env
 //! overrides. Resolution is env over file over default (see
 //! docs/adr/0004-layered-config-env-over-file.md). A partial TOML file layers
-//! over the defaults via `#[serde(default)]`; env vars layer on last.
+//! over the defaults via `#[serde(default)]`. Env vars layer on last.
 
 use std::path::{Path, PathBuf};
 
@@ -16,7 +16,7 @@ use crate::scanner::ScanInputs;
 pub struct SearchLink {
     /// Text shown on the link button.
     pub label: String,
-    /// URL template; `{query}` is replaced with the encoded folder name.
+    /// URL template. `{query}` is replaced with the encoded folder name.
     pub url: String,
 }
 
@@ -41,8 +41,8 @@ pub struct Config {
     /// Background sync interval. When at least one browser tab is subscribed to
     /// `/events`, the server runs a warm scan every N seconds and pushes any
     /// changed root sections over SSE. The timer measures from scan completion
-    /// to next start, so a slow scan does not stack. `0` disables the loop;
-    /// the SSE endpoint still serves the initial snapshot but emits no further
+    /// to next start, so a slow scan does not stack. `0` disables the loop.
+    /// The SSE endpoint still serves the initial snapshot but emits no further
     /// section events.
     pub autosync_interval_seconds: u64,
     /// Audio extensions counted as audio, compared case-insensitively.
@@ -68,7 +68,7 @@ impl Default for Config {
             ttl_seconds: 60,
             scan_concurrency: 16,
             autosync_interval_seconds: 10,
-            // Audiobookshelf's full supported sets; see ADR-0006.
+            // Audiobookshelf's full supported sets (see ADR-0006).
             audio_exts: strings(&[
                 ".m4b", ".mp3", ".m4a", ".flac", ".opus", ".ogg", ".oga", ".mp4", ".aac", ".wma",
                 ".aiff", ".aif", ".wav", ".webm", ".webma", ".mka", ".awb", ".caf", ".mpg",
@@ -178,7 +178,7 @@ impl Config {
 }
 
 /// Parse an environment variable value with a typed `FromStr`. Returns
-/// `Ok(None)` when the variable is unset; returns `ConfigError::InvalidEnv`
+/// `Ok(None)` when the variable is unset, and `ConfigError::InvalidEnv`
 /// when it is set but does not parse. Empty string counts as set and fails
 /// to parse, which is the intended behavior: an empty env value is operator
 /// error, not a request to fall back.
@@ -238,7 +238,7 @@ fn apply_env_overrides(
     Ok(())
 }
 
-/// The commented template. It must stay parseable into `Config`;
+/// The commented template. It must stay parseable into `Config`.
 /// `print_config_template_round_trips` guards against drift.
 pub const CONFIG_TEMPLATE: &str = r##"# One or more library roots. Each is scanned and rendered as its own tree.
 # Required: the server exits if this is unset in every layer. Also settable as
@@ -248,11 +248,11 @@ library_roots = []
 
 # Logging is set with the MISSING_EBOOKS_LOG environment variable, not in this
 # file: error, warn, info (default), debug, or trace. debug adds per-operation
-# timings (scans, cache, marker writes, requests); trace adds a line per
+# timings (scans, cache, marker writes, requests). trace adds a line per
 # directory. RUST_LOG, if set, overrides it with full tracing filter syntax.
 
 # Address the HTTP server binds. Loopback by default (see ADR-0003). Set
-# "0.0.0.0" to listen on all interfaces; the server logs a warning at startup
+# "0.0.0.0" to listen on all interfaces. The server logs a warning at startup
 # when bound to a non-loopback address. Also settable as MISSING_EBOOKS_BIND.
 bind = "127.0.0.1"
 
@@ -278,7 +278,7 @@ scan_concurrency = 16
 # to /events, the server runs a warm scan every N seconds and pushes any
 # changed root sections back to the tab. The timer measures from completion to
 # next start, so a slow scan does not stack. Set to 0 to disable the loop
-# entirely; the SSE endpoint still serves the initial snapshot but emits no
+# entirely. The SSE endpoint still serves the initial snapshot but emits no
 # further section events. Also settable as
 # MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS.
 autosync_interval_seconds = 10
@@ -289,7 +289,7 @@ audio_exts = [".m4b", ".mp3", ".m4a", ".flac", ".opus", ".ogg", ".oga", ".mp4", 
 ebook_exts = [".epub", ".pdf", ".mobi", ".azw3", ".cbr", ".cbz"]
 
 # Marker files are not configurable. The two fixed names .no_ebook and
-# .ebook_elsewhere mark a folder as covered; both are used for detection and the
+# .ebook_elsewhere mark a folder as covered. Both are used for detection and the
 # write buttons, so they can never drift apart.
 
 # Exact directory names to exclude (case-insensitive), applied anywhere in the
@@ -343,7 +343,7 @@ mod tests {
         assert_eq!(cfg.bind, "127.0.0.1");
         assert_eq!(cfg.port, 13379);
         assert_eq!(cfg.ttl_seconds, 60);
-        assert_eq!(cfg.audio_exts.len(), 20); // ABS's full audio set; see ADR-0006
+        assert_eq!(cfg.audio_exts.len(), 20); // ABS's full audio set (ADR-0006)
         assert!(cfg.audio_exts.contains(&".mp3".to_string()));
         assert!(cfg.audio_exts.contains(&".opus".to_string()));
         assert_eq!(

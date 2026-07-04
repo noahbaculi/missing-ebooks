@@ -41,7 +41,7 @@ Then open https://demo-missing-ebooks.noahbaculi.com. The first request mints a 
 
 The demo ships no in-app rate limiter, so all request throttling lives at the Cloudflare edge. Set this up before going live, in the Cloudflare dashboard for `noahbaculi.com`:
 
-- **Add a rate-limiting rule scoped to the demo hostname.** This one is required. It is the only thing bounding how fast a single client can mint sessions toward the global cap.
+- Add a rate-limiting rule scoped to the demo hostname. It is the only thing bounding how fast a single client can mint sessions toward the global cap.
 
 ## Edge protections (recommended)
 

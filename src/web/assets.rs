@@ -20,7 +20,7 @@ struct Asset {
 
 impl Asset {
     /// Serve the asset with revalidation. A matching `If-None-Match` gets a `304`
-    /// with `ETag` and `Cache-Control` and no body; any other request gets a `200`
+    /// with `ETag` and `Cache-Control` and no body. Any other request gets a `200`
     /// with the body and all three headers. The ETag is computed once.
     fn respond(&'static self, headers: &HeaderMap) -> Response {
         let etag = self.etag.get_or_init(|| asset_etag(self.body));
@@ -135,7 +135,7 @@ mod tests {
     //! output instead.
     //!
     //! The `if_none_match_hit` block at the top tests handler logic, not asset
-    //! bytes; those tests are out of triage scope.
+    //! bytes. Those tests are out of triage scope.
 
     use super::{APP_CSS_BYTES, APP_JS_BYTES, if_none_match_hit};
 
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn app_script_intercepts_marker_writes() {
         // `htmx:confirm` is the htmx event app.js binds against to gate
-        // marker writes; htmx fires it from the rendered `hx-confirm`
+        // marker writes. htmx fires it from the rendered `hx-confirm`
         // attribute on the marker buttons.
         assert!(APP_JS_BYTES.contains("htmx:confirm"));
     }
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn stylesheet_does_not_carry_the_removed_gap_session_class() {
-        // The old session selectors are gone; fence them off.
+        // The old session selectors are gone. Fence them off.
         assert!(!APP_CSS_BYTES.contains(".gap-session"));
     }
 
@@ -287,20 +287,20 @@ mod tests {
     #[test]
     fn app_script_uses_the_search_empty_id() {
         // `search-empty` is the DOM id emitted by `search_empty()` in
-        // page.rs; the filter reveals it when nothing matches.
+        // page.rs. The filter reveals it when nothing matches.
         assert!(APP_JS_BYTES.contains("search-empty"));
     }
 
     #[test]
     fn app_script_uses_the_search_clear_id() {
-        // `search-clear` is the DOM id emitted by `search_box()` in page.rs;
-        // the script toggles its visibility from the input value.
+        // `search-clear` is the DOM id emitted by `search_box()` in page.rs.
+        // The script toggles its visibility from the input value.
         assert!(APP_JS_BYTES.contains("search-clear"));
     }
 
     #[test]
     fn app_script_reads_the_coverage_ids_and_data_total_audiobooks() {
-        // The coverage DOM ids are emitted by `coverage_bar` in render.rs;
+        // The coverage DOM ids are emitted by `coverage_bar` in render.rs.
         // `totalAudiobooks` is the camel-case form of the
         // `data-total-audiobooks` attribute the section markup carries
         // (ADR-0025).
@@ -315,8 +315,8 @@ mod tests {
 
     #[test]
     fn app_script_does_not_carry_the_removed_cheatsheet() {
-        // The merged settings popover replaced the old cheatsheet helper;
-        // fence the helper off so it does not creep back in.
+        // The merged settings popover replaced the old cheatsheet helper.
+        // Fence the helper off so it does not creep back in.
         assert!(!APP_JS_BYTES.contains("openCheatsheet"));
     }
 }

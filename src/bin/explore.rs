@@ -48,7 +48,7 @@ struct Cli {
 }
 
 /// Every scenario name and its description. Printed to stderr when a missing or
-/// unknown scenario name leaves nothing to serve; clap renders its own help.
+/// unknown scenario name leaves nothing to serve. Clap renders its own help.
 fn catalog_listing() -> String {
     let mut out = String::from("scenarios:\n");
     for scenario in scenarios::catalog() {

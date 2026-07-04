@@ -26,7 +26,7 @@ The demo binary disables autosync per session (`autosync_interval_seconds = 0`) 
 
 ## Alternatives considered
 
-- **Periodic polling**: simpler transport but always-on traffic and per-tab latency tied to the poll interval. SSE is one connection per tab with push semantics.
-- **WebSocket**: bidirectional, unneeded here (the server has nothing to ask the client).
-- **Push every section every tick**: simpler server but DOM churn and wire traffic on a quiet library. The per-root diff has zero traffic on a quiet library after the snapshot.
-- **One loop per view mode** or **per subscriber**: doubles or N-multiplies the scan cost. One process-wide loop renders both modes from one raw scan; rendering is microseconds.
+- Periodic polling: simpler transport but always-on traffic and per-tab latency tied to the poll interval. SSE is one connection per tab with push semantics.
+- WebSocket: bidirectional, unneeded here (the server has nothing to ask the client).
+- Push every section every tick: simpler server but DOM churn and wire traffic on a quiet library. The per-root diff has zero traffic on a quiet library after the snapshot.
+- One loop per view mode or per subscriber: doubles or N-multiplies the scan cost. One process-wide loop renders both modes from one raw scan; rendering is microseconds.

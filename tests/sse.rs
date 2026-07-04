@@ -1,6 +1,6 @@
 //! Production-router SSE invariants: the snapshot carries every section the
-//! index would render; a disk change pushes one section event; a quiet
-//! library pushes none; a show-all-only change skips the gaps subscriber.
+//! index would render. A disk change pushes one section event. A quiet
+//! library pushes none. A show-all-only change skips the gaps subscriber.
 //! Each test bootstraps through `setup` so the four invariants share one
 //! binary and one helper.
 
@@ -60,7 +60,7 @@ async fn snapshot() {
 
     // The SSE snapshot must carry every section id the index page does.
     // Last-Event-ID is set so the handler treats this as a reconnect and
-    // sends the snapshot; first-connect skips it (ADR-0030).
+    // sends the snapshot. First-connect skips it (ADR-0030).
     let sse_response = app
         .oneshot(
             Request::builder()
@@ -117,7 +117,7 @@ async fn change_pushes() {
     let first_root = roots[0].clone();
     let (app, _state) = setup(roots, 1);
 
-    // Subscribe; ack arrives first, then the snapshot. Last-Event-ID is sent
+    // Subscribe. Ack arrives first, then the snapshot. Last-Event-ID is sent
     // so the handler treats this as a reconnect and emits the snapshot
     // (ADR-0030).
     let response = app
@@ -223,7 +223,7 @@ async fn no_change_silent() {
 #[tokio::test]
 async fn two_modes_isolated() {
     let dir = tempfile::tempdir().unwrap();
-    // Seed: one covered audiobook. Gaps view is Clean; show-all renders the
+    // Seed: one covered audiobook. Gaps view is Clean. Show-all renders the
     // covered tree.
     touch(&dir.path().join("Author/Book1/01.mp3"));
     touch(&dir.path().join("Author/Book1/Book1.epub"));
@@ -289,7 +289,7 @@ async fn two_modes_isolated() {
     let book_dir = dir.path().join("Author/Book1");
     touch(&book_dir.join("Book1.companion.epub"));
     // Push the folder mtime forward so the autosync walk re-lists Book1 and
-    // sees the new ebook regardless of the filesystem's mtime resolution; a
+    // sees the new ebook regardless of the filesystem's mtime resolution. A
     // same-tick touch would otherwise reuse the cached pre-companion listing
     // and the show-all view would not change.
     filetime::set_file_mtime(

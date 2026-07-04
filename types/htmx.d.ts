@@ -21,7 +21,7 @@ interface Window {
   htmx: Htmx;
 }
 
-// htmx:confirm fires before each request; detail.issueRequest resends it.
+// htmx:confirm fires before each request. detail.issueRequest resends it.
 interface HtmxConfirmDetail {
   elt: HTMLElement;
   issueRequest(skipConfirmation: boolean): void;
@@ -34,7 +34,7 @@ interface HtmxRequestDetail {
   successful?: boolean;
 }
 
-// htmx:afterSwap fires after a response is swapped in; detail.target is the
+// htmx:afterSwap fires after a response is swapped in. detail.target is the
 // element that received the swap. requestConfig carries the originating
 // request's path and POST parameters, used by animateUndoRestore to gate
 // the expand animation to /unmark responses in gaps view.

@@ -1,6 +1,6 @@
 //! Build a search-link query from a folder name. The name is cleaned into a
-//! readable query here; the caller percent-encodes it before filling a link
-//! template. Cleaning is pure and runs at render time (see
+//! readable query here, and the caller percent-encodes it before filling a
+//! link template. Cleaning is pure and runs at render time (see
 //! docs/adr/0010-search-query-cleaned-at-render-time.md).
 
 /// Clean a raw folder name into a search query. Drops bracketed segments,

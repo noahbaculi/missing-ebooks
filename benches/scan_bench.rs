@@ -5,13 +5,13 @@
 //! loads the real `Config`, compiles `ScanSettings`, and times `scanner::scan_warm`
 //! per root, in cold and warm
 //! cache conditions, then saves a JSON report. The walks only read directory
-//! entries and names; nothing here writes to the library. The single privileged
+//! entries and names. Nothing here writes to the library. The single privileged
 //! action is the optional `--drop-caches` page-cache flush on Linux.
 //!
 //! On a prod box: build and run with `--release` so the timings reflect the
 //! shipped binary, not a debug build. `--drop-caches` flushes the page cache for
-//! the cold runs and needs root on Linux, so run that invocation under `sudo`;
-//! omit the flag for warm-only numbers. With no Rust toolchain on the box, build
+//! the cold runs and needs root on Linux, so run that invocation under `sudo`.
+//! Omit the flag for warm-only numbers. With no Rust toolchain on the box, build
 //! `target/release/scan_bench` on a machine of matching OS and arch and
 //! copy the binary over. Point it at the real mounts with `--config config.toml`,
 //! repeated `--root PATH`, or `MISSING_EBOOKS_LIBRARY_ROOTS`.
@@ -174,7 +174,7 @@ fn parse_modes(value: &str) -> Result<Vec<Mode>, String> {
     Ok(modes)
 }
 
-/// Parse `--iterations`; at least one measured run is required.
+/// Parse `--iterations`. At least one measured run is required.
 fn parse_iterations(value: &str) -> Result<usize, String> {
     let n: usize = value
         .parse()
@@ -221,7 +221,7 @@ struct Cli {
     /// Load the real config.toml (extensions, exclusions, roots).
     #[arg(long)]
     config: Option<PathBuf>,
-    /// Benchmark this exact path; repeatable; replaces config roots.
+    /// Benchmark this exact path. Repeatable, replaces config roots.
     #[arg(long = "root")]
     roots: Vec<PathBuf>,
     /// Measured runs per phase.
@@ -341,7 +341,7 @@ struct LevelReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     dirs_reused: Option<usize>,
     /// Wall time of the per-mode render that runs after the walk, in milliseconds.
-    /// Zero in vintage reports (schema_version < 4); always present from v4 on.
+    /// Zero in vintage reports (schema_version < 4). Always present from v4 on.
     tree_build_ms: f64,
     cold: Option<PhaseReport>,
     warm: PhaseReport,
@@ -1164,7 +1164,7 @@ tmpfs /tmp tmpfs rw,nosuid 0 0";
         assert_eq!(reuse.stats.dirs_visited, 3); // root, Gap, Covered
         assert_eq!(reuse.stats.dirs_reused, 3);
         assert_eq!(reuse.stats.entries_seen, 0);
-        // One gap (Gap/); the audio tally is the gaps-render sum, so only Gap's
+        // One gap (Gap/). The audio tally is the gaps-render sum, so only Gap's
         // file counts even though Covered's audio sits in the cached facts.
         assert_eq!(reuse.gaps, 1);
         assert_eq!(reuse.audio_files, 1);

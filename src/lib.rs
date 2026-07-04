@@ -12,7 +12,7 @@ pub mod web;
 
 // The remaining modules have at least one in-workspace consumer (a binary,
 // bench, or integration test) that reaches into them directly. They stay
-// `pub` so the workspace targets keep compiling; the crate is `publish =
+// `pub` so the workspace targets keep compiling. The crate is `publish =
 // false`, so the rendered docs only serve in-workspace navigation.
 pub mod demo;
 pub mod scenarios;

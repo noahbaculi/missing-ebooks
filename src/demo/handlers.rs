@@ -1,9 +1,9 @@
 //! The demo's axum router and handlers. Handlers reuse the production `page`,
 //! `render_section`, and `package_view` from the library, plus the static-asset
-//! handlers. A visitor is pinned to an in-memory session by a cookie; their
+//! handlers. A visitor is pinned to an in-memory session by a cookie. Their
 //! marks are applied via a `MarkOverlay` over the shared raw view per request,
 //! then rendered for the requested mode. The full index page carries the demo
-//! banner; the `/mark` partial does not.
+//! banner. The `/mark` partial does not.
 
 use std::convert::Infallible;
 use std::path::PathBuf;

@@ -44,7 +44,7 @@ pub fn package_view(raw: &RawView, mode: ViewMode) -> FlaggedView {
 /// Build one `RootSection` from a raw `RootScan` for the requested mode.
 ///
 /// The single owner of the raw-to-packaged step. `package_view` calls it on
-/// the snapshot path; `autosync::render_oob_section` calls it on the push
+/// the snapshot path. `autosync::render_oob_section` calls it on the push
 /// path. Any future per-root field lands here once.
 pub fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
     let state = tree::build(scan, mode);
@@ -168,11 +168,11 @@ fn gap_summary(view: &FlaggedView) -> Markup {
     let clear_tail_visible = total_audiobooks > 0 && total_gaps == 0;
     html! {
         section.gap-summary id="gap-summary" {
-            // Both end-states render; `app.js` toggles `hidden` as the live
+            // Both end-states render. `app.js` toggles `hidden` as the live
             // total crosses zero so the strip converges on what a reload would
             // show, and so an undo back from the last mark can bring the head
             // back. The trailing coverage span is the audiobooks-present
-            // variant; a truly empty library keeps the line bare. The two
+            // variant. A truly empty library keeps the line bare. The two
             // numeric spans inside are the only thing `app.js` rewrites on
             // recompute, so the surrounding "· 100% covered (… of … audiobooks)"
             // wording lives in one place (this template).
@@ -1192,7 +1192,7 @@ mod tests {
         // The sheet header titles the sheet with the folder name.
         assert!(html.contains(r#"class="sheet-title">Book<"#));
         // The elsewhere marker keeps a verbose sheet label distinct from its
-        // compact pill; the no-ebook marker reads "No ebook" in both registers.
+        // compact pill. The no-ebook marker reads "No ebook" in both registers.
         assert!(html.contains("Ebook elsewhere"));
         // The compact labels render with their exact pill text.
         assert!(html.contains(">No ebook<"));
@@ -1271,7 +1271,7 @@ mod tests {
 
     #[test]
     fn index_renders_every_configured_link() {
-        // The defaults ship two links; both must render, not just the first.
+        // The defaults ship two links. Both must render, not just the first.
         let view = vec![section(
             "/lib",
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
@@ -1430,7 +1430,7 @@ mod tests {
         let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
         // The strip renders server-side, between the navbar and the roots.
         assert!(html.contains(r#"id="gap-summary""#));
-        // The hero gap total has its own hook; the library coverage readout
+        // The hero gap total has its own hook. The library coverage readout
         // and bar carry the new coverage-* ids.
         assert!(html.contains(r#"id="gap-total""#));
         assert!(html.contains(r#"id="coverage-pct""#));
@@ -1490,7 +1490,7 @@ mod tests {
 
     #[test]
     fn gap_summary_empty_library_keeps_coverage_fragment_hidden() {
-        // No audio at all; the strip is in its empty-library state.
+        // No audio at all. The strip is in its empty-library state.
         let view = vec![clean("/lib", 0)];
         let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
         // The all-clear line shows but the coverage trailing fragment stays
@@ -1514,7 +1514,7 @@ mod tests {
             errored("/no/such/root/xyz123", "no such file or directory"),
         ];
         let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
-        // Total reads 100 (errored root contributes zero); covered = 0; pct = 0.
+        // Total reads 100 (errored root contributes zero). Covered 0, pct 0.
         assert!(html.contains(r#"aria-valuemax="100""#));
         assert!(html.contains(r#"aria-valuenow="0""#));
         // The readout text reflects the same numbers.
@@ -1617,7 +1617,7 @@ mod tests {
     #[test]
     fn index_renders_the_menu_with_a_flagged_badge() {
         // `ul.menu`, `section.card.root`, and the `needs ebook` badge are all
-        // emitted by the renderer (render_section + render_node); the original
+        // emitted by the renderer (render_section + render_node). The original
         // test reached through the router to assert on them.
         let view = vec![section(
             "/lib",
@@ -1649,7 +1649,7 @@ mod tests {
     // Integration-test helpers for the packaging tests below. These build a
     // real `RawView` via `state::build_view`, then exercise `package_view` /
     // `package_section` against it. The synthetic-fixture helpers above are
-    // for markup tests; these are for packaging tests.
+    // for markup tests. These are for packaging tests.
 
     use crate::config::Config;
     use crate::scanner::{DirIndex, ScanSettings};

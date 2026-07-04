@@ -1,6 +1,6 @@
 // @ts-check
 // missing-ebooks client behavior. The pre-paint bootstrap (theme + depth opt-outs)
-// runs inline in <head>; this file owns the rest: the theme control, the two depth
+// runs inline in <head>. This file owns the rest: the theme control, the two depth
 // toggles, the settings panel sync, and the marker-write confirmation. Loaded at
 // the end of <body>, after htmx.
 (function () {
@@ -273,7 +273,7 @@
 
   /**
    * Paint the accent. The default writes no override, so the stylesheet's tuned
-   * tokens apply; a custom color sets the base and the per-theme derived ink
+   * tokens apply. A custom color sets the base and the per-theme derived ink
    * inline on <html>, which outranks the stylesheet. Reflects the active dot and
    * the color input, so a preset pick moves the swatch too.
    * @param {string} base
@@ -466,7 +466,7 @@
     if (dismiss) {
       dismiss.addEventListener("click", function () {
         setIntroDismissed(true);
-        // The card just left; hand focus to the control that brings it back.
+        // The card just left. Hand focus to the control that brings it back.
         var help = document.getElementById("intro-help");
         if (help) help.focus();
       });
@@ -479,7 +479,7 @@
           document.documentElement.dataset.intro === "dismissed";
         setIntroDismissed(!dismissed);
         if (dismissed) {
-          // We just brought it back; move focus into the restored card.
+          // We just brought it back. Move focus into the restored card.
           var dismissBtn = document.getElementById("intro-dismiss");
           if (dismissBtn) dismissBtn.focus();
         }
@@ -547,7 +547,7 @@
   // through htmx, and we still gate on the button's confirm data, so the undo
   // POST and every other request flow through untouched by the dialog.
   document.body.addEventListener("htmx:confirm", function (evt) {
-    // A programmatic resend already had the user's intent; don't re-prompt.
+    // A programmatic resend already had the user's intent. Don't re-prompt.
     if (suppressConfirm) {
       suppressConfirm = false;
       return;
@@ -573,7 +573,7 @@
   function collapseRow(li) {
     if (!li || li.classList.contains("leaving")) return;
     // Walk up from the marked leaf, collecting each row that is the sole `:scope > li`
-    // in its list. Push-then-check means the current row is always collected; the climb
+    // in its list. Push-then-check means the current row is always collected. The climb
     // stops at the first list that still has a surviving gap, so that row and its
     // ancestors stay. The result is the single-child spine above the leaf, up to and
     // including the highest emptied row, so an author or series row whose last gap is
@@ -656,7 +656,7 @@
   /**
    * Clear a row's expand-in once it finishes: drop the inline max-height/opacity
    * and the .entering class, or a leftover overflow:hidden with a fixed max-height
-   * would clip a later fold-open. transitionend fires the moment the slide ends; a
+   * would clip a later fold-open. transitionend fires the moment the slide ends. A
    * timeout backs it up for reduced-motion, where the transition never fires.
    * @param {HTMLElement} row
    */
@@ -917,8 +917,8 @@
   // if the template is missing rather than re-inlining the asset.
 
   /**
-   * A folder renders as a leaf <div.row> or a <summary.row> inside <details>; return
-   * whichever this <li> has, so the failure strip can sit right under the folder's own
+   * Return this <li>'s own row line, whether a leaf <div.row> or the <summary.row>
+   * inside <details>, so the failure strip can sit right under the folder's own
    * line rather than after its whole child subtree.
    * @param {Element} li
    * @returns {Element | null}
@@ -961,8 +961,8 @@
   function markTerminalFailure(elt) {
     var li = elt.closest("li");
     if (li) {
-      // The row was held in the "saving" state (never collapsed), so just release it;
-      // the defensive .leaving cleanup covers a manual retry that did collapse first.
+      // The row was held in the "saving" state (never collapsed), so just release it.
+      // The defensive .leaving cleanup covers a manual retry that did collapse first.
       li.classList.remove("leaving");
       li.style.maxHeight = "";
       setSaving(rowOf(li), false);
@@ -1202,7 +1202,7 @@
 
   /**
    * Pause the auto-dismiss and bank the time left on the clock. Hover and focus
-   * each pause; a second pause while already paused is a no-op.
+   * each pause. A second pause while already paused is a no-op.
    * @param {ToastNode} node
    */
   function pauseToast(node) {
@@ -1295,8 +1295,8 @@
       node._focused = true;
       pauseToast(node);
     });
-    // focusout also fires when focus moves between controls inside the toast;
-    // only treat it as leaving when focus has actually left the node.
+    // focusout also fires when focus moves between controls inside the toast.
+    // Only treat it as leaving when focus has actually left the node.
     node.addEventListener("focusout", function (evt) {
       if (node.contains(/** @type {Node | null} */ (evt.relatedTarget))) return;
       node._focused = false;
@@ -1382,7 +1382,7 @@
   var viewLinkBase = ""; // its pristine href, before any filter query is appended
 
   // Enable the navbar filter once JS is running. It renders disabled so the load
-  // window never offers a dead box; clearing `disabled` here, after the input handler
+  // window never offers a dead box. Clearing `disabled` here, after the input handler
   // is wired, hands over a live filter without ever reflowing the box in.
   function enableSearch() {
     if (searchInput) searchInput.disabled = false;
@@ -1436,7 +1436,7 @@
   }
 
   /**
-   * Run the filter across every root; return how many top-level items stay visible,
+   * Run the filter across every root. Return how many top-level items stay visible,
    * so the caller can decide whether to show the "no matches" line.
    * @param {string} query
    * @returns {number}
@@ -1493,7 +1493,7 @@
 
   // Carry the live filter on the view-toggle link so switching views (a full-page
   // navigation) lands with the filter still applied. The query rides the URL as `q`,
-  // the way the view itself does; an empty query drops the param.
+  // the way the view itself does. An empty query drops the param.
   function syncViewLink() {
     if (!viewLink) return;
     var query = searchInput ? searchInput.value.trim() : "";
@@ -1607,7 +1607,7 @@
    * Library coverage: total audiobooks across every root sums per-section
    * `data-total-audiobooks` attrs from the rendered tree, covered is the
    * remainder after subtracting the still-flagged rows. Errored roots carry
-   * `0` so they fold out of the sum naturally; a section that vanishes from
+   * `0` so they fold out of the sum naturally. A section that vanishes from
    * the DOM stops counting.
    * @param {number} totalGaps
    */
@@ -1624,7 +1624,7 @@
 
     // Floor so 199 of 200 reads "99%" rather than a false "100%" beside a
     // hero that still says "1 gap to fill". Matches the server's `coverage_bar`
-    // floor; the bar width stays the fractional `pct` so the fill is visually
+    // floor. The bar width stays the fractional `pct` so the fill is visually
     // accurate.
     setText("coverage-pct", String(Math.floor(pct)));
     setText("coverage-covered", String(covered));
@@ -1634,7 +1634,7 @@
     if (fill) fill.style.width = pct + "%";
     var bar = summary.querySelector(".gap-bar");
     if (bar) {
-      // Floor max at 1 so a zero-total render keeps a valid ARIA range; the
+      // Floor max at 1 so a zero-total render keeps a valid ARIA range. The
       // strip is hidden in that case but the attribute still has to parse.
       bar.setAttribute("aria-valuemax", String(Math.max(total, 1)));
       bar.setAttribute("aria-valuenow", String(covered));
@@ -1661,7 +1661,7 @@
     summary = document.getElementById("gap-summary");
   });
 
-  // A confirmed mark fires `marked`; recompute now that the resolved row is
+  // A confirmed mark fires `marked`. Recompute now that the resolved row is
   // mid-collapse and excluded, so the count is right before the delayed swap.
   document.body.addEventListener("marked", function () {
     recomputeSummary();
@@ -1696,7 +1696,7 @@
     }
   }
 
-  // An undo and the delayed mark swap both land as a section swap; a rescan swaps
+  // An undo and the delayed mark swap both land as a section swap. A rescan swaps
   // all of #roots. Recompute after any of them, re-apply an active filter to the
   // fresh rows, and slide the restored row in when the swap was an undo.
   document.body.addEventListener("htmx:afterSwap", function (evt) {
@@ -1708,8 +1708,8 @@
   // keyboard shortcuts
 
   // Additive to the existing behavior. j/k move a single highlight through the
-  // visible gap rows; r rescans; / focuses the filter and Enter leaves it; ? toggles
-  // the settings popover; Escape clears the filter or, with an empty box, drops the
+  // visible gap rows. r rescans. / focuses the filter and Enter leaves it. ? toggles
+  // the settings popover. Escape clears the filter or, with an empty box, drops the
   // highlight. The highlight is a real focus target so keyboard and screen-reader
   // users land on the same row.
   /** @type {HTMLElement | null} */

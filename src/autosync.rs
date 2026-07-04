@@ -1,5 +1,5 @@
 //! Background autosync. The `Autosync` struct on `AppState` owns a subscriber
-//! registry and a single loop task; the loop wakes every
+//! registry and a single loop task. The loop wakes every
 //! `autosync_interval_seconds` while at least one SSE client is connected,
 //! diffs the rendered sections against the last broadcast, and pushes OOB
 //! swap fragments for the ones that changed. See ADR-0023, ADR-0024.
@@ -21,7 +21,7 @@ use crate::tree::ViewMode;
 
 /// Diff each section's content hash against `last_content_hash` and return the
 /// list of pushes, mutating `last_content_hash` in place. On a hash match the
-/// loop skips the maud OOB-wrap render entirely; on a miss it wraps the
+/// loop skips the maud OOB-wrap render entirely. On a miss it wraps the
 /// already-packaged section, updates the cache, and pushes. The hash is
 /// per-mode (see `section_content_hash`) so mode-specific render-discarding
 /// (e.g. show-all-only `cover_files` changes that the gaps view drops) does
@@ -93,7 +93,7 @@ fn render_oob_section(
 /// `RootScan`. Shared by `snapshot_and_seed` (the seed hash a new subscriber
 /// carries) and `compute_pushes` (the per-tick compare), so the seed and the
 /// first-tick hash agree by construction (ADR-0024). Match implies equal
-/// rendered HTML; the `content_hash_equals_render_parity` test pins that
+/// rendered HTML. The `content_hash_equals_render_parity` test pins that
 /// contract, and `gaps_hash_unchanged_when_show_all_only_change_lands` pins
 /// the per-mode isolation that lets the cache match for the gaps subscriber
 /// when only show-all-relevant state shifts.
@@ -214,13 +214,13 @@ pub(crate) struct Autosync {
 struct AutosyncInner {
     subs: EnumMap<ViewMode, Vec<SseSender>>,
     last_content_hash: EnumMap<ViewMode, Vec<Option<u64>>>,
-    /// Set while the loop is running; cleared by the loop on exit.
+    /// Set while the loop is running, cleared by the loop on exit.
     loop_task: Option<JoinHandle<()>>,
     /// Monotonic count of every `single_oob_section` render observed by the
     /// autosync paths (snapshot seed and per-tick loop). Tests diff before
     /// vs. after to assert that no-change ticks skip the render. Mirrors
     /// `RawViewStore::rebuild_count` (`src/state.rs:54`). The field stays
-    /// unconditional and the accessor is `#[cfg(test)]`; the runtime cost
+    /// unconditional and the accessor is `#[cfg(test)]`. The runtime cost
     /// is one relaxed `fetch_add` per render path.
     render_count: AtomicU64,
 }
@@ -289,7 +289,7 @@ impl Autosync {
     /// Shared body for `subscribe` and `subscribe_and_seed`. Keeps the
     /// register-then-maybe-seed-then-maybe-spawn ordering under one `guard`
     /// lock so the no-overwrite, lifecycle, and loop-spawn invariants land
-    /// in one place. `Option<Vec<u64>>` is the internal carving; the two
+    /// in one place. `Option<Vec<u64>>` is the internal carving. The two
     /// public methods name each caller intent at the surface.
     fn subscribe_inner(
         &self,
@@ -571,7 +571,7 @@ mod tests {
         ]);
         let pushes = compute_pushes(&raw_after, &mut hashes, both_modes_subscribed(), &links);
 
-        // Both subscribed modes push for root 1; no other root pushes.
+        // Both subscribed modes push for root 1. No other root pushes.
         assert!(
             pushes.iter().all(|(_, root_idx, _)| *root_idx == 1),
             "only root 1 pushed: {pushes:?}",
@@ -623,7 +623,7 @@ mod tests {
         };
         let settings = crate::scanner::ScanSettings::compile(config.scan_inputs()).unwrap();
         // Leak the tempdir to keep the seeded roots around for the test's
-        // lifetime; the OS cleans /tmp at process exit.
+        // lifetime. The OS cleans /tmp at process exit.
         std::mem::forget(dir);
         Arc::new(crate::state::AppState::new(config, settings))
     }
@@ -651,7 +651,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(8);
         state.autosync.subscribe(&state, ViewMode::GapsOnly, tx);
         // No loop task means the subscriber count stays put even after a
-        // generous wait; pruning only happens inside the loop.
+        // generous wait. Pruning only happens inside the loop.
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(state.autosync.subscriber_count(), 1);
     }
@@ -682,7 +682,7 @@ mod tests {
         // Attach both modes, capture the post-snapshot render floor, sleep
         // long enough for several loop ticks, and assert the counter did not
         // grow. `attach` renders one section per root for the snapshot, then
-        // seeds the per-mode baseline hashes; with a stable filesystem the
+        // seeds the per-mode baseline hashes. With a stable filesystem the
         // loop's subsequent ticks must find matching hashes and skip both
         // the OOB-wrap render and the push.
         let state = test_state_with_interval(1);
@@ -719,7 +719,7 @@ mod tests {
         // `Event` does not expose its name or data via getters, so we match a
         // substring of its Debug output. TODO(axum): switch to a structural
         // check (or an on-the-wire SSE-frame check) when axum exposes
-        // accessors; the Debug format is not part of axum's public contract.
+        // accessors. The Debug format is not part of axum's public contract.
         let first = tokio::time::timeout(Duration::from_millis(200), rx.recv())
             .await
             .expect("attach must send the ack before returning")
@@ -908,11 +908,11 @@ mod tests {
     fn render_oob_section_bytes_match_a_direct_single_oob_section_render() {
         // The contract from ADR-0024: the bytes a tab receives via SSE for a
         // root equal the bytes a Rescan click would render for the same root.
-        // After consolidation both paths share single_oob_section; this test
+        // After consolidation both paths share single_oob_section. This test
         // pins that fact so a future divergence fails loudly. Derive the
-        // rendered section through web::render::package_section — the
-        // helper render_oob_section itself uses — so a drift in that helper
-        // fails this test rather than getting silently re-applied here.
+        // rendered section through web::render::package_section (the helper
+        // render_oob_section itself uses) so a drift in that helper fails
+        // this test rather than getting silently re-applied here.
         let raw = RootScan::Walked {
             canonical_path: std::path::PathBuf::from("/some/root"),
             folders: Vec::new(),
@@ -1003,7 +1003,7 @@ mod tests {
         // sees (here, adding a second cover file on a covered audiobook) must
         // leave the gaps-mode content hash equal, so the gaps subscriber
         // receives no push. tests/sse.rs::two_modes_isolated is the end-to-end
-        // version of this contract; this test pins the underlying invariant
+        // version of this contract. This test pins the underlying invariant
         // at the hash level.
         use crate::scanner::{RootScan, ScannedFolder};
         use std::path::PathBuf;

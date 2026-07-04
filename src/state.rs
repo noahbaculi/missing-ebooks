@@ -1,7 +1,7 @@
 //! Application state: the immutable `Arc<Config>` and compiled `Arc<ScanSettings>`,
 //! plus a TTL-memoized scan cache behind one mutex. The cache stores the raw
 //! per-root walk output and the response renders per `ViewMode` on each read
-//! (see ADR-0022); a marker write updates the stored raw view in place rather
+//! (see ADR-0022). A marker write updates the stored raw view in place rather
 //! than rewalking (see docs/adr/0002-marker-writes-edit-cache-in-place.md).
 
 use std::path::{Path, PathBuf};
@@ -170,8 +170,8 @@ pub struct RawViewStore {
     /// load-edit-store with a cold build's store.
     inflight: Mutex<Option<Weak<SharedBuild>>>,
     /// Monotonic count of fresh builds stored into the slot. Bumped inside
-    /// `store_fresh`. Test-only observation; tests diff before vs. after to
-    /// assert that a warm operation did not rebuild. See ADR-0022.
+    /// `store_fresh` as a test-only observation. Tests diff before vs. after
+    /// to assert that a warm operation did not rebuild. See ADR-0022.
     rebuild_count: AtomicU64,
     /// `None` disables caching: every read rescans.
     ttl: Option<Duration>,
@@ -182,7 +182,7 @@ pub struct RawViewStore {
     /// locks and run truly in parallel. The lock now lives inside
     /// `DirIndex`. The store holds a shared reference per root.
     dir_indices: Vec<Arc<DirIndex>>,
-    /// Held by the store for `build_view`; the same `Arc<Config>` is also
+    /// Held by the store for `build_view`. The same `Arc<Config>` is also
     /// exposed on `AppState.config` for handlers that read pure config data
     /// (search links, cookie name, library roots). See ADR-0027.
     config: Arc<Config>,
@@ -190,7 +190,7 @@ pub struct RawViewStore {
 
 impl RawViewStore {
     /// Build a fresh store. `ttl == None` disables caching so every read
-    /// rescans; any other value sets the staleness window.
+    /// rescans. Any other value sets the staleness window.
     pub fn new(
         config: Arc<Config>,
         settings: Arc<ScanSettings>,
@@ -312,7 +312,7 @@ impl RawViewStore {
 }
 
 impl AppState {
-    /// Build the shared state. `ttl_seconds == 0` disables the cache; any other
+    /// Build the shared state. `ttl_seconds == 0` disables the cache. Any other
     /// value sets the staleness window.
     pub fn new(config: Config, settings: ScanSettings) -> AppState {
         let ttl = if config.ttl_seconds == 0 {
@@ -335,21 +335,21 @@ impl AppState {
 
     /// Warm the cache slot by reading the current raw view. Used by the binary
     /// crate's startup spawn so the first viewer after a restart does not pay
-    /// the cold scan. The returned `Arc` is discarded by the caller; the
-    /// side effect on the cache slot is what we want.
+    /// the cold scan. The returned `Arc` is discarded by the caller. The
+    /// side effect on the cache slot is the point.
     pub async fn warm(&self) {
         let _ = self.store.current().await;
     }
 }
 
 /// The result of a successful `RawViewStore::write_mark`. `created` is false
-/// for a re-mark of an already-marked folder; callers use it to suppress the
+/// for a re-mark of an already-marked folder. Callers use it to suppress the
 /// undo toast for no-op marks.
 #[derive(Debug)]
 pub(crate) struct Applied {
     /// The refreshed raw view after the in-place edit (or rebuild on a cold slot).
     pub raw: Arc<RawView>,
-    /// True when this call made the file; false for a re-mark of a marked folder.
+    /// True when this call made the file, false for a re-mark of a marked folder.
     pub created: bool,
 }
 
@@ -395,8 +395,8 @@ pub(crate) enum WriteFailure {
 
 impl RawViewStore {
     /// Write a marker into a folder and update the cached raw view in place,
-    /// without a rescan (ADR-0002). The guard and write run on a blocking task;
-    /// the cache lock is held only for the in-memory mutation.
+    /// without a rescan (ADR-0002). The guard and write run on a blocking task.
+    /// The cache lock is held only for the in-memory mutation.
     pub(crate) async fn write_mark(
         &self,
         root: usize,
@@ -420,7 +420,7 @@ impl RawViewStore {
         let (created, canonical_root) = match inner {
             Ok(pair) => pair,
             Err(error) => {
-                // The write failed; hand back the still-valid view so the
+                // The write failed. Hand back the still-valid view so the
                 // caller renders an inline alert without a second store hop.
                 let raw = self.current().await;
                 return Err(WriteFailure::Failed { error, raw });
@@ -478,8 +478,8 @@ impl RawViewStore {
     }
 
     /// Delete a marker file and refresh the cached view by rescanning the one
-    /// affected root (ADR-0002). The guard and delete run on a blocking task;
-    /// the cache lock is held only for the per-root rebuild.
+    /// affected root (ADR-0002). The guard and delete run on a blocking task.
+    /// The cache lock is held only for the per-root rebuild.
     pub(crate) async fn remove_mark(
         &self,
         root: usize,
@@ -723,7 +723,7 @@ mod tests {
         assert!(after_warm > 0, "the warm read populated the dir index");
 
         // Drop a synthetic entry into the index that no real walk could reach.
-        // A cold rescan must drop it; a warm rescan would preserve it.
+        // A cold rescan must drop it. A warm rescan would preserve it.
         let synthetic_path = std::path::PathBuf::from("/nonexistent/synthetic/marker/path");
         store.dir_indices[0].insert(
             synthetic_path.clone(),
@@ -1058,7 +1058,7 @@ mod tests {
 
     /// Helper: assert that `Book` under root 0 of `raw` has the expected
     /// `missing_ebook` value. Used by ported tests that previously asserted on
-    /// the packaged `RootState`; the equivalent at the raw layer reads off the
+    /// the packaged `RootState`. The equivalent at the raw layer reads off the
     /// matching `ScannedFolder` so the assertion stays at the store's layer.
     fn book_missing(raw: &RawView) -> bool {
         let RootScan::Walked { folders, .. } = &raw[0] else {
@@ -1110,7 +1110,7 @@ mod tests {
 
         // Cover the gap, then push the folder mtime forward so the rescan sees
         // the change regardless of the filesystem's mtime resolution. The dir
-        // index keys off mtime equality; back-to-back touches inside one tick
+        // index keys off mtime equality, so back-to-back touches inside one tick
         // would otherwise reuse the pre-cover listing and hide the new ebook.
         crate::scenarios::touch(&book.join("Book.epub"));
         set_file_mtime(&book, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();

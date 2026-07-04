@@ -866,7 +866,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
      flex `order` moves the controls without reordering the markup. each control
      is matched by class (.spacer, .intro-help, .settings-cog, form, > .segmented)
      so a later navbar addition can't silently inherit a row's order. .intro-help
-     and .settings-cog deliberately share order 2 — the two chrome icon buttons
+     and .settings-cog deliberately share order 2, the two chrome icon buttons
      pair into one cluster (the negative margin above ties them visually), so a
      future third icon button sitting between them must opt in explicitly with
      its own .intro-help/.settings-cog-class rule. the view toggle uses a

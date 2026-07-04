@@ -414,12 +414,12 @@ fn build_mixed_forest() -> ScenarioSpec {
                     // Arthur C. Clarke: the one author mixing two series
                     // containers with loose standalone books, so its node
                     // aggregates gaps from three groupings. Each pairs a
-                    // flagged book with a covered sibling: "2001 A Space
-                    // Odyssey" flagged, "2010 Odyssey Two" covered by .epub in
-                    // "Space Odyssey"; "Rendezvous with Rama" flagged, "Rama
-                    // II" covered in "Rama"; "The Fountains of Paradise"
-                    // flagged, "The City and the Stars" covered among the
-                    // standalones.
+                    // flagged book with a covered sibling. "2001 A Space
+                    // Odyssey" flagged, "2010 Odyssey Two" covered by .epub
+                    // in "Space Odyssey". "Rendezvous with Rama" flagged,
+                    // "Rama II" covered in "Rama". "The Fountains of
+                    // Paradise" flagged, "The City and the Stars" covered
+                    // among the standalones.
                     folder(
                         "Arthur C. Clarke",
                         vec![

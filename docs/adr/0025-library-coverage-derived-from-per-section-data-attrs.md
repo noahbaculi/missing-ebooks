@@ -26,7 +26,7 @@ The pattern matches the chip and hero updaters, which also count off the DOM. Fu
 
 ## Alternatives considered
 
-- **Server-rebuilt strip with a new OOB target**: adds an OOB target on every mark, undo, rescan, and autosync push; the strip becomes a swap surface the protocol has to keep in sync. The data-attribute path needs none of that.
-- **Store the count alongside the folders in `RootScan::Walked`**: bakes a derived statistic into the cache. The vec already has the fact, counting it at render time is `O(folders)`, and the count stays in the layer that already renders.
-- **No live updates, paint-once readout**: a stale percent after every mark; defeats the point of the readout.
-- **Round the percent instead of floor**: reads "100% covered" beside "1 gap to fill" at high coverage. The floor never lies, at the cost of "0%" while one of a thousand audiobooks is covered.
+- Server-rebuilt strip with a new OOB target: adds an OOB target on every mark, undo, rescan, and autosync push, and the strip becomes a swap surface the protocol has to keep in sync. The data-attribute path needs none of that.
+- Store the count alongside the folders in `RootScan::Walked`: bakes a derived statistic into the cache. The vec already has the fact, counting it at render time is `O(folders)`, and the count stays in the layer that already renders.
+- No live updates, paint-once readout: a stale percent after every mark, which defeats the point of the readout.
+- Round the percent instead of floor: reads "100% covered" beside "1 gap to fill" at high coverage. The floor never lies, at the cost of "0%" while one of a thousand audiobooks is covered.

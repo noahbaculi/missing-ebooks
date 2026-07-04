@@ -34,7 +34,7 @@ pub struct Node {
     /// `scanner::ScannedFolder::cover_files`. Empty in gaps-only.
     pub cover_files: Vec<String>,
     /// Audio filenames that physically sit in this folder, natural-sorted. Non-empty
-    /// only where the folder directly holds audio; the file display reads it.
+    /// only where the folder directly holds audio. The file display reads it.
     pub audio_files: Vec<String>,
     /// Count of gaps in this subtree: this node's own `needs_ebook()` plus
     /// every descendant's. Precomputed once during `build_forest` so render
@@ -60,7 +60,7 @@ impl Node {
 
 /// Which view a read or write targets: gaps-only forest or full show-all tree.
 /// Selects the render applied to the cached raw scan output (see ADR-0022).
-/// Deserializes from the `view` form field; `from_query` is the lenient
+/// Deserializes from the `view` form field. `from_query` is the lenient
 /// URL-query path that falls back to gaps-only.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, enum_map::Enum)]
 pub enum ViewMode {
@@ -285,7 +285,7 @@ mod tests {
 
     /// Build a `RootScan::Walked` whose `canonical_path` ends in `name`, so the
     /// loose-root `.`-node picks up `name` as its display label (ADR-0005). The
-    /// `/lib` prefix is arbitrary padding; only the last component matters.
+    /// `/lib` prefix is arbitrary padding. Only the last component matters.
     fn walked(name: &str, folders: Vec<ScannedFolder>) -> RootScan {
         RootScan::Walked {
             canonical_path: PathBuf::from("/lib").join(name),

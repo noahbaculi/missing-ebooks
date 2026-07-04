@@ -24,10 +24,10 @@ MSRV is Rust 1.96 (matches `rust-toolchain.toml`).
 
 `mise tasks` lists every check. The shortcuts most reached for:
 
-- `mise run check` — full pre-commit equivalent. Run before claiming work is done.
-- `mise run test` — nextest plus doctests.
-- `mise run lint` — fmt, clippy, typos, taplo, unused-dep check.
-- `bacon` — continuous fmt/clippy while editing (see `bacon.toml`).
+- `mise run check` runs the full pre-commit equivalent. Run before claiming work is done.
+- `mise run test` runs nextest plus doctests.
+- `mise run lint` runs fmt, clippy, typos, taplo, and the unused-dep check.
+- `bacon` gives continuous fmt/clippy feedback while editing (see `bacon.toml`).
 
 ## Commit style
 
@@ -37,13 +37,13 @@ Work lands on `main` by rebase and fast-forward only, so each commit sits inline
 
 ## Where work lives
 
-- **Issues, PRDs, and implementation plans** live under `.scratch/<feature>/`, gitignored. Layout convention is in [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
-- **ADRs** at `docs/adr/NNNN-kebab-title.md`. The template and amendment convention live in [`docs/adr/README.md`](docs/adr/README.md).
-- **Domain glossary** at [`CONTEXT.md`](CONTEXT.md) in the repo root.
-- **Triage label vocabulary** at [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md). The five canonical roles map to strings written into each issue's `Status:` line.
+- Issues, PRDs, and implementation plans live under `.scratch/<feature>/`, gitignored. Layout convention is in [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
+- ADRs live at `docs/adr/NNNN-kebab-title.md`. The template and amendment convention are in [`docs/adr/README.md`](docs/adr/README.md).
+- The domain glossary is at [`CONTEXT.md`](CONTEXT.md) in the repo root.
+- The triage label vocabulary is at [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md). The five canonical roles map to strings written into each issue's `Status:` line.
 
 ## PR expectations
 
-Open an issue first for non-trivial work so the design conversation happens before code does. Keep commits granular — each one should read on its own and pass CI on its own. Include the user-facing why in the commit body; the scope caveat (`No behavior change.`, `Prose only:`, etc.) goes there too.
+Open an issue first for non-trivial work so the design conversation happens before code does. Keep commits granular. Each one reads on its own and passes CI on its own. Include the user-facing why in the commit body, along with the scope caveat (`No behavior change.`, `Prose only:`, etc.) when one applies.
 
 If you change anything that renders in the UI (HTML in `src/web.rs`, styles in `assets/app.css`, behavior in `assets/app.js`), include the UI harness command you used to eyeball it (e.g. `cargo run --bin explore -- mixed-forest`).

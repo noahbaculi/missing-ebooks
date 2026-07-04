@@ -148,7 +148,7 @@ mod tests {
 
     fn interesting_mark_sets() -> Vec<Case> {
         // Returns logical mark-sets. The fixtures-bound rel paths must
-        // exist in the scenario; a missing path is silently filtered out
+        // exist in the scenario. A missing path is silently filtered out
         // inside assert_byte_equal so the equivalence is only measured on
         // marks both paths can apply.
         vec![

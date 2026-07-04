@@ -20,7 +20,7 @@ const BANNER_STYLE: &str = r"<style>.me-demo-sheen{position:absolute;top:0;botto
 /// gap below before the navbar. Gradient, shadow, and the one-time sheen from
 /// [`BANNER_STYLE`] style it without app.css. The bar splits in two: the sandbox
 /// notice and the Reset button group on the left, since the notice explains the
-/// reset the button performs; the self-host link sits alone on the right and
+/// reset the button performs. The self-host link sits alone on the right and
 /// opens GitHub in a new tab. The reset form carries the current view so a reset
 /// lands the visitor where they were.
 fn banner_html(mode: ViewMode) -> String {
@@ -97,7 +97,7 @@ mod tests {
         );
         assert!(out.contains(r#"target="_blank""#));
         assert!(out.contains(r#"rel="noopener noreferrer""#));
-        // The label is trimmed to "Self-host"; the old "Self-host this" is gone.
+        // The label is trimmed to "Self-host". The old "Self-host this" is gone.
         assert!(out.contains("Self-host</a>"));
         assert!(!out.contains("Self-host this"));
         // The sheen markup is spliced in alongside the notice.

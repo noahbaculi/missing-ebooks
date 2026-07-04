@@ -227,7 +227,7 @@ pub(crate) fn ack_event() -> Result<Event, Infallible> {
 }
 
 /// The SSE `snapshot` event. The `id: r` stamp is identical to every other
-/// event on the channel; the server only checks header presence on reconnect,
+/// event on the channel. The server only checks header presence on reconnect,
 /// not the id value. See ADR-0030.
 #[allow(
     clippy::unnecessary_wraps,
@@ -247,7 +247,7 @@ pub(crate) fn section_event(html: String) -> Event {
 /// seeds the browser's `lastEventId` so a future reconnect carries
 /// `Last-Event-ID`. The second event is `snapshot` only when the request
 /// already carries `Last-Event-ID`: presence means the browser is reconnecting
-/// after a drop and the snapshot fills the gap; absence means first connect,
+/// after a drop and the snapshot fills the gap. Absence means first connect,
 /// when the page just rendered the same state inline. Subsequent events are
 /// `section` events from the autosync loop. `ping` events come from
 /// `KeepAlive` every 15 seconds to survive idle TCP drops by reverse proxies.
@@ -261,7 +261,7 @@ async fn events(
     // Last-Event-ID is set by the browser's EventSource on any reconnect after
     // it has received at least one id'd event. Presence means reconnect, so
     // the snapshot is needed to catch the client up. Absence means first
-    // connect; the page just rendered the same state inline.
+    // connect. The page just rendered the same state inline.
     let send_snapshot = headers.contains_key("last-event-id");
     let rx = crate::autosync::attach(&state, mode, send_snapshot).await;
     events_response(rx)
@@ -279,7 +279,7 @@ fn ascii_escape(s: &str) -> String {
             out.push(c);
         } else {
             for unit in c.encode_utf16(&mut buf) {
-                // Header values are ASCII; write! into a String is infallible.
+                // Header values are ASCII, and write! into a String is infallible.
                 let _ = write!(out, "\\u{unit:04x}");
             }
         }
@@ -783,7 +783,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("A/B1/01.mp3"));
         touch(&dir.path().join("A/B2/01.mp3"));
-        // Mark B1 as no-ebook; the response is the re-rendered section.
+        // Mark B1 as no-ebook. The response is the re-rendered section.
         let response = app_for(dir.path())
             .oneshot(
                 Request::builder()
@@ -797,15 +797,15 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_string(response).await;
-        // The mark response is the re-rendered section; the total rides along
+        // The mark response is the re-rendered section. The total rides along
         // unchanged because a scan total does not shift mid-mark.
         assert!(body.contains(r#"data-total-audiobooks="2""#));
     }
 
     #[tokio::test]
     async fn index_tolerates_a_filter_query_param_on_a_view_switch() {
-        // The client carries the live filter across a view switch as a q param; the
-        // server has no use for it and must ignore it, not reject the request.
+        // The client carries the live filter across a view switch as a q param.
+        // The server has no use for it and must ignore it, not reject the request.
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Author/Book/01.mp3"));
         let response = app_for(dir.path())
