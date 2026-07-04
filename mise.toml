@@ -9,6 +9,7 @@
 "aqua:EmbarkStudios/cargo-deny" = "0.19"
 node = "22"
 "npm:typescript" = "5"
+"npm:@playwright/cli" = "0.1"
 "cargo:cargo-nextest" = "0.9"
 "cargo:cargo-machete" = "0.9"
 typos = "1"
@@ -18,6 +19,10 @@ ast-grep = "0.44"
 [tasks.setup]
 description = "Point this clone's git at the committed hooks in .githooks"
 run = "git config core.hooksPath .githooks"
+
+[tasks."setup:playwright"]
+description = "Install the playwright-cli SKILL bundle into this clone's .claude/skills"
+run = "playwright-cli install --skills"
 
 [tasks.lint]
 description = "Run fmt, clippy, typos, taplo, and the unused-dep check"
