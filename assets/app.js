@@ -1708,7 +1708,7 @@
   // keyboard shortcuts
 
   // Additive to the existing behavior. j/k move a single highlight through the
-  // visible gap rows; r rescans; / focuses the filter and Enter leaves it; ? opens
+  // visible gap rows; r rescans; / focuses the filter and Enter leaves it; ? toggles
   // the settings popover; Escape clears the filter or, with an empty box, drops the
   // highlight. The highlight is a real focus target so keyboard and screen-reader
   // users land on the same row.
@@ -1841,12 +1841,8 @@
       case "?":
         evt.preventDefault();
         var settingsPanel = document.getElementById("settings-panel");
-        if (
-          settingsPanel &&
-          typeof settingsPanel.showPopover === "function" &&
-          !settingsPanel.matches(":popover-open")
-        ) {
-          settingsPanel.showPopover();
+        if (settingsPanel && typeof settingsPanel.togglePopover === "function") {
+          settingsPanel.togglePopover();
         }
         break;
       default:
