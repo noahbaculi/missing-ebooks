@@ -19,9 +19,7 @@ use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::config::SearchLink;
 use crate::marker::Marker;
-use crate::state::RawView;
 use crate::state::{AppState, WriteFailure};
 use crate::tree::ViewMode;
 
@@ -71,9 +69,8 @@ async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery
     let started = Instant::now();
     let mode = ViewMode::from_query(query.view.as_deref());
     let raw = state.store.current().await;
-    let view = render::package_view(&raw, mode);
     let render_started = Instant::now();
-    let html = render::render_view(&view, &state.config.search_links, mode).into_string();
+    let html = render::page(&raw, &state.config.search_links, mode).into_string();
     tracing::debug!(
         op = "index",
         mode = mode.as_query(),
@@ -93,22 +90,29 @@ async fn mark(
     let mode = ViewMode::from_query(req.view.as_deref());
     let resp = match state.store.write_mark(req.root, &req.rel, req.kind).await {
         Ok(applied) => {
-            let view = render::package_view(&applied.raw, mode);
-            let markup = render::render_section(&view[req.root], req.root, None, links, mode);
+            let handle = render::packaged_section(&applied.raw, req.root, mode);
+            let markup = handle.render(links, None);
             let trigger = applied.created.then(|| {
-                let name = display_name(&view[req.root].path, &req.rel);
+                // Read the section path off the packaged raw scan so the
+                // toast's display name still comes from the same source
+                // it used before the fold.
+                let section_path = match &applied.raw[req.root] {
+                    crate::scanner::RootScan::Walked { canonical_path, .. } => {
+                        canonical_path.display().to_string()
+                    }
+                    crate::scanner::RootScan::Failed { path, .. } => path.display().to_string(),
+                };
+                let name = display_name(&section_path, &req.rel);
                 marked_trigger(&req, &name)
             });
             section_response(markup, trigger)
         }
         Err(WriteFailure::BadRoot) => bad_root_response(req.root, &req.rel, "mark"),
-        Err(WriteFailure::Failed { error, raw }) => in_section_alert(
-            &raw,
-            req.root,
-            mode,
-            links,
-            format!("Could not mark {}: {error}", req.rel).as_str(),
-        ),
+        Err(WriteFailure::Failed { error, raw }) => {
+            let handle = render::packaged_section(&raw, req.root, mode);
+            let message = format!("Could not mark {}: {error}", req.rel);
+            section_response(handle.render(links, Some(&message)), None)
+        }
     };
     tracing::debug!(
         op = "mark",
@@ -129,20 +133,15 @@ async fn unmark(
     let mode = ViewMode::from_query(req.view.as_deref());
     let resp = match state.store.remove_mark(req.root, &req.rel, req.kind).await {
         Ok(raw) => {
-            let view = render::package_view(&raw, mode);
-            section_response(
-                render::render_section(&view[req.root], req.root, None, links, mode),
-                None,
-            )
+            let handle = render::packaged_section(&raw, req.root, mode);
+            section_response(handle.render(links, None), None)
         }
         Err(WriteFailure::BadRoot) => bad_root_response(req.root, &req.rel, "undo"),
-        Err(WriteFailure::Failed { error, raw }) => in_section_alert(
-            &raw,
-            req.root,
-            mode,
-            links,
-            format!("Could not undo {}: {error}", req.rel).as_str(),
-        ),
+        Err(WriteFailure::Failed { error, raw }) => {
+            let handle = render::packaged_section(&raw, req.root, mode);
+            let message = format!("Could not undo {}: {error}", req.rel);
+            section_response(handle.render(links, Some(&message)), None)
+        }
     };
     tracing::debug!(
         op = "unmark",
@@ -162,29 +161,18 @@ fn bad_root_response(root: usize, rel: &str, op: &str) -> axum::response::Respon
     section_response(render::error_section(root, &message), None)
 }
 
-/// Re-render the affected root's section with the message inline by its row.
-/// `WriteFailure::Failed` guarantees `root` is in range, so `view[root]` is
-/// always valid.
-fn in_section_alert(
-    raw: &RawView,
-    root: usize,
-    mode: ViewMode,
-    links: &[SearchLink],
-    message: &str,
-) -> axum::response::Response {
-    let view = render::package_view(raw, mode);
-    let markup = render::render_section(&view[root], root, Some(message), links, mode);
-    section_response(markup, None)
-}
-
 async fn rescan(State(state): State<Arc<AppState>>, Form(query): Form<ViewQuery>) -> Response {
     let started = Instant::now();
     let mode = ViewMode::from_query(query.view.as_deref());
     let raw = state.store.rescan().await;
-    let view = render::package_view(&raw, mode);
     // Swap the fresh sections into #roots and push the mode path, so the address bar
     // tracks the view without ever showing the /rescan POST URL.
-    let markup = render::roots(&view, &state.config.search_links, mode);
+    let markup = render::all_sections(
+        &raw,
+        &state.config.search_links,
+        mode,
+        render::SectionWrap::Plain,
+    );
     let resp = ([("HX-Push-Url", mode.path())], Html(markup.into_string())).into_response();
     tracing::debug!(
         op = "rescan",
