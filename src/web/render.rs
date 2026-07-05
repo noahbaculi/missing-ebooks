@@ -19,17 +19,17 @@ type FlaggedView = Vec<RootSection>;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct RootSection {
     /// The canonical root path when it resolved, else the configured path.
-    pub path: String,
+    path: String,
     /// What the scan found for this root.
-    pub state: RootState,
+    state: RootState,
     /// Folders under this root that directly hold audio. Zero for `Clean` and
     /// `Error`. The web layer surfaces it as `data-total-audiobooks` on the
     /// section so the strip's library coverage stays current across swaps.
-    pub total_audiobooks: usize,
+    total_audiobooks: usize,
     /// Total gaps across this root's forest, precomputed by `build_forest` so
     /// the summary strip and per-root chip read a number instead of walking
     /// the tree. `Clean` and `Error` are zero by construction.
-    pub gaps_within: usize,
+    gaps_within: usize,
 }
 
 /// Build the per-mode `FlaggedView` from the cached raw scan output. The gaps

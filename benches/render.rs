@@ -51,6 +51,10 @@ fn bench_render(c: &mut Criterion) {
         });
         group.finish();
 
+        // The group name stays `render_oob_section` so Criterion's baseline
+        // history carries across the ADR-0032 fold that renamed the underlying
+        // symbol to `SectionHandle::render_oob`. The measured paths are the
+        // same; only the label is a historical anchor.
         let mut group = c.benchmark_group("render_oob_section");
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::new("gaps", label), &input, |b, i| {

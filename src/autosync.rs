@@ -168,7 +168,7 @@ struct AutosyncInner {
     last_content_hash: EnumMap<ViewMode, Vec<Option<u64>>>,
     /// Set while the loop is running, cleared by the loop on exit.
     loop_task: Option<JoinHandle<()>>,
-    /// Monotonic count of every `single_oob_section` render observed by the
+    /// Monotonic count of every `SectionHandle::render_oob` produced by the
     /// autosync paths (snapshot seed and per-tick loop). Tests diff before
     /// vs. after to assert that no-change ticks skip the render. Mirrors
     /// `RawViewStore::rebuild_count` (`src/state.rs:54`). The field stays
@@ -292,9 +292,9 @@ impl Autosync {
         !guard.last_content_hash[mode].is_empty()
     }
 
-    /// Monotonic render count: every `single_oob_section` produced by either
-    /// the snapshot seed path or the per-tick loop. Tests diff before vs.
-    /// after to assert that no-change ticks skip the render.
+    /// Monotonic render count: every `SectionHandle::render_oob` produced by
+    /// either the snapshot seed path or the per-tick loop. Tests diff before
+    /// vs. after to assert that no-change ticks skip the render.
     #[cfg(test)]
     pub(crate) fn render_count(&self) -> u64 {
         lock_inner(&self.inner).render_count.load(Ordering::Relaxed)
@@ -376,9 +376,9 @@ async fn run_loop(
                 has_subs,
                 &state.config.search_links,
             );
-            // `compute_pushes` calls `single_oob_section` exactly once per
-            // returned push, so `pushes.len()` is the exact render count for
-            // this tick.
+            // `compute_pushes` calls `SectionHandle::render_oob` exactly once
+            // per returned push, so `pushes.len()` is the exact render count
+            // for this tick.
             guard
                 .render_count
                 .fetch_add(pushes.len() as u64, Ordering::Relaxed);

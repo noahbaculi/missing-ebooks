@@ -1,7 +1,7 @@
 //! Page shell and navbar/popover chrome. Imported by `web::render`, never
 //! the reverse: the chrome and the tree never share a module, so the shell
 //! takes the body as a `Markup` parameter and never touches domain types
-//! like `Node` or `FlaggedView`.
+//! like `Node` or the per-section packaged view.
 
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 
@@ -321,7 +321,7 @@ pub(super) fn footer() -> Markup {
 /// The HTML document shell: head, noscript notice, connection banner, SSE
 /// listener, navbar, confirm dialog, toast machinery, and the script tags.
 /// Wraps a prebuilt `body` markup (typically the gap summary plus the
-/// `#roots` block, assembled by `render::render_view`). Pure shell: takes
+/// `#roots` block, assembled inside `render::page`). Pure shell: takes
 /// no domain types, only the current `ViewMode` for the navbar and the SSE
 /// query string.
 pub(crate) fn page(mode: ViewMode, body: &Markup) -> Markup {
@@ -640,7 +640,7 @@ mod tests {
     #[test]
     fn scan_bar_carries_the_indicator_id() {
         // The bar is wired as the rescan indicator. The page shell embeds it via
-        // `render_view`. Calling `scan_bar` directly pins the id without that detour.
+        // `render::page`. Calling `scan_bar` directly pins the id without that detour.
         let html = scan_bar().into_string();
         assert!(html.contains(r#"id="scan-bar""#));
     }
@@ -649,7 +649,7 @@ mod tests {
     fn navbar_renders_the_disabled_filter_input_and_no_matches_line() {
         // The search box itself ships inside the navbar (called from `page`),
         // and the no-matches line is the standalone `search_empty` helper that
-        // `render_view` drops next to the roots block.
+        // `render::page` drops next to the roots block.
         let box_html = search_box().into_string();
         // A filter input with an accessible name. The box renders visible from first
         // paint so it never reflows in. The input renders `disabled` and app.js clears
