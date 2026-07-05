@@ -2,6 +2,8 @@
 
 > Amended 2026-06-25 by ADR-0030: "snapshot before subscribe" narrows to "ack before subscribe, snapshot before subscribe when sent." The per-section seed hashes still feed `subscribe_and_seed` in both branches; loop-level first-tick dedup is unaffected.
 
+> Amended 2026-07-04 by ADR-0032: the rescan-swap ↔ autosync-push byte-equality now lives inside `SectionHandle` rather than being a cross-module contract between `render::single_oob_section` and `autosync::render_oob_section`.
+
 Date: 2026-06-21.
 
 ## Context

@@ -2,6 +2,8 @@
 
 > Amended 2026-06-26 by ADR-0028: the `service::render_section_from_raw` symbol cited below was renamed and moved into `src/web/render.rs` as `package_section`.
 
+> Amended 2026-07-04 by ADR-0032: `web::render::package_section` and `web::render::RootSection` are now module-internal; future per-root fields still land in one place, now inside `SectionHandle`.
+
 Date: 2026-06-22.
 
 ## Context
