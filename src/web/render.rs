@@ -44,8 +44,9 @@ fn package_view(raw: &RawView, mode: ViewMode) -> FlaggedView {
 /// Build one `RootSection` from a raw `RootScan` for the requested mode.
 ///
 /// The single owner of the raw-to-packaged step. `package_view` calls it on
-/// the snapshot path. `autosync::render_oob_section` calls it on the push
-/// path. Any future per-root field lands here once.
+/// the snapshot path; `packaged_section` calls it to build a `SectionHandle`
+/// for autosync's per-root pushes and every mark/unmark response. Any
+/// future per-root field lands here once.
 fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
     let state = tree::build(scan, mode);
     let gaps_within = match &state {
@@ -381,9 +382,9 @@ fn root_badge(section: &RootSection) -> Markup {
     }
 }
 
-/// Render one root's section with an optional inline alert. Public so SSE
-/// integration tests under `tests/` can compare the byte output against an
-/// OOB-wrapped snapshot fragment.
+/// Render one root's section with an optional inline alert. Shared by
+/// `SectionHandle::render` and the OOB-wrap variant so the two output
+/// shapes stay byte-identical inside the wrap.
 fn render_section(
     section: &RootSection,
     root: usize,

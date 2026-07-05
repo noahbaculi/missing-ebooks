@@ -96,12 +96,7 @@ async fn mark(
                 // Read the section path off the packaged raw scan so the
                 // toast's display name still comes from the same source
                 // it used before the fold.
-                let section_path = match &applied.raw[req.root] {
-                    crate::scanner::RootScan::Walked { canonical_path, .. } => {
-                        canonical_path.display().to_string()
-                    }
-                    crate::scanner::RootScan::Failed { path, .. } => path.display().to_string(),
-                };
+                let section_path = applied.raw[req.root].display_path().to_string();
                 let name = display_name(&section_path, &req.rel);
                 marked_trigger(&req, &name)
             });
