@@ -4,9 +4,7 @@
 //! diffs the rendered sections against the last broadcast, and pushes OOB
 //! swap fragments for the ones that changed. See ADR-0023, ADR-0024.
 
-use std::collections::hash_map::DefaultHasher;
 use std::convert::Infallible;
-use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, Weak};
 
@@ -23,9 +21,9 @@ use crate::tree::ViewMode;
 /// list of pushes, mutating `last_content_hash` in place. On a hash match the
 /// loop skips the maud OOB-wrap render entirely. On a miss it wraps the
 /// already-packaged section, updates the cache, and pushes. The hash is
-/// per-mode (see `section_content_hash`) so mode-specific render-discarding
-/// (e.g. show-all-only `cover_files` changes that the gaps view drops) does
-/// not propagate as a push to the wrong mode.
+/// per-mode (see `SectionHandle::content_hash`) so mode-specific
+/// render-discarding (e.g. show-all-only `cover_files` changes that the gaps
+/// view drops) does not propagate as a push to the wrong mode.
 ///
 /// `has_subs[mode]` short-circuits modes nobody is listening to: their hashes
 /// stay untouched and they produce no pushes.
@@ -36,7 +34,7 @@ fn compute_pushes(
     links: &[crate::config::SearchLink],
 ) -> Vec<(ViewMode, usize, String)> {
     let mut pushes = Vec::new();
-    for (root_idx, scan) in raw.iter().enumerate() {
+    for root_idx in 0..raw.len() {
         for mode in [ViewMode::GapsOnly, ViewMode::All] {
             if !has_subs[mode] {
                 continue;
@@ -46,61 +44,20 @@ fn compute_pushes(
             if last_content_hash[mode].len() != raw.len() {
                 last_content_hash[mode].resize(raw.len(), None);
             }
-            // Package once per (root, mode): the hash needs the packaged
-            // section, and a cache miss reuses the same `section` to wrap
-            // without paying for a second `package_section` call.
-            let section = crate::web::render::package_section(scan, mode);
-            let content_hash = section_content_hash(&section);
+            // Package once per (root, mode): the handle owns the packaged
+            // section, and a cache miss renders off the same handle
+            // without paying for a second packaging pass.
+            let handle = crate::web::render::packaged_section(raw, root_idx, mode);
+            let content_hash = handle.content_hash();
             if last_content_hash[mode][root_idx] == Some(content_hash) {
                 continue;
             }
-            let html = crate::web::render::single_oob_section(&section, root_idx, links, mode)
-                .into_string();
+            let html = handle.render_oob(links).into_string();
             last_content_hash[mode][root_idx] = Some(content_hash);
             pushes.push((mode, root_idx, html));
         }
     }
     pushes
-}
-
-/// Render one raw section as the OOB-swap string the autosync stream pushes.
-/// Renders the raw section into a `RootSection` for the requested mode through
-/// `web::render::package_section` (one place owns the raw → packaged
-/// step), then delegates to `web::render::single_oob_section` so the OOB
-/// wrapping uses one renderer shared with the page-level snapshot path (see
-/// ADR-0024).
-///
-/// Now only used by tests: `compute_pushes` and `snapshot_and_seed` inline the
-/// two-step (package, then OOB-wrap) so a cache miss reuses the already
-/// packaged section. The helper survives as the byte-equality contract the
-/// `render_oob_section_bytes_match_a_direct_single_oob_section_render` test
-/// pins.
-#[cfg(test)]
-fn render_oob_section(
-    raw_section: &crate::scanner::RootScan,
-    root_idx: usize,
-    mode: ViewMode,
-    links: &[crate::config::SearchLink],
-) -> String {
-    let rendered_section = crate::web::render::package_section(raw_section, mode);
-    crate::web::render::single_oob_section(&rendered_section, root_idx, links, mode).into_string()
-}
-
-/// Hashes one packaged `RootSection` for the autosync dedup compare. The hash
-/// is per-mode because the packaging discards inputs the mode does not render
-/// (e.g. show-all-only `cover_files` on a covered audiobook collapse out of
-/// the gaps `RootState`), so two modes can see different hashes for the same
-/// `RootScan`. Shared by `snapshot_and_seed` (the seed hash a new subscriber
-/// carries) and `compute_pushes` (the per-tick compare), so the seed and the
-/// first-tick hash agree by construction (ADR-0024). Match implies equal
-/// rendered HTML. The `content_hash_equals_render_parity` test pins that
-/// contract, and `gaps_hash_unchanged_when_show_all_only_change_lands` pins
-/// the per-mode isolation that lets the cache match for the gaps subscriber
-/// when only show-all-relevant state shifts.
-fn section_content_hash(section: &crate::web::render::RootSection) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    section.hash(&mut hasher);
-    hasher.finish()
 }
 
 /// Build the concatenated OOB-swap payload for an SSE `snapshot` event and the
@@ -115,15 +72,13 @@ fn snapshot_and_seed(
 ) -> (String, Vec<u64>) {
     let mut payload = String::with_capacity(raw.len() * 512);
     let mut hashes = Vec::with_capacity(raw.len());
-    for (root_idx, scan) in raw.iter().enumerate() {
-        // Package once and reuse for both the rendered OOB fragment and the
-        // seed hash, so the seed agrees byte-for-byte with what
-        // `compute_pushes` will hash on the first tick.
-        let section = crate::web::render::package_section(scan, mode);
-        hashes.push(section_content_hash(&section));
-        let oob =
-            crate::web::render::single_oob_section(&section, root_idx, links, mode).into_string();
-        payload.push_str(&oob);
+    for root_idx in 0..raw.len() {
+        // Package once per root and reuse for both the rendered OOB
+        // fragment and the seed hash, so the seed agrees byte-for-byte
+        // with what `compute_pushes` will hash on the first tick.
+        let handle = crate::web::render::packaged_section(raw, root_idx, mode);
+        hashes.push(handle.content_hash());
+        payload.push_str(&handle.render_oob(links).into_string());
     }
     (payload, hashes)
 }
@@ -132,11 +87,8 @@ fn snapshot_and_seed(
 /// without rendering the OOB payload it would never send. Mirrors
 /// `snapshot_and_seed`'s hashing so the seed agrees with `compute_pushes`.
 fn seed_hashes(raw: &state::RawView, mode: ViewMode) -> Vec<u64> {
-    raw.iter()
-        .map(|scan| {
-            let section = crate::web::render::package_section(scan, mode);
-            section_content_hash(&section)
-        })
+    (0..raw.len())
+        .map(|root_idx| crate::web::render::packaged_section(raw, root_idx, mode).content_hash())
         .collect()
 }
 
@@ -905,40 +857,11 @@ mod tests {
     }
 
     #[test]
-    fn render_oob_section_bytes_match_a_direct_single_oob_section_render() {
-        // The contract from ADR-0024: the bytes a tab receives via SSE for a
-        // root equal the bytes a Rescan click would render for the same root.
-        // After consolidation both paths share single_oob_section. This test
-        // pins that fact so a future divergence fails loudly. Derive the
-        // rendered section through web::render::package_section (the helper
-        // render_oob_section itself uses) so a drift in that helper fails
-        // this test rather than getting silently re-applied here.
-        let raw = RootScan::Walked {
-            canonical_path: std::path::PathBuf::from("/some/root"),
-            folders: Vec::new(),
-        };
-        let links: Vec<crate::config::SearchLink> = Vec::new();
-
-        let via_autosync = render_oob_section(&raw, 7, ViewMode::GapsOnly, &links);
-
-        let rendered_section = crate::web::render::package_section(&raw, ViewMode::GapsOnly);
-        let via_render = crate::web::render::single_oob_section(
-            &rendered_section,
-            7,
-            &links,
-            ViewMode::GapsOnly,
-        )
-        .into_string();
-
-        assert_eq!(via_autosync, via_render, "byte-equal SSE contract");
-    }
-
-    #[test]
-    fn render_oob_section_html_carries_total_audiobooks_for_a_walked_root() {
-        use crate::scanner::ScannedFolder;
+    fn oob_render_carries_total_audiobooks_for_a_walked_root() {
+        use crate::scanner::{RootScan, ScannedFolder};
         use std::path::PathBuf;
 
-        let raw = RootScan::Walked {
+        let raw = vec![RootScan::Walked {
             canonical_path: PathBuf::from("/lib"),
             folders: vec![
                 ScannedFolder {
@@ -956,67 +879,63 @@ mod tests {
                     audio_files: std::sync::Arc::from(Vec::<String>::new()),
                 },
             ],
-        };
-        let html = render_oob_section(&raw, 0, ViewMode::GapsOnly, &[]);
-        // The pushed fragment includes the data attr on its section open tag,
-        // so the live page's coverage stays current after an autosync swap.
+        }];
+        let handle = crate::web::render::packaged_section(&raw, 0, ViewMode::GapsOnly);
+        let html = handle.render_oob(&[]).into_string();
         assert!(html.contains(r#"data-total-audiobooks="1""#));
     }
 
     #[test]
     fn content_hash_equals_render_parity() {
-        // Equality of section_content_hash must imply equality of rendered HTML
-        // for the same mode, so compute_pushes can skip the OOB wrap on a hash
-        // match without dropping a real diff. Fails closed if a future
-        // renderer input lands outside the packaged section.
-        let a = walked_root_with_folder(0, true);
-        let b = walked_root_with_folder(0, true);
+        // Equality of SectionHandle::content_hash must imply equality of
+        // rendered HTML for the same mode, so compute_pushes can skip the
+        // OOB wrap on a hash match without dropping a real diff. Fails
+        // closed if a future renderer input lands outside the packaged
+        // section.
+        let raw_a = vec![walked_root_with_folder(0, true)];
+        let raw_b = vec![walked_root_with_folder(0, true)];
         let links = no_links();
 
-        let section_a = crate::web::render::package_section(&a, ViewMode::GapsOnly);
-        let section_b = crate::web::render::package_section(&b, ViewMode::GapsOnly);
+        let handle_a = crate::web::render::packaged_section(&raw_a, 0, ViewMode::GapsOnly);
+        let handle_b = crate::web::render::packaged_section(&raw_b, 0, ViewMode::GapsOnly);
+        assert_eq!(handle_a.content_hash(), handle_b.content_hash());
         assert_eq!(
-            section_content_hash(&section_a),
-            section_content_hash(&section_b),
-        );
-        assert_eq!(
-            render_oob_section(&a, 0, ViewMode::GapsOnly, &links),
-            render_oob_section(&b, 0, ViewMode::GapsOnly, &links),
+            handle_a.render_oob(&links).into_string(),
+            handle_b.render_oob(&links).into_string(),
         );
 
-        // Flip one bit of content
-        let c = walked_root_with_folder(0, false);
-        let section_c = crate::web::render::package_section(&c, ViewMode::GapsOnly);
+        // Flip one bit of content.
+        let raw_c = vec![walked_root_with_folder(0, false)];
+        let handle_c = crate::web::render::packaged_section(&raw_c, 0, ViewMode::GapsOnly);
+        assert_ne!(handle_a.content_hash(), handle_c.content_hash());
         assert_ne!(
-            section_content_hash(&section_a),
-            section_content_hash(&section_c),
-        );
-        assert_ne!(
-            render_oob_section(&a, 0, ViewMode::GapsOnly, &links),
-            render_oob_section(&c, 0, ViewMode::GapsOnly, &links),
+            handle_a.render_oob(&links).into_string(),
+            handle_c.render_oob(&links).into_string(),
         );
     }
 
     #[test]
     fn gaps_hash_unchanged_when_show_all_only_change_lands() {
-        // Per-mode dedup property: a change that only the show-all renderer
-        // sees (here, adding a second cover file on a covered audiobook) must
-        // leave the gaps-mode content hash equal, so the gaps subscriber
-        // receives no push. tests/sse.rs::two_modes_isolated is the end-to-end
-        // version of this contract. This test pins the underlying invariant
-        // at the hash level.
+        // Per-mode dedup property: a change that only the show-all
+        // renderer sees (here, adding a second cover file on a covered
+        // audiobook) must leave the gaps-mode content hash equal, so the
+        // gaps subscriber receives no push. tests/sse.rs::two_modes_isolated
+        // is the end-to-end version of this contract. This test pins the
+        // underlying invariant at the hash level.
         use crate::scanner::{RootScan, ScannedFolder};
         use std::path::PathBuf;
 
-        let covered = |cover_files: Vec<String>| RootScan::Walked {
-            canonical_path: PathBuf::from("/lib"),
-            folders: vec![ScannedFolder {
-                rel_path: PathBuf::from("Book"),
-                directly_holds_audio: true,
-                missing_ebook: false,
-                cover_files: cover_files.into(),
-                audio_files: std::sync::Arc::from(vec!["01.mp3".to_string()]),
-            }],
+        let covered = |cover_files: Vec<String>| {
+            vec![RootScan::Walked {
+                canonical_path: PathBuf::from("/lib"),
+                folders: vec![ScannedFolder {
+                    rel_path: PathBuf::from("Book"),
+                    directly_holds_audio: true,
+                    missing_ebook: false,
+                    cover_files: cover_files.into(),
+                    audio_files: std::sync::Arc::from(vec!["01.mp3".to_string()]),
+                }],
+            }]
         };
         let before = covered(vec!["Book.epub".to_string()]);
         let after = covered(vec![
@@ -1024,25 +943,19 @@ mod tests {
             "Book.companion.epub".to_string(),
         ]);
 
-        let gaps_before = section_content_hash(&crate::web::render::package_section(
-            &before,
-            ViewMode::GapsOnly,
-        ));
-        let gaps_after = section_content_hash(&crate::web::render::package_section(
-            &after,
-            ViewMode::GapsOnly,
-        ));
+        let gaps_before =
+            crate::web::render::packaged_section(&before, 0, ViewMode::GapsOnly).content_hash();
+        let gaps_after =
+            crate::web::render::packaged_section(&after, 0, ViewMode::GapsOnly).content_hash();
         assert_eq!(
             gaps_before, gaps_after,
             "gaps mode discards cover_files; hash must be stable across this change",
         );
 
-        // The same change does flip the show-all hash, otherwise show-all
-        // would never see the push it must see.
         let all_before =
-            section_content_hash(&crate::web::render::package_section(&before, ViewMode::All));
+            crate::web::render::packaged_section(&before, 0, ViewMode::All).content_hash();
         let all_after =
-            section_content_hash(&crate::web::render::package_section(&after, ViewMode::All));
+            crate::web::render::packaged_section(&after, 0, ViewMode::All).content_hash();
         assert_ne!(
             all_before, all_after,
             "show-all carries cover_files; hash must change so the push fires",
