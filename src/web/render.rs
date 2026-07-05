@@ -60,6 +60,97 @@ pub fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
     }
 }
 
+/// One packaged section plus the identifying context needed to render or
+/// hash it. Constructed by `packaged_section`, which owns the raw →
+/// packaged step. The handle owns its `RootSection` so callers do not
+/// name intermediate types.
+pub struct SectionHandle {
+    section: RootSection,
+    root: usize,
+    mode: ViewMode,
+}
+
+impl SectionHandle {
+    /// Hash the packaged section for per-mode autosync dedup. See ADR-0024.
+    /// Equality of `content_hash` implies equality of rendered HTML because
+    /// both `render` and `render_oob` route through the same internal
+    /// section renderer, and the packaged `RootSection` is the only
+    /// per-tick input that varies.
+    #[must_use]
+    pub fn content_hash(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.section.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// Render the section for an inline swap. `alert` shows as an
+    /// in-section error banner when `Some`.
+    #[must_use]
+    pub fn render(&self, links: &[SearchLink], alert: Option<&str>) -> Markup {
+        render_section(&self.section, self.root, alert, links, self.mode)
+    }
+
+    /// Render the section wrapped in the `hx-swap-oob` fragment the SSE
+    /// stream pushes. Byte-equal to `render(links, None)` inside the
+    /// wrap div by construction (both route through `render_section`).
+    #[must_use]
+    pub fn render_oob(&self, links: &[SearchLink]) -> Markup {
+        single_oob_section(&self.section, self.root, links, self.mode)
+    }
+}
+
+/// How `all_sections` wraps each section: plain for the /rescan swap into
+/// `#roots`, OOB for the SSE snapshot payload.
+#[derive(Debug, Clone, Copy)]
+pub enum SectionWrap {
+    /// Emit each section as a plain `<section>` for the /rescan swap into
+    /// `#roots`.
+    Plain,
+    /// Wrap each section in the `hx-swap-oob` fragment used by the SSE
+    /// snapshot payload.
+    Oob,
+}
+
+/// Package one root's section from `raw`, ready to hash or render. Panics
+/// if `root >= raw.len()`; callers validate the index before reaching
+/// this seam (`WriteFailure::BadRoot` in `web::mark`/`unmark`, an explicit
+/// bounds check in `demo::apply_mark`).
+#[must_use]
+pub fn packaged_section(raw: &RawView, root: usize, mode: ViewMode) -> SectionHandle {
+    let section = package_section(&raw[root], mode);
+    SectionHandle {
+        section,
+        root,
+        mode,
+    }
+}
+
+/// Full HTML document for the current raw view. Assembles the packaged
+/// view, then hands it to `render_view` for the shell + gap summary +
+/// roots block. Single call site: the index handler (prod and demo).
+#[must_use]
+pub fn page(raw: &RawView, links: &[SearchLink], mode: ViewMode) -> Markup {
+    let view = package_view(raw, mode);
+    render_view(&view, links, mode)
+}
+
+/// Every root section in one payload, either plain (rescan swap) or
+/// OOB-wrapped (SSE snapshot).
+#[must_use]
+pub fn all_sections(
+    raw: &RawView,
+    links: &[SearchLink],
+    mode: ViewMode,
+    wrap: SectionWrap,
+) -> Markup {
+    let view = package_view(raw, mode);
+    match wrap {
+        SectionWrap::Plain => roots(&view, links, mode),
+        SectionWrap::Oob => oob_sections(&view, links, mode),
+    }
+}
+
 /// The rotating folder caret used on collapsible rows.
 fn chevron() -> Markup {
     html! { (PreEscaped(include_str!("../../assets/svg/chevron.svg"))) }
@@ -662,6 +753,84 @@ mod tests {
             selector, "#root-3-section",
             "OOB selector must be a plain id; htmx splits on the first colon, \
              so any whitespace or extra colon corrupts the selector",
+        );
+    }
+
+    /// Render byte-equality across the handle's two output shapes: the
+    /// OOB-wrapped fragment must contain the plain render byte-for-byte.
+    /// This is ADR-0024's cross-path contract lifted inside the module
+    /// that now owns both shapes.
+    #[tokio::test]
+    async fn section_handle_render_oob_wraps_render_byte_for_byte() {
+        use crate::scenarios;
+        let dir = tempfile::tempdir().unwrap();
+        let scenario = scenarios::find_scenario("mixed-forest").expect("scenario exists");
+        let roots = scenarios::materialize(&(scenario.spec)(), dir.path());
+        let cfg = Config {
+            library_roots: roots,
+            ttl_seconds: 600,
+            ..Config::default()
+        };
+        let links = cfg.search_links.clone();
+        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
+        let raw = build_view(
+            &cfg,
+            &Arc::new(settings),
+            &test_indices(cfg.library_roots.len()),
+        )
+        .await;
+        for mode in [ViewMode::GapsOnly, ViewMode::All] {
+            for root in 0..raw.len() {
+                let handle = packaged_section(&raw, root, mode);
+                let plain = handle.render(&links, None).into_string();
+                let oob = handle.render_oob(&links).into_string();
+                assert!(
+                    oob.contains(&plain),
+                    "root={root} mode={mode:?}: OOB fragment must contain the plain render byte-for-byte",
+                );
+            }
+        }
+    }
+
+    /// Equal packaged sections hash equally, and a real per-mode change
+    /// flips the hash. Fails closed if a future field lands outside the
+    /// derived `Hash`. Companion to `content_hash_equals_render_parity`
+    /// in autosync::tests, but expressed at the handle boundary.
+    #[test]
+    fn section_handle_content_hash_stability() {
+        use crate::scanner::{RootScan, ScannedFolder};
+        use std::path::PathBuf;
+
+        let raw_a = vec![RootScan::Walked {
+            canonical_path: PathBuf::from("/lib"),
+            folders: vec![ScannedFolder {
+                rel_path: PathBuf::from("Book"),
+                directly_holds_audio: true,
+                missing_ebook: true,
+                cover_files: std::sync::Arc::from(Vec::<String>::new()),
+                audio_files: std::sync::Arc::from(vec!["01.mp3".to_string()]),
+            }],
+        }];
+        let raw_b = raw_a.clone();
+        assert_eq!(
+            packaged_section(&raw_a, 0, ViewMode::GapsOnly).content_hash(),
+            packaged_section(&raw_b, 0, ViewMode::GapsOnly).content_hash(),
+        );
+
+        let raw_c = vec![RootScan::Walked {
+            canonical_path: PathBuf::from("/lib"),
+            folders: vec![ScannedFolder {
+                rel_path: PathBuf::from("Book"),
+                directly_holds_audio: true,
+                missing_ebook: false,
+                cover_files: std::sync::Arc::from(vec!["Book.epub".to_string()]),
+                audio_files: std::sync::Arc::from(vec!["01.mp3".to_string()]),
+            }],
+        }];
+        assert_ne!(
+            packaged_section(&raw_a, 0, ViewMode::GapsOnly).content_hash(),
+            packaged_section(&raw_c, 0, ViewMode::GapsOnly).content_hash(),
+            "flipping a folder from flagged to covered must change the hash",
         );
     }
 
