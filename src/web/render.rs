@@ -13,11 +13,11 @@ use crate::tree::Node;
 use crate::tree::{RootState, ViewMode};
 
 /// The whole read view: one section per configured library root, in config order.
-pub type FlaggedView = Vec<RootSection>;
+type FlaggedView = Vec<RootSection>;
 
 /// One library root's outcome, labeled with the path the scanner walked.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RootSection {
+struct RootSection {
     /// The canonical root path when it resolved, else the configured path.
     pub path: String,
     /// What the scan found for this root.
@@ -37,7 +37,7 @@ pub struct RootSection {
 /// directly from the raw folders. Both run on the request thread (the per-folder
 /// cost is bounded, see ADR-0022). Allocates a fresh `FlaggedView` per response
 /// and drops it after the response writes.
-pub fn package_view(raw: &RawView, mode: ViewMode) -> FlaggedView {
+fn package_view(raw: &RawView, mode: ViewMode) -> FlaggedView {
     raw.iter().map(|scan| package_section(scan, mode)).collect()
 }
 
@@ -46,7 +46,7 @@ pub fn package_view(raw: &RawView, mode: ViewMode) -> FlaggedView {
 /// The single owner of the raw-to-packaged step. `package_view` calls it on
 /// the snapshot path. `autosync::render_oob_section` calls it on the push
 /// path. Any future per-root field lands here once.
-pub fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
+fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
     let state = tree::build(scan, mode);
     let gaps_within = match &state {
         RootState::Forest(nodes) => nodes.iter().map(|n| n.gaps_within).sum(),
@@ -163,7 +163,7 @@ fn folder_icon() -> Markup {
 
 /// The root sections in order. Shared by the full page and the htmx rescan
 /// response, which swaps just this list into `#roots`.
-pub(crate) fn roots(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
+fn roots(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         @for (root, section) in view.iter().enumerate() {
             (render_section(section, root, None, links, mode))
@@ -176,7 +176,7 @@ pub(crate) fn roots(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) ->
 /// the open page (see ADR-0024). Shared by the page-level snapshot helper and
 /// the autosync per-root push so the bytes a tab receives via SSE equal the
 /// bytes a direct render would produce.
-pub fn single_oob_section(
+fn single_oob_section(
     section: &RootSection,
     root: usize,
     links: &[SearchLink],
@@ -193,7 +193,7 @@ pub fn single_oob_section(
 /// for an SSE snapshot payload. Walks the view and delegates each section to
 /// `single_oob_section` so the per-section bytes are identical to what the
 /// autosync loop pushes one root at a time.
-pub(crate) fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
+fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         @for (root, section) in view.iter().enumerate() {
             (single_oob_section(section, root, links, mode))
@@ -204,7 +204,7 @@ pub(crate) fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewM
 /// The page entry point: assembles the body content (gap summary + roots
 /// block) and hands it to `page::page` for shell-wrapping. The single
 /// production caller is `web::index` in `src/web.rs`.
-pub fn render_view(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
+fn render_view(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     let body = html! {
         (gap_summary(view))
         div.roots-wrap {
@@ -384,7 +384,7 @@ fn root_badge(section: &RootSection) -> Markup {
 /// Render one root's section with an optional inline alert. Public so SSE
 /// integration tests under `tests/` can compare the byte output against an
 /// OOB-wrapped snapshot fragment.
-pub(crate) fn render_section(
+fn render_section(
     section: &RootSection,
     root: usize,
     error: Option<&str>,
@@ -732,14 +732,19 @@ mod tests {
     /// extra colons so the next person to reach for an OOB modifier fails
     /// this test instead of shipping silent breakage.
     #[test]
-    fn single_oob_section_attribute_survives_htmx_first_colon_parse() {
-        let section = RootSection {
-            path: "/some/root".to_string(),
-            state: RootState::Clean,
-            total_audiobooks: 0,
-            gaps_within: 0,
+    fn render_oob_attribute_survives_htmx_first_colon_parse() {
+        use crate::scanner::RootScan;
+        use std::path::PathBuf;
+        let empty = || RootScan::Walked {
+            canonical_path: PathBuf::from("/some/root"),
+            folders: Vec::new(),
         };
-        let html = single_oob_section(&section, 3, &[], ViewMode::GapsOnly).into_string();
+        // Build a raw view with four roots so `packaged_section(.., 3, ..)`
+        // is in bounds, keeping the OOB target id `#root-3-section` we assert
+        // on below.
+        let raw = vec![empty(), empty(), empty(), empty()];
+        let handle = packaged_section(&raw, 3, ViewMode::GapsOnly);
+        let html = handle.render_oob(&[]).into_string();
 
         let oob_value = extract_attr_value(&html, "hx-swap-oob")
             .expect("rendered fragment carries an hx-swap-oob attribute");

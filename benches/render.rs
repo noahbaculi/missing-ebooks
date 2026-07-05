@@ -1,4 +1,4 @@
-//! Criterion bench for `render_view` and the per-section OOB render. Three
+//! Criterion bench for `render::page` and the per-section OOB render. Three
 //! sizes (1k, 10k, 50k folders), depth=3 (the audiobook Author/Series/Book
 //! shape), gap_rate=0.5, both view modes. Fanout grows with size so each row
 //! actually hits the leaf level and `Throughput::Elements` reports honest
@@ -13,16 +13,12 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 use missing_ebooks::scanner::RootScan;
 use missing_ebooks::synthetic::synthetic_root_scan;
 use missing_ebooks::tree::ViewMode;
-use missing_ebooks::web::render::{
-    FlaggedView, package_section, package_view, render_view, single_oob_section,
-};
+use missing_ebooks::web::render;
 
 /// One bench input. Built once per size so the measured closure runs only
 /// the function under test.
 struct Input {
-    scan: RootScan,
-    view_gaps: FlaggedView,
-    view_all: FlaggedView,
+    raw: Vec<RootScan>,
 }
 
 /// `(total, label, fanout)`. Fanout per size is the smallest `N` whose
@@ -39,23 +35,19 @@ const GAP_RATE: f64 = 0.5;
 
 fn bench_render(c: &mut Criterion) {
     for &(size, label, fanout) in SIZES {
-        let scan = synthetic_root_scan(size, DEPTH, fanout, GAP_RATE);
-        let raw = vec![scan.clone()];
-        let view_gaps = package_view(&raw, ViewMode::GapsOnly);
-        let view_all = package_view(&raw, ViewMode::All);
-        let input = Input {
-            scan,
-            view_gaps,
-            view_all,
-        };
+        let scan: RootScan = synthetic_root_scan(size, DEPTH, fanout, GAP_RATE);
+        let raw: Vec<RootScan> = vec![scan];
+        let input = Input { raw };
 
-        let mut group = c.benchmark_group("render_view");
+        // `render::page` folds packaging inside the render seam, so this
+        // measures the full raw → HTML pipeline the / handler runs.
+        let mut group = c.benchmark_group("page");
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::new("gaps", label), &input, |b, i| {
-            b.iter(|| render_view(&i.view_gaps, &[], ViewMode::GapsOnly).into_string());
+            b.iter(|| render::page(&i.raw, &[], ViewMode::GapsOnly).into_string());
         });
         group.bench_with_input(BenchmarkId::new("all", label), &input, |b, i| {
-            b.iter(|| render_view(&i.view_all, &[], ViewMode::All).into_string());
+            b.iter(|| render::page(&i.raw, &[], ViewMode::All).into_string());
         });
         group.finish();
 
@@ -63,14 +55,16 @@ fn bench_render(c: &mut Criterion) {
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::new("gaps", label), &input, |b, i| {
             b.iter(|| {
-                let section = package_section(&i.scan, ViewMode::GapsOnly);
-                single_oob_section(&section, 0, &[], ViewMode::GapsOnly).into_string()
+                render::packaged_section(&i.raw, 0, ViewMode::GapsOnly)
+                    .render_oob(&[])
+                    .into_string()
             });
         });
         group.bench_with_input(BenchmarkId::new("all", label), &input, |b, i| {
             b.iter(|| {
-                let section = package_section(&i.scan, ViewMode::All);
-                single_oob_section(&section, 0, &[], ViewMode::All).into_string()
+                render::packaged_section(&i.raw, 0, ViewMode::All)
+                    .render_oob(&[])
+                    .into_string()
             });
         });
         group.finish();
