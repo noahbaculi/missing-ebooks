@@ -22,8 +22,7 @@ use crate::scanner;
 use crate::state::RawView;
 use crate::tree::ViewMode;
 use crate::web::assets::{app_css, app_js, htmx_script, htmx_sse_script};
-use crate::web::render::render_view as render_view_html;
-use crate::web::render::{oob_sections, render_section};
+use crate::web::render;
 use crate::web::{MarkRequest, ViewQuery, events_response};
 
 use super::banner;
@@ -172,8 +171,8 @@ async fn index(
         return capacity_response();
     };
     let overlay = MarkOverlay::new(&marks);
-    let view = package_view_with_overlay(&state.base_raw, &overlay, mode);
-    let html = render_view_html(&view, &state.search_links, mode).into_string();
+    let raw = package_view_with_overlay(&state.base_raw, &overlay);
+    let html = render::page(&raw, &state.search_links, mode).into_string();
     let mut response = Html(banner::inject(&html, mode)).into_response();
     if let Some(cookie) = set_cookie {
         response.headers_mut().append(header::SET_COOKIE, cookie);
@@ -234,8 +233,8 @@ fn apply_mark(
         return capacity_response();
     };
     let overlay = MarkOverlay::new(&marks);
-    let view = package_view_with_overlay(&state.base_raw, &overlay, mode);
-    let markup = render_section(&view[req.root], req.root, None, &state.search_links, mode);
+    let raw = package_view_with_overlay(&state.base_raw, &overlay);
+    let markup = render::packaged_section(&raw, req.root, mode).render(&state.search_links, None);
     let mut response = Html(markup.into_string()).into_response();
     if let Some(cookie) = set_cookie {
         response.headers_mut().append(header::SET_COOKIE, cookie);
@@ -333,8 +332,10 @@ async fn events(
 
     if headers.contains_key("last-event-id") {
         let overlay = MarkOverlay::new(&marks);
-        let view = package_view_with_overlay(&state.base_raw, &overlay, mode);
-        let snapshot = oob_sections(&view, &state.search_links, mode).into_string();
+        let raw = package_view_with_overlay(&state.base_raw, &overlay);
+        let snapshot =
+            render::all_sections(&raw, &state.search_links, mode, render::SectionWrap::Oob)
+                .into_string();
         let _ = tx.send(crate::web::snapshot_event(snapshot)).await;
     }
 
@@ -679,30 +680,28 @@ mod tests {
 
     #[tokio::test]
     async fn overlay_with_no_marks_matches_package_view_of_the_base() {
-        use crate::web::render::package_view;
         use std::collections::HashSet;
 
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
 
-        let plain = package_view(&state.base_raw, ViewMode::GapsOnly);
         let empty: HashSet<crate::demo::session::MarkKey> = HashSet::new();
         let overlay = MarkOverlay::new(&empty);
-        let derived = package_view_with_overlay(&state.base_raw, &overlay, ViewMode::GapsOnly);
+        let derived = package_view_with_overlay(&state.base_raw, &overlay);
         assert_eq!(
-            render_view_html(&plain, &state.search_links, ViewMode::GapsOnly).into_string(),
-            render_view_html(&derived, &state.search_links, ViewMode::GapsOnly).into_string(),
+            render::page(&state.base_raw, &state.search_links, ViewMode::GapsOnly).into_string(),
+            render::page(&derived, &state.search_links, ViewMode::GapsOnly).into_string(),
             "with no marks, overlay must match a direct render"
         );
 
         let mut marks: HashSet<crate::demo::session::MarkKey> = HashSet::new();
         marks.insert((0, "Book".to_string(), Marker::NoEbook));
         let overlay = MarkOverlay::new(&marks);
-        let after = package_view_with_overlay(&state.base_raw, &overlay, ViewMode::GapsOnly);
+        let after = package_view_with_overlay(&state.base_raw, &overlay);
         assert_ne!(
-            render_view_html(&plain, &state.search_links, ViewMode::GapsOnly).into_string(),
-            render_view_html(&after, &state.search_links, ViewMode::GapsOnly).into_string(),
+            render::page(&state.base_raw, &state.search_links, ViewMode::GapsOnly).into_string(),
+            render::page(&after, &state.search_links, ViewMode::GapsOnly).into_string(),
             "replaying a mark must change the view"
         );
     }

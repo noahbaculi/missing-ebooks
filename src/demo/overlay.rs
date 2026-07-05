@@ -9,8 +9,6 @@ use std::path::Path;
 use crate::demo::session::MarkKey;
 use crate::marker::Marker;
 use crate::state::RawView;
-use crate::tree::ViewMode;
-use crate::web::render::FlaggedView;
 
 /// Borrowing view over a session's mark set. Answers per-folder questions
 /// about which marks apply and how, without cloning the set.
@@ -79,19 +77,15 @@ impl<'a> MarkOverlay<'a> {
     }
 }
 
-/// Materialize the overlay against `base` into a fresh `RawView`, then call
-/// the production `package_view`. Walks `base` once, cloning each section
-/// and applying per-folder overlay edits in place. Avoids reimplementing
-/// `package_view`'s mode-filter and forest-build logic, so the overlay path
-/// inherits any future refinement to `package_view` for free.
+/// Materialize the overlay against `base` into a fresh `RawView`. Walks
+/// `base` once, cloning each section and applying per-folder overlay
+/// edits in place. Returns a raw view the demo handlers hand to the
+/// shared render seams (`page`, `packaged_section`, `all_sections`), so
+/// the overlay path inherits any future refinement to packaging or
+/// rendering for free.
 ///
-/// Cost: `O(F)` clone plus `O(F * depth)` overlay probes, vs. the old
-/// `derive_view`'s `O((M+1) * F)`.
-pub(crate) fn package_view_with_overlay(
-    base: &RawView,
-    overlay: &MarkOverlay<'_>,
-    mode: ViewMode,
-) -> FlaggedView {
+/// Cost: `O(F)` clone plus `O(F * depth)` overlay probes.
+pub(crate) fn package_view_with_overlay(base: &RawView, overlay: &MarkOverlay<'_>) -> RawView {
     let mut synthesized = base.clone();
     for (root_idx, section) in synthesized.iter_mut().enumerate() {
         let crate::scanner::RootScan::Walked { folders, .. } = section else {
@@ -115,7 +109,7 @@ pub(crate) fn package_view_with_overlay(
             }
         }
     }
-    crate::web::render::package_view(&synthesized, mode)
+    synthesized
 }
 
 #[cfg(test)]
@@ -125,7 +119,8 @@ mod tests {
     use crate::scanner::ScanSettings;
     use crate::scenarios;
     use crate::state::AppState;
-    use crate::web::render::{package_view, render_view};
+    use crate::tree::ViewMode;
+    use crate::web::render;
     use std::sync::Arc;
 
     /// For each interesting scenario and mark set: compare the overlay
@@ -198,8 +193,8 @@ mod tests {
         let base = state.store.current().await;
 
         for mode in [ViewMode::GapsOnly, ViewMode::All] {
-            // Path A: replay marks via apply_mark_raw, then package_view +
-            // render_view. This is the production-equivalent path.
+            // Path A: replay marks via apply_mark_raw, then page().
+            // This is the production-equivalent path.
             let mut raw_replay = (*base).clone();
             // Filter for valid folder rels so a missing-from-scenario mark
             // does not silently no-op the replay. The equivalence is only
@@ -212,14 +207,13 @@ mod tests {
             for (root, rel, kind) in &valid_marks {
                 crate::state::apply_mark_raw(&mut raw_replay, *root, rel, *kind);
             }
-            let replay_view = package_view(&raw_replay, mode);
-            let replay_html = render_view(&replay_view, &links, mode).into_string();
+            let replay_html = render::page(&raw_replay, &links, mode).into_string();
 
             // Path B: same logical state via the overlay.
             let mark_set: HashSet<MarkKey> = valid_marks.iter().map(|k| (*k).clone()).collect();
             let overlay = MarkOverlay::new(&mark_set);
-            let overlay_view = package_view_with_overlay(&base, &overlay, mode);
-            let overlay_html = render_view(&overlay_view, &links, mode).into_string();
+            let overlay_raw = package_view_with_overlay(&base, &overlay);
+            let overlay_html = render::page(&overlay_raw, &links, mode).into_string();
 
             assert_eq!(
                 replay_html, overlay_html,
