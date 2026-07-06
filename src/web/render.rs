@@ -130,10 +130,19 @@ pub fn packaged_section(raw: &RawView, root: usize, mode: ViewMode) -> SectionHa
 /// Full HTML document for the current raw view. Assembles the packaged
 /// view, then hands it to `render_view` for the shell + gap summary +
 /// roots block. Single call site: the index handler (prod and demo).
+///
+/// `poll_interval_seconds` threads down to the page shell, where a nonzero
+/// value emits the poll marker in place of the SSE mount. Zero preserves
+/// the legacy SSE mount during rollout. See ADR-0034.
 #[must_use]
-pub fn page(raw: &RawView, links: &[SearchLink], mode: ViewMode) -> Markup {
+pub fn page(
+    raw: &RawView,
+    links: &[SearchLink],
+    mode: ViewMode,
+    poll_interval_seconds: u64,
+) -> Markup {
     let view = package_view(raw, mode);
-    render_view(&view, links, mode)
+    render_view(&view, links, mode, poll_interval_seconds)
 }
 
 /// Every root section in one payload, either plain (rescan swap) or
@@ -205,7 +214,12 @@ fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Mar
 /// The page entry point: assembles the body content (gap summary + roots
 /// block) and hands it to `page::page` for shell-wrapping. The single
 /// production caller is `web::index` in `src/web.rs`.
-fn render_view(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
+fn render_view(
+    view: &FlaggedView,
+    links: &[SearchLink],
+    mode: ViewMode,
+    poll_interval_seconds: u64,
+) -> Markup {
     let body = html! {
         (gap_summary(view))
         div.roots-wrap {
@@ -216,7 +230,7 @@ fn render_view(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Mark
             (super::page::search_empty())
         }
     };
-    super::page::page(mode, &body)
+    super::page::page(mode, poll_interval_seconds, &body)
 }
 
 /// Total gaps across all roots: read directly from each section's
@@ -932,7 +946,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(html.contains("Book"));
     }
 
@@ -952,7 +966,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The top container is tagged for bold, the nested one for italic.
         assert!(html.contains(r#"class="row container-top""#));
         assert!(html.contains(r#"class="row container-nested""#));
@@ -976,7 +990,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(!html.contains("loose at top"));
         assert!(!html.contains("holds audio + subfolders"));
     }
@@ -999,7 +1013,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::All).into_string();
+        let html = render_view(&view, &[], ViewMode::All, 0).into_string();
         // The covered top and nested containers still carry their depth tags, so the
         // depth cue survives the view switch and composes with the covered class.
         assert!(html.contains(r#"class="row covered container-top""#));
@@ -1043,7 +1057,7 @@ mod tests {
         };
 
         let view = vec![section("/lib", forest(vec![loose, mixed]), 3)];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
 
         assert!(
             html.contains("loose at top"),
@@ -1066,7 +1080,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The count sits on the row, and the file row is present but inside a closed
         // <details> (no `open`), so the names are hidden until the row is expanded.
         assert!(html.contains("1 file"));
@@ -1085,7 +1099,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(html.contains("3 files"));
         // The trailing space pins this to the singular row text. A bare
         // "3 file" would also match the plural "3 files", so we anchor on
@@ -1114,7 +1128,7 @@ mod tests {
             gaps_within: 2,
         };
         let view = vec![section("/lib", forest(vec![mixed]), 2)];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The mixed author's own loose file renders as a file row, and the child gap
         // still renders as a folder row carrying its badge.
         assert!(html.contains("01 - The Colour of Magic.mp3"));
@@ -1129,7 +1143,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The root sections live inside a positioned wrapper so the rescan bar
         // can pin above them, and inside #roots so htmx can swap them in place.
         assert!(html.contains(r#"class="roots-wrap""#));
@@ -1149,7 +1163,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The root head is now a <summary> inside a collapsible <details>.
         assert!(html.contains(r#"class="root-fold""#));
         assert!(html.contains("root-head"));
@@ -1160,7 +1174,7 @@ mod tests {
     #[test]
     fn a_clean_root_badge_reads_no_gaps() {
         let view = vec![clean("/lib", 1)];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(html.contains("no gaps"));
     }
 
@@ -1169,14 +1183,14 @@ mod tests {
         // A walked-but-empty root in show-all keeps the `Forest(vec![])` arm
         // so the "Nothing here" branch fires for the loose-root edge case.
         let view = vec![section("/lib", forest(vec![]), 0)];
-        let html = render_view(&view, &[], ViewMode::All).into_string();
+        let html = render_view(&view, &[], ViewMode::All, 0).into_string();
         assert!(html.contains("Nothing here"));
     }
 
     #[test]
     fn index_shows_the_clean_message_for_a_covered_root() {
         let view = vec![clean("/lib", 1)];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(html.contains("No missing ebooks in this root"));
     }
 
@@ -1234,11 +1248,11 @@ mod tests {
         )];
         // Gaps-only: the marked folder leaves the list, so the section swap is delayed
         // to let app.js play the row's collapse before the fresh section lands.
-        let gaps = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let gaps = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(gaps.contains(r#"hx-swap="outerHTML swap:250ms""#));
         // Show-all: the row flips to covered in place, so the swap is immediate. The
         // reserved row height keeps the flip from shifting the rows below.
-        let all = render_view(&view, &[], ViewMode::All).into_string();
+        let all = render_view(&view, &[], ViewMode::All, 0).into_string();
         assert!(all.contains(r#"hx-swap="outerHTML""#));
         assert!(!all.contains("swap:250ms"));
     }
@@ -1252,7 +1266,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(html.contains(r#"hx-post="/mark""#));
         assert!(html.contains(">No ebook<"));
     }
@@ -1264,7 +1278,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The "Ebook elsewhere" button now carries a book-and-check glyph (the
         // checkmark path), not the old open-external-link arrow.
         assert!(html.contains("m9 9.5 2 2 4-4"));
@@ -1278,7 +1292,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // Each marker button names its action, file, and folder for the dialog.
         assert!(html.contains(r#"data-confirm-action="No ebook""#));
         assert!(html.contains(r#"data-confirm-file=".no_ebook""#));
@@ -1306,7 +1320,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::All).into_string();
+        let html = render_view(&view, &[], ViewMode::All, 0).into_string();
         // Covered rows carry the success check and the covered class.
         assert!(html.contains(r#"title="covered""#));
         assert!(html.contains(r#"covered""#));
@@ -1325,7 +1339,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::All).into_string();
+        let html = render_view(&view, &[], ViewMode::All, 0).into_string();
         // The author is a plain container above a gap, so it still gets buttons.
         assert!(html.contains(r#"hx-post="/mark""#));
         assert!(html.contains("Gap"));
@@ -1338,7 +1352,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly, 0).into_string();
         // A labelled kebab that opens the per-row action sheet via the native
         // popover API, and the group that is that popover.
         assert!(html.contains(r#"class="actions-trigger""#));
@@ -1363,7 +1377,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The sheet header titles the sheet with the folder name.
         assert!(html.contains(r#"class="sheet-title">Book<"#));
         // The elsewhere marker keeps a verbose sheet label distinct from its
@@ -1381,7 +1395,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly, 0).into_string();
         // A sheet-only "Search" divider separates the marker rows from the links.
         assert!(html.contains(r#"class="sheet-divider""#));
         // The links still resolve to their configured search URLs.
@@ -1400,7 +1414,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::All).into_string();
+        let html = render_view(&view, &[], ViewMode::All, 0).into_string();
         // No gap under this branch, so no trigger and no group are emitted.
         assert!(!html.contains(r#"class="actions-trigger""#));
         assert!(!html.contains(r#"class="actions-group""#));
@@ -1420,7 +1434,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::All).into_string();
+        let html = render_view(&view, &[], ViewMode::All, 0).into_string();
         assert!(html.contains(r#"class="cover-files""#));
         assert!(html.contains(".no_ebook"));
     }
@@ -1438,7 +1452,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly, 0).into_string();
         assert!(html.contains(r#"target="_blank""#));
         assert!(html.contains("https://www.goodreads.com/search?q=Book"));
         assert!(html.contains("Goodreads"));
@@ -1452,7 +1466,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly, 0).into_string();
         assert!(html.contains("https://www.goodreads.com/search?q=Book"));
         assert!(html.contains("https://oceanofpdf.com/?s=Book"));
         assert!(html.contains("OceanofPDF"));
@@ -1465,7 +1479,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // No links means no `span.links` is emitted, and no search popover menu.
         // The kebab still carries `popovertarget` and is the sheet trigger now.
         assert!(!html.contains(r#"class="links""#));
@@ -1480,7 +1494,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly, 0).into_string();
         // A magnifying-glass button opens a popover that holds the links.
         assert!(html.contains("popovertarget"));
         assert!(html.contains(r#"class="links-menu""#));
@@ -1500,7 +1514,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &default_links(), ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &default_links(), ViewMode::GapsOnly, 0).into_string();
         // Spaces in the cleaned query are percent-encoded, so the href carries `%20`.
         assert!(html.contains("q=Author%20Name"));
     }
@@ -1516,7 +1530,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::All).into_string();
+        let html = render_view(&view, &[], ViewMode::All, 0).into_string();
         assert!(html.contains(r#"class="cover-files""#));
         assert!(html.contains("Covered.epub"));
     }
@@ -1534,7 +1548,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(!html.contains(r#"class="cover-files""#));
     }
 
@@ -1549,7 +1563,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // No status markers and no covered rows in the gaps-only output.
         assert!(!html.contains(r#"class="status""#));
         assert!(!html.contains(r#" covered""#));
@@ -1570,7 +1584,7 @@ mod tests {
             )]),
             2,
         )];
-        let gaps = render_view(&gaps_view, &[], ViewMode::GapsOnly).into_string();
+        let gaps = render_view(&gaps_view, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(!gaps.contains("Covered"));
 
         // Show-all keeps the covered book beside the flagged one.
@@ -1586,7 +1600,7 @@ mod tests {
             )]),
             2,
         )];
-        let all = render_view(&all_view, &[], ViewMode::All).into_string();
+        let all = render_view(&all_view, &[], ViewMode::All, 0).into_string();
         assert!(all.contains("Covered"));
         assert!(all.contains("Gap"));
     }
@@ -1602,7 +1616,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The strip renders server-side, between the navbar and the roots.
         assert!(html.contains(r#"id="gap-summary""#));
         // The hero gap total has its own hook. The library coverage readout
@@ -1632,7 +1646,7 @@ mod tests {
             )]),
             3,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The strip carries the three coverage hooks the JS keeps current.
         assert!(html.contains(r#"id="coverage-pct""#));
         assert!(html.contains(r#"id="coverage-covered""#));
@@ -1649,7 +1663,7 @@ mod tests {
         // Two covered audiobooks, no gaps: the cached gaps-only view collapses
         // an empty forest to `Clean`, so the fixture mirrors that.
         let view = vec![clean("/lib", 2)];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // All-clear branch is visible, the trailing coverage span shows the
         // T of T fragment and is not hidden. The numbers ride in their own
         // child spans so app.js only rewrites the digits and the surrounding
@@ -1667,7 +1681,7 @@ mod tests {
     fn gap_summary_empty_library_keeps_coverage_fragment_hidden() {
         // No audio at all. The strip is in its empty-library state.
         let view = vec![clean("/lib", 0)];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The all-clear line shows but the coverage trailing fragment stays
         // hidden so the line does not read "0 of 0".
         assert!(html.contains("All clear"));
@@ -1688,7 +1702,7 @@ mod tests {
             section("/good", forest(leaves), 100),
             errored("/no/such/root/xyz123", "no such file or directory"),
         ];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // Total reads 100 (errored root contributes zero). Covered 0, pct 0.
         assert!(html.contains(r#"aria-valuemax="100""#));
         assert!(html.contains(r#"aria-valuenow="0""#));
@@ -1700,7 +1714,7 @@ mod tests {
     #[test]
     fn gap_summary_shows_all_clear_for_a_covered_library() {
         let view = vec![clean("/lib", 1)];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // Total zero: the all-clear line shows and the head loads hidden so an
         // undo back from the last mark can bring it back.
         assert!(html.contains("All clear"));
@@ -1732,7 +1746,7 @@ mod tests {
                 1,
             ),
         ];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // One chip per root, each with its own gap count and a data-root hook the
         // client recompute updates.
         assert!(html.contains(r#"id="gap-chips""#));
@@ -1747,7 +1761,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(!html.contains(r#"id="gap-chips""#));
     }
 
@@ -1757,7 +1771,7 @@ mod tests {
             clean("/good", 1),
             errored("/no/such/root/xyz123", "no such file or directory"),
         ];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // Total is zero, so the all-clear message shows, and a multi-root setup still
         // gets its chips, the error root labelled.
         assert!(html.contains("All clear"));
@@ -1778,7 +1792,7 @@ mod tests {
             )]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // A progressbar that measures the library: covered over total audiobooks.
         // With one audiobook and one gap, covered=0 of total=1.
         assert!(html.contains(r#"role="progressbar""#));
@@ -1799,7 +1813,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The tree is now a `menu`, and the styled section keeps the `root` hook.
         assert!(html.contains(r#"class="menu""#));
         assert!(html.contains(r#"class="card root""#));
@@ -1814,7 +1828,7 @@ mod tests {
             forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
             1,
         )];
-        let html = render_view(&view, &[], ViewMode::GapsOnly).into_string();
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         // The mobile dot has no visible text, so the badge gets a title that names
         // it on hover. The literal label is still emitted as the badge's content.
         assert!(html.contains(r#"title="needs ebook""#));
@@ -1973,16 +1987,16 @@ mod tests {
         let raw_two = state.store.current().await;
         let gaps_two = package_view(&raw_two, ViewMode::GapsOnly);
         assert_eq!(
-            render_view(&gaps_one, &links, ViewMode::GapsOnly).into_string(),
-            render_view(&gaps_two, &links, ViewMode::GapsOnly).into_string(),
+            render_view(&gaps_one, &links, ViewMode::GapsOnly, 0).into_string(),
+            render_view(&gaps_two, &links, ViewMode::GapsOnly, 0).into_string(),
             "two reads of the same mode must produce byte-equal renders",
         );
 
         // A mode flip on the same warm cache must produce a different shape.
         let all_one = package_view(&raw_one, ViewMode::All);
         assert_ne!(
-            render_view(&gaps_one, &links, ViewMode::GapsOnly).into_string(),
-            render_view(&all_one, &links, ViewMode::All).into_string(),
+            render_view(&gaps_one, &links, ViewMode::GapsOnly, 0).into_string(),
+            render_view(&all_one, &links, ViewMode::All, 0).into_string(),
             "gaps and show-all must render to different bytes on a non-clean scenario",
         );
 
@@ -1997,8 +2011,8 @@ mod tests {
         assert!(applied.created, "the picked leaf was not already marked");
         let after_mark = package_view(&applied.raw, ViewMode::GapsOnly);
         assert_ne!(
-            render_view(&gaps_one, &links, ViewMode::GapsOnly).into_string(),
-            render_view(&after_mark, &links, ViewMode::GapsOnly).into_string(),
+            render_view(&gaps_one, &links, ViewMode::GapsOnly, 0).into_string(),
+            render_view(&after_mark, &links, ViewMode::GapsOnly, 0).into_string(),
             "the mark must change the gaps view",
         );
 
@@ -2009,8 +2023,8 @@ mod tests {
             .expect("unmark succeeds");
         let restored = package_view(&restored_raw, ViewMode::GapsOnly);
         assert_eq!(
-            render_view(&gaps_one, &links, ViewMode::GapsOnly).into_string(),
-            render_view(&restored, &links, ViewMode::GapsOnly).into_string(),
+            render_view(&gaps_one, &links, ViewMode::GapsOnly, 0).into_string(),
+            render_view(&restored, &links, ViewMode::GapsOnly, 0).into_string(),
             "undoing the mark must restore the gaps view byte-for-byte",
         );
 

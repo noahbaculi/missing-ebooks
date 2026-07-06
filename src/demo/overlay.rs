@@ -207,13 +207,13 @@ mod tests {
             for (root, rel, kind) in &valid_marks {
                 crate::raw_view::apply_mark_raw(&mut raw_replay, *root, rel, *kind);
             }
-            let replay_html = render::page(&raw_replay, &links, mode).into_string();
+            let replay_html = render::page(&raw_replay, &links, mode, 0).into_string();
 
             // Path B: same logical state via the overlay.
             let mark_set: HashSet<MarkKey> = valid_marks.iter().map(|k| (*k).clone()).collect();
             let overlay = MarkOverlay::new(&mark_set);
             let overlay_raw = package_view_with_overlay(&base, &overlay);
-            let overlay_html = render::page(&overlay_raw, &links, mode).into_string();
+            let overlay_html = render::page(&overlay_raw, &links, mode, 0).into_string();
 
             assert_eq!(
                 replay_html, overlay_html,

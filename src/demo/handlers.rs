@@ -172,7 +172,11 @@ async fn index(
     };
     let overlay = MarkOverlay::new(&marks);
     let raw = package_view_with_overlay(&state.base_raw, &overlay);
-    let html = render::page(&raw, &state.search_links, mode).into_string();
+    // The demo runs no autosync loop and never rescans (its library is static
+    // and its marks are in-process), so a nonzero poll interval would just
+    // hit /refresh and get back the same bytes. Emit the SSE mount here so
+    // the demo path stays byte-identical to today until task 4 rips both.
+    let html = render::page(&raw, &state.search_links, mode, 0).into_string();
     let mut response = Html(banner::inject(&html, mode)).into_response();
     if let Some(cookie) = set_cookie {
         response.headers_mut().append(header::SET_COOKIE, cookie);
@@ -690,8 +694,8 @@ mod tests {
         let overlay = MarkOverlay::new(&empty);
         let derived = package_view_with_overlay(&state.base_raw, &overlay);
         assert_eq!(
-            render::page(&state.base_raw, &state.search_links, ViewMode::GapsOnly).into_string(),
-            render::page(&derived, &state.search_links, ViewMode::GapsOnly).into_string(),
+            render::page(&state.base_raw, &state.search_links, ViewMode::GapsOnly, 0).into_string(),
+            render::page(&derived, &state.search_links, ViewMode::GapsOnly, 0).into_string(),
             "with no marks, overlay must match a direct render"
         );
 
@@ -700,8 +704,8 @@ mod tests {
         let overlay = MarkOverlay::new(&marks);
         let after = package_view_with_overlay(&state.base_raw, &overlay);
         assert_ne!(
-            render::page(&state.base_raw, &state.search_links, ViewMode::GapsOnly).into_string(),
-            render::page(&after, &state.search_links, ViewMode::GapsOnly).into_string(),
+            render::page(&state.base_raw, &state.search_links, ViewMode::GapsOnly, 0).into_string(),
+            render::page(&after, &state.search_links, ViewMode::GapsOnly, 0).into_string(),
             "replaying a mark must change the view"
         );
     }

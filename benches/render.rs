@@ -44,10 +44,10 @@ fn bench_render(c: &mut Criterion) {
         let mut group = c.benchmark_group("page");
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::new("gaps", label), &input, |b, i| {
-            b.iter(|| render::page(&i.raw, &[], ViewMode::GapsOnly).into_string());
+            b.iter(|| render::page(&i.raw, &[], ViewMode::GapsOnly, 0).into_string());
         });
         group.bench_with_input(BenchmarkId::new("all", label), &input, |b, i| {
-            b.iter(|| render::page(&i.raw, &[], ViewMode::All).into_string());
+            b.iter(|| render::page(&i.raw, &[], ViewMode::All, 0).into_string());
         });
         group.finish();
 

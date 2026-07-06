@@ -45,6 +45,12 @@ pub struct Config {
     /// The SSE endpoint still serves the initial snapshot but emits no further
     /// section events.
     pub autosync_interval_seconds: u64,
+    /// Client-side poll cadence. When > 0, the page shell emits a
+    /// `<div id="poll-root">` marker with this value; the client hits
+    /// `/refresh?view=...` on that interval while the tab is visible. `0`
+    /// disables the poll and leaves the SSE mount in place during the
+    /// transition. See ADR-0034 (added in a later task).
+    pub poll_interval_seconds: u64,
     /// Audio extensions counted as audio, compared case-insensitively.
     pub audio_exts: Vec<String>,
     /// Ebook extensions counted as coverage, compared case-insensitively.
@@ -68,6 +74,7 @@ impl Default for Config {
             ttl_seconds: 60,
             scan_concurrency: 16,
             autosync_interval_seconds: 10,
+            poll_interval_seconds: 0,
             // Audiobookshelf's full supported sets (see ADR-0006).
             audio_exts: strings(&[
                 ".m4b", ".mp3", ".m4a", ".flac", ".opus", ".ogg", ".oga", ".mp4", ".aac", ".wma",
@@ -235,6 +242,12 @@ fn apply_env_overrides(
     )? {
         cfg.autosync_interval_seconds = v;
     }
+    if let Some(v) = parse_env::<u64>(
+        "MISSING_EBOOKS_POLL_INTERVAL_SECONDS",
+        getenv("MISSING_EBOOKS_POLL_INTERVAL_SECONDS"),
+    )? {
+        cfg.poll_interval_seconds = v;
+    }
     Ok(())
 }
 
@@ -282,6 +295,12 @@ scan_concurrency = 16
 # further section events. Also settable as
 # MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS.
 autosync_interval_seconds = 10
+
+# Client-side poll cadence. When > 0, open tabs pull /refresh every N seconds
+# while the tab is visible, and the server's ttl_seconds caps how often the
+# scan runs regardless of tab count. 0 leaves the older SSE autosync path in
+# place during rollout. Also settable as MISSING_EBOOKS_POLL_INTERVAL_SECONDS.
+poll_interval_seconds = 0
 
 # File extensions, compared case-insensitively. Leading dot required. The
 # defaults mirror Audiobookshelf's full supported sets (see ADR-0006).
@@ -417,6 +436,19 @@ mod tests {
         let env = fake_env(&[("MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS", "0")]);
         apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
         assert_eq!(cfg.autosync_interval_seconds, 0);
+    }
+
+    #[test]
+    fn poll_interval_seconds_defaults_to_zero_until_rollout_flips_it() {
+        assert_eq!(Config::default().poll_interval_seconds, 0);
+    }
+
+    #[test]
+    fn env_overrides_poll_interval_seconds() {
+        let mut cfg = Config::default();
+        let env = fake_env(&[("MISSING_EBOOKS_POLL_INTERVAL_SECONDS", "5")]);
+        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
+        assert_eq!(cfg.poll_interval_seconds, 5);
     }
 
     #[test]

@@ -1849,4 +1849,32 @@
         break;
     }
   });
+
+  // client-driven refresh: see ADR-0034
+  //
+  // On load, read the poll marker's data-poll-interval and data-view. When
+  // the interval is nonzero, start a setInterval that hits /refresh?view=...
+  // and swaps the response into #roots, gated on document.visibilityState so
+  // a hidden tab pays zero wire cost. A visibilitychange listener fires an
+  // immediate poll on 'visible' so a refocused tab does not sit stale for
+  // up to poll_interval_seconds.
+  document.addEventListener("DOMContentLoaded", function () {
+    var root = document.getElementById("poll-root");
+    if (!root) return;
+    var intervalSecs = parseInt(root.dataset.pollInterval || "0", 10);
+    if (!(intervalSecs > 0)) return;
+    var view = root.dataset.view || "gaps";
+    function pollOnce() {
+      if (document.visibilityState !== "visible") return;
+      if (!window.htmx) return;
+      window.htmx.ajax("GET", "/refresh?view=" + encodeURIComponent(view), {
+        target: "#roots",
+        swap: "innerHTML",
+      });
+    }
+    setInterval(pollOnce, intervalSecs * 1000);
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") pollOnce();
+    });
+  });
 })();

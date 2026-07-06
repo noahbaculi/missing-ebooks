@@ -324,7 +324,13 @@ pub(super) fn footer() -> Markup {
 /// `#roots` block, assembled inside `render::page`). Pure shell: takes
 /// no domain types, only the current `ViewMode` for the navbar and the SSE
 /// query string.
-pub(crate) fn page(mode: ViewMode, body: &Markup) -> Markup {
+///
+/// `poll_interval_seconds` gates the client-driven refresh path. When `> 0`,
+/// the shell emits a `<div id="poll-root">` marker that `app.js` reads on
+/// load and uses to poll `/refresh?view=...` while the tab is visible. When
+/// `0`, the shell keeps the legacy SSE mount so behavior is unchanged until
+/// the rollout task flips the default. See ADR-0034 (added in a later task).
+pub(crate) fn page(mode: ViewMode, poll_interval_seconds: u64, body: &Markup) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -346,12 +352,19 @@ pub(crate) fn page(mode: ViewMode, body: &Markup) -> Markup {
                     }
                 }
                 (conn_banner())
-                // The autosync SSE listener: opens a /events connection on load
-                // and routes each section event's OOB-swap payload to its target
-                // `<section id="root-N-section">` by ID (see ADR-0023, ADR-0024).
-                div hx-ext="sse"
-                    sse-connect=(format!("/events?view={}", mode.as_query()))
-                    sse-swap="section,snapshot" {}
+                @if poll_interval_seconds > 0 {
+                    // Client-driven refresh. See ADR-0034. `app.js` reads
+                    // data-poll-interval and data-view on load and starts a
+                    // setInterval gated on document.visibilityState.
+                    div #poll-root
+                        data-poll-interval=(poll_interval_seconds)
+                        data-view=(mode.as_query()) {}
+                } @else {
+                    // Legacy SSE mount. Deleted in the task that removes autosync.
+                    div hx-ext="sse"
+                        sse-connect=(format!("/events?view={}", mode.as_query()))
+                        sse-swap="section,snapshot" {}
+                }
                 nav.navbar {
                     // The title is a home link: a plain GET to "/" that survives the
                     // htmx swaps, landing on the default gaps-only view with no filter,
@@ -404,8 +417,25 @@ mod tests {
     }
 
     #[test]
+    fn page_emits_the_poll_marker_when_interval_is_nonzero() {
+        let html = page(ViewMode::GapsOnly, 10, &stub_body()).into_string();
+        assert!(html.contains(r#"id="poll-root""#));
+        assert!(html.contains(r#"data-poll-interval="10""#));
+        assert!(html.contains(r#"data-view="gaps""#));
+        // The SSE mount is suppressed when polling is active.
+        assert!(!html.contains(r#"hx-ext="sse""#));
+    }
+
+    #[test]
+    fn page_emits_the_sse_mount_when_interval_is_zero() {
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
+        assert!(html.contains(r#"hx-ext="sse""#));
+        assert!(!html.contains(r#"id="poll-root""#));
+    }
+
+    #[test]
     fn index_links_an_inline_favicon() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // An inline SVG data-URI favicon, so the browser stops requesting
         // /favicon.ico and the tab gets an identity.
         assert!(html.contains(r#"rel="icon""#));
@@ -421,7 +451,7 @@ mod tests {
 
     #[test]
     fn index_links_the_stylesheet_and_inits_the_theme() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // The external stylesheet replaces the old inline <style> block.
         assert!(html.contains(r#"href="/static/app.css""#));
         // The pre-paint theme script is present and reads the OS preference.
@@ -440,7 +470,7 @@ mod tests {
 
     #[test]
     fn prepaint_bootstrap_handles_the_accent_preference() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // The inline pre-paint script reads the accent key and derives the ink
         // before first paint, so a custom accent never flashes the default ink.
         assert!(html.contains("getItem('accent')"));
@@ -452,7 +482,7 @@ mod tests {
 
     #[test]
     fn prepaint_bootstrap_hides_a_dismissed_intro_card() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // The pre-paint bootstrap reads the per-device dismissal flag and reflects
         // it onto <html> before first paint, so a repeat visitor never flashes the
         // card. Same dataset pattern as the depth preferences.
@@ -462,7 +492,7 @@ mod tests {
 
     #[test]
     fn page_carries_a_noscript_notice() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // The UI requires JavaScript. A <noscript> strip is the one thing a
         // scripting-disabled visitor sees.
         assert!(html.contains("<noscript>"));
@@ -475,7 +505,7 @@ mod tests {
         // The body-end <script> half of the original
         // `index_renders_the_marker_buttons_and_script` (the marker-button
         // half landed in render::tests during the cluster E migration).
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         assert!(html.contains(r#"src="/static/htmx.min.js""#));
         assert!(html.contains(r#"src="/static/htmx-sse.js""#));
         assert!(html.contains(r#"src="/static/app.js""#));
@@ -483,7 +513,7 @@ mod tests {
 
     #[test]
     fn navbar_renders_a_settings_cog_with_theme_and_confirm_controls() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // A labelled cog opens the settings panel via the native popover API.
         assert!(html.contains(r#"class="btn btn-ghost btn-square settings-cog""#));
         assert!(html.contains(r#"aria-label="Settings""#));
@@ -523,7 +553,7 @@ mod tests {
 
     #[test]
     fn panel_renders_the_accent_color_control() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // A regular-weight row label, not a section header.
         assert!(html.contains(r#"<span class="settings-label">Accent Color</span>"#));
         // The native color picker, defaulting to the shipped amber.
@@ -551,21 +581,21 @@ mod tests {
     #[test]
     fn the_view_control_marks_the_active_segment() {
         // Gaps-only is the active view. "All folders" is the link to the other view.
-        let gaps = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let gaps = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         assert!(gaps.contains(r#"class="segmented""#));
         assert!(gaps.contains("Gaps only"));
         assert!(gaps.contains("All folders"));
         assert!(gaps.contains(r#"href="/?view=all""#));
 
         // Show-all is active. "Gaps only" links back to /.
-        let all = page(ViewMode::All, &stub_body()).into_string();
+        let all = page(ViewMode::All, 0, &stub_body()).into_string();
         assert!(all.contains(r#"href="/""#));
         assert!(all.contains(r#"aria-current="page""#));
     }
 
     #[test]
     fn navbar_renders_the_brand_mark_before_the_title() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // The title is a home link wrapping the brand glyph and the wordmark. The
         // single assertion fixes the link, the inline mark, and its leading position.
         assert!(html.contains(r#"<h1><a href="/"><svg class="brand-mark""#));
@@ -574,7 +604,7 @@ mod tests {
 
     #[test]
     fn decorative_icons_are_hidden_from_assistive_tech() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // The folder glyph renders on every node row. It must be hidden from the
         // a11y tree (it is paired with the folder name) and not be a tab stop.
         // The shell carries other icons that satisfy the same shape (cog, search,
@@ -585,7 +615,7 @@ mod tests {
 
     #[test]
     fn navbar_places_the_spacer_before_the_search_box() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // The flexible spacer sits right after the title, so the title alone pins to the
         // left and the search box groups with the controls on the right.
         let spacer = html
@@ -602,7 +632,7 @@ mod tests {
 
     #[test]
     fn index_renders_the_shortcuts_inside_the_settings_panel() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // The shortcuts are a read-only section inside the settings popover.
         assert!(html.contains(r#"class="settings-shortcuts""#));
         assert!(html.contains("Keyboard shortcuts"));
@@ -619,7 +649,7 @@ mod tests {
         // The navbar half of the original
         // `rescan_is_an_in_place_htmx_swap_with_a_progress_bar`. The scan-bar
         // id pin lives next to it as `scan_bar_carries_the_indicator_id`.
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // Rescan posts via htmx and swaps the fresh sections into #roots.
         assert!(html.contains(r#"hx-post="/rescan""#));
         assert!(html.contains(r##"hx-target="#roots""##));
@@ -738,7 +768,7 @@ mod tests {
 
     #[test]
     fn page_renders_a_footer_with_version_and_links() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // The footer ships in the core shell, so every deployment gets it.
         assert!(html.contains(r#"<footer class="site-footer">"#));
         // It names the product and stamps the crate version.
@@ -750,7 +780,7 @@ mod tests {
 
     #[test]
     fn navbar_renders_the_help_button() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // A labelled "?" icon button that re-shows the intro card. It takes its
         // own job rather than the `?` key, which already opens settings.
         assert!(html.contains(r#"id="intro-help""#));
@@ -775,7 +805,7 @@ mod tests {
 
     #[test]
     fn page_renders_the_intro_card_above_the_body() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // A dismissible card that orients a cold visitor: it names the concept and
         // the actions, naming the row controls so the tree reads.
         assert!(html.contains(
@@ -799,7 +829,7 @@ mod tests {
 
     #[test]
     fn intro_card_title_carries_the_help_glyph() {
-        let html = page(ViewMode::GapsOnly, &stub_body()).into_string();
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // The title is prefixed with the same help-circle glyph as the navbar
         // button that re-shows the card, so the two read as linked. Assert the
         // shape of the inline mark (the `.icon` opener and the surrounding
