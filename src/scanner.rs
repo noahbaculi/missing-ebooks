@@ -282,7 +282,7 @@ pub struct ScannedFolder {
 /// The result of scanning one library root: walked folders or a failure message.
 ///
 /// Single owner of the "one root produced one of two outcomes" split: the cache
-/// stores a `Vec<RootScan>` (see `state::RawView`), and the renderer consumes
+/// stores a `Vec<RootScan>` (see `raw_view::RawView`), and the renderer consumes
 /// it directly.
 #[derive(Debug, Clone, Hash)]
 pub enum RootScan {

@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config::{Config, SearchLink};
+use crate::raw_view::{RawView, build_view};
 use crate::scanner::{DirIndex, ScanSettings};
-use crate::state::{RawView, build_view};
 
 use super::session::SessionStore;
 
@@ -92,7 +92,7 @@ pub async fn build_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::RawView;
+    use crate::raw_view::RawView;
 
     /// Build a minimal DemoState whose base_raw is empty (no roots). Enough
     /// to exercise the session-store lock. No scan runs.

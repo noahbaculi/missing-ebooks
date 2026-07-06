@@ -1,6 +1,6 @@
 //! The MarkOverlay: a borrowing view over the session's mark set that the
 //! demo render path consults per folder, replacing the clone-and-replay
-//! `derive_view` shape. The semantic oracle is `crate::state::apply_mark_raw`.
+//! `derive_view` shape. The semantic oracle is `crate::raw_view::apply_mark_raw`.
 //! The equivalence test pins byte-for-byte parity.
 
 use std::collections::HashSet;
@@ -8,7 +8,7 @@ use std::path::Path;
 
 use crate::demo::session::MarkKey;
 use crate::marker::Marker;
-use crate::state::RawView;
+use crate::raw_view::RawView;
 
 /// Borrowing view over a session's mark set. Answers per-folder questions
 /// about which marks apply and how, without cloning the set.
@@ -99,7 +99,7 @@ pub(crate) fn package_view_with_overlay(base: &RawView, overlay: &MarkOverlay<'_
             for marker in state.exact_markers {
                 let name = marker.filename().to_string();
                 if !folder.cover_files.iter().any(|existing| existing == &name) {
-                    // Same rebuild-on-mark pattern as state::add_marker: the
+                    // Same rebuild-on-mark pattern as raw_view::add_marker: the
                     // cover list is shared via Arc<[String]>, so a synthesized
                     // marker drops a fresh allocation in place of the shared one.
                     let mut next: Vec<String> = folder.cover_files.to_vec();
@@ -205,7 +205,7 @@ mod tests {
                 .filter(|(root, rel, _)| folder_in_raw(&raw_replay, *root, rel))
                 .collect();
             for (root, rel, kind) in &valid_marks {
-                crate::state::apply_mark_raw(&mut raw_replay, *root, rel, *kind);
+                crate::raw_view::apply_mark_raw(&mut raw_replay, *root, rel, *kind);
             }
             let replay_html = render::page(&raw_replay, &links, mode).into_string();
 

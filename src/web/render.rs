@@ -6,8 +6,8 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::config::SearchLink;
 use crate::query::clean_query;
+use crate::raw_view::RawView;
 use crate::scanner::RootScan;
-use crate::state::RawView;
 use crate::tree;
 use crate::tree::Node;
 use crate::tree::{RootState, ViewMode};
@@ -1822,14 +1822,14 @@ mod tests {
     }
 
     // Integration-test helpers for the packaging tests below. These build a
-    // real `RawView` via `state::build_view`, then exercise `package_view` /
+    // real `RawView` via `raw_view::build_view`, then exercise `package_view` /
     // `package_section` against it. The synthetic-fixture helpers above are
     // for markup tests. These are for packaging tests.
 
     use crate::config::Config;
+    use crate::raw_view::build_view;
     use crate::scanner::{DirIndex, ScanSettings};
     use crate::scenarios::touch;
-    use crate::state::build_view;
     use std::path::PathBuf;
     use std::sync::Arc;
 

@@ -15,6 +15,7 @@ pub mod web;
 // `pub` so the workspace targets keep compiling. The crate is `publish =
 // false`, so the rendered docs only serve in-workspace navigation.
 pub mod demo;
+pub mod raw_view;
 pub mod scenarios;
 pub mod shutdown;
 pub mod state;

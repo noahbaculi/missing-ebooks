@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
-use crate::state;
+use crate::raw_view;
 use crate::tree::ViewMode;
 
 /// Diff each section's content hash against `last_content_hash` and return the
@@ -28,7 +28,7 @@ use crate::tree::ViewMode;
 /// `has_subs[mode]` short-circuits modes nobody is listening to: their hashes
 /// stay untouched and they produce no pushes.
 fn compute_pushes(
-    raw: &state::RawView,
+    raw: &raw_view::RawView,
     last_content_hash: &mut EnumMap<ViewMode, Vec<Option<u64>>>,
     has_subs: EnumMap<ViewMode, bool>,
     links: &[crate::config::SearchLink],
@@ -66,7 +66,7 @@ fn compute_pushes(
 /// hashes to `Autosync::subscribe` so the loop's first compute_pushes finds
 /// matching hashes and emits nothing until something actually changes.
 fn snapshot_and_seed(
-    raw: &state::RawView,
+    raw: &raw_view::RawView,
     mode: ViewMode,
     links: &[crate::config::SearchLink],
 ) -> (String, Vec<u64>) {
@@ -86,7 +86,7 @@ fn snapshot_and_seed(
 /// The per-root seed hashes a non-snapshot subscriber carries, computed
 /// without rendering the OOB payload it would never send. Mirrors
 /// `snapshot_and_seed`'s hashing so the seed agrees with `compute_pushes`.
-fn seed_hashes(raw: &state::RawView, mode: ViewMode) -> Vec<u64> {
+fn seed_hashes(raw: &raw_view::RawView, mode: ViewMode) -> Vec<u64> {
     (0..raw.len())
         .map(|root_idx| crate::web::render::packaged_section(raw, root_idx, mode).content_hash())
         .collect()
@@ -171,7 +171,7 @@ struct AutosyncInner {
     /// Monotonic count of every `SectionHandle::render_oob` produced by the
     /// autosync paths (snapshot seed and per-tick loop). Tests diff before
     /// vs. after to assert that no-change ticks skip the render. Mirrors
-    /// `RawViewStore::rebuild_count` (`src/state.rs:54`). The field stays
+    /// `RawViewStore::rebuild_count` (`src/state.rs:66`). The field stays
     /// unconditional and the accessor is `#[cfg(test)]`. The runtime cost
     /// is one relaxed `fetch_add` per render path.
     render_count: AtomicU64,
@@ -435,7 +435,7 @@ mod tests {
         }
     }
 
-    fn raw_view_of(roots: Vec<RootScan>) -> state::RawView {
+    fn raw_view_of(roots: Vec<RootScan>) -> raw_view::RawView {
         roots
     }
 
