@@ -200,6 +200,14 @@ impl RawViewStore {
     pub fn rebuild_count(&self) -> u64 {
         self.rebuild_count.load(Ordering::Relaxed)
     }
+
+    /// Test-only seam onto one root's persistent `DirIndex` entry count, so
+    /// tests can assert that a build path did not clear the per-root mtime
+    /// cache.
+    #[cfg(test)]
+    pub(crate) fn dir_index_len_for_test(&self, root: usize) -> usize {
+        self.dir_indices[root].len()
+    }
 }
 
 impl AppState {

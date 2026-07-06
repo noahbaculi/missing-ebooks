@@ -57,6 +57,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/mark", post(mark))
         .route("/unmark", post(unmark))
         .route("/rescan", post(rescan))
+        .route("/refresh", get(refresh))
         .route("/events", get(events))
         .route("/static/htmx.min.js", get(assets::htmx_script))
         .route("/static/htmx-sse.js", get(assets::htmx_sse_script))
@@ -171,6 +172,26 @@ async fn rescan(State(state): State<Arc<AppState>>, Form(query): Form<ViewQuery>
     let resp = ([("HX-Push-Url", mode.path())], Html(markup.into_string())).into_response();
     tracing::debug!(
         op = "rescan",
+        mode = mode.as_query(),
+        elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
+        "handled request"
+    );
+    resp
+}
+
+async fn refresh(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery>) -> Response {
+    let started = Instant::now();
+    let mode = ViewMode::from_query(query.view.as_deref());
+    let raw = state.store.current().await;
+    let markup = render::all_sections(
+        &raw,
+        &state.config.search_links,
+        mode,
+        render::SectionWrap::Plain,
+    );
+    let resp = Html(markup.into_string()).into_response();
+    tracing::debug!(
+        op = "refresh",
         mode = mode.as_query(),
         elapsed_ms = started.elapsed().as_secs_f64() * 1e3,
         "handled request"
@@ -854,6 +875,145 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn refresh_returns_sections_byte_equal_to_rescan_for_same_state() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+
+        let app = app_for(dir.path());
+
+        // Warm the cache via /rescan so the /refresh call reads a populated slot.
+        let rescan_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/rescan")
+                    .header("HX-Request", "true")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("view=gaps"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rescan_response.status(), StatusCode::OK);
+        let rescan_body = body_string(rescan_response).await;
+
+        let refresh_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/refresh?view=gaps")
+                    .header("HX-Request", "true")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(refresh_response.status(), StatusCode::OK);
+        // /refresh must NOT push history. /rescan does; /refresh is a background
+        // pull triggered by the poll loop, not a user navigation.
+        assert!(refresh_response.headers().get("HX-Push-Url").is_none());
+        let refresh_body = body_string(refresh_response).await;
+
+        assert_eq!(
+            refresh_body, rescan_body,
+            "byte-equal section payload for same state and view"
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_serves_from_cache_within_ttl_and_rebuilds_after_expiry() {
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+
+        // Build state directly so we can read rebuild_count. The router helper hides it.
+        let cfg = Config {
+            library_roots: vec![dir.path().to_path_buf()],
+            ttl_seconds: 600,
+            ..Default::default()
+        };
+        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
+        let state = Arc::new(AppState::new(cfg, settings));
+        let app = router(Arc::clone(&state));
+
+        // Prime the cache.
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/refresh?view=gaps")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let after_first = state.store.rebuild_count();
+        assert_eq!(after_first, 1, "first refresh builds once");
+
+        // Second /refresh within TTL must not rebuild.
+        let _ = app
+            .oneshot(
+                Request::builder()
+                    .uri("/refresh?view=gaps")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            state.store.rebuild_count(),
+            after_first,
+            "second refresh within TTL serves from cache"
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_does_not_clear_the_dir_index() {
+        // /rescan clears every DirIndex; /refresh must not, so warm scans stay warm
+        // across polls. Prime, then poll, and assert the index still has entries.
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+
+        let cfg = Config {
+            library_roots: vec![dir.path().to_path_buf()],
+            ttl_seconds: 0, // disable cache so every /refresh forces a build path
+            ..Default::default()
+        };
+        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
+        let state = Arc::new(AppState::new(cfg, settings));
+        let app = router(Arc::clone(&state));
+
+        // First call populates the DirIndex as a side effect of the walk.
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/refresh?view=gaps")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let entries_after_first = state.store.dir_index_len_for_test(0);
+        assert!(entries_after_first > 0, "the walk populated the dir index");
+
+        // Second call. /refresh must not clear.
+        let _ = app
+            .oneshot(
+                Request::builder()
+                    .uri("/refresh?view=gaps")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            state.store.dir_index_len_for_test(0),
+            entries_after_first,
+            "the dir index is preserved across /refresh calls"
+        );
     }
 
     #[tokio::test]
