@@ -30,7 +30,10 @@ pub struct Config {
     pub bind: String,
     /// HTTP listen port.
     pub port: u16,
-    /// Scan-cache staleness backstop, in seconds.
+    /// Scan-cache staleness ceiling, in seconds. Warm reads (page loads,
+    /// `/refresh` polls) serve from cache while it is younger than this and
+    /// force a rebuild otherwise. Together with the client poll interval it
+    /// caps how often the underlying scan runs regardless of open-tab count.
     pub ttl_seconds: u64,
     /// Directories read at once during a scan. Sizes the scan thread pool. On a
     /// network mount each directory is a round trip, so reading several at once
@@ -38,18 +41,11 @@ pub struct Config {
     /// pool serves the whole process, so concurrent scans share it rather than
     /// each getting this many readers.
     pub scan_concurrency: usize,
-    /// Background sync interval. When at least one browser tab is subscribed to
-    /// `/events`, the server runs a warm scan every N seconds and pushes any
-    /// changed root sections over SSE. The timer measures from scan completion
-    /// to next start, so a slow scan does not stack. `0` disables the loop.
-    /// The SSE endpoint still serves the initial snapshot but emits no further
-    /// section events.
-    pub autosync_interval_seconds: u64,
-    /// Client-side poll cadence. When > 0, the page shell emits a
+    /// Client-side poll cadence. When `> 0`, the page shell emits a
     /// `<div id="poll-root">` marker with this value; the client hits
     /// `/refresh?view=...` on that interval while the tab is visible. `0`
-    /// disables the poll and leaves the SSE mount in place during the
-    /// transition. See ADR-0034 (added in a later task).
+    /// still emits the marker (so the client can choose not to poll without a
+    /// server-side branch) but suppresses the interval. See ADR-0034.
     pub poll_interval_seconds: u64,
     /// Audio extensions counted as audio, compared case-insensitively.
     pub audio_exts: Vec<String>,
@@ -71,9 +67,8 @@ impl Default for Config {
             library_roots: Vec::new(),
             bind: "127.0.0.1".to_string(),
             port: 13379,
-            ttl_seconds: 60,
+            ttl_seconds: 10,
             scan_concurrency: 16,
-            autosync_interval_seconds: 0,
             poll_interval_seconds: 10,
             // Audiobookshelf's full supported sets (see ADR-0006).
             audio_exts: strings(&[
@@ -237,12 +232,6 @@ fn apply_env_overrides(
         cfg.scan_concurrency = n;
     }
     if let Some(v) = parse_env::<u64>(
-        "MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS",
-        getenv("MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS"),
-    )? {
-        cfg.autosync_interval_seconds = v;
-    }
-    if let Some(v) = parse_env::<u64>(
         "MISSING_EBOOKS_POLL_INTERVAL_SECONDS",
         getenv("MISSING_EBOOKS_POLL_INTERVAL_SECONDS"),
     )? {
@@ -273,11 +262,13 @@ bind = "127.0.0.1"
 # settable as MISSING_EBOOKS_PORT.
 port = 13379
 
-# Scan-cache staleness backstop in seconds. When a request arrives on a cache
-# older than this, the server rescans before responding. Set to 0 to disable the
-# cache and rescan on every request. /rescan is the primary freshness control.
-# Also settable as MISSING_EBOOKS_TTL_SECONDS.
-ttl_seconds = 60
+# Scan-cache staleness ceiling in seconds. Warm reads (page loads, /refresh
+# polls) serve from cache while it is younger than this and force a rebuild
+# otherwise. Together with poll_interval_seconds it caps how often the
+# underlying scan runs regardless of open-tab count. 0 disables the cache and
+# rescans on every request. /rescan is the primary freshness control for a
+# user who wants to know now. Also settable as MISSING_EBOOKS_TTL_SECONDS.
+ttl_seconds = 10
 
 # Directories the library scan reads at once. The scan is bound by per-directory
 # latency on a network mount (SMB/NFS), where each folder is a round trip, so
@@ -287,17 +278,11 @@ ttl_seconds = 60
 # parallelism. Also settable as MISSING_EBOOKS_SCAN_CONCURRENCY.
 scan_concurrency = 16
 
-# Legacy background sync loop. Disabled by default. Kept during rollout so a
-# deployment that pinned MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS to a nonzero
-# value still gets SSE pushes. The next release removes both the field and the
-# loop; new deployments should use poll_interval_seconds. Also settable as
-# MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS.
-autosync_interval_seconds = 0
-
 # Client-side poll cadence. When > 0, open tabs pull /refresh every N seconds
-# while the tab is visible, and the server's ttl_seconds caps how often the
-# scan runs regardless of tab count. 0 leaves the older SSE autosync path in
-# place during rollout. Also settable as MISSING_EBOOKS_POLL_INTERVAL_SECONDS.
+# while the tab is visible, and ttl_seconds caps how often the underlying scan
+# actually runs regardless of open-tab count. 0 keeps the poll marker in the
+# page but suppresses the interval so the client stays quiet. Also settable as
+# MISSING_EBOOKS_POLL_INTERVAL_SECONDS.
 poll_interval_seconds = 10
 
 # File extensions, compared case-insensitively. Leading dot required. The
@@ -359,7 +344,7 @@ mod tests {
         let cfg = Config::default();
         assert_eq!(cfg.bind, "127.0.0.1");
         assert_eq!(cfg.port, 13379);
-        assert_eq!(cfg.ttl_seconds, 60);
+        assert_eq!(cfg.ttl_seconds, 10);
         assert_eq!(cfg.audio_exts.len(), 20); // ABS's full audio set (ADR-0006)
         assert!(cfg.audio_exts.contains(&".mp3".to_string()));
         assert!(cfg.audio_exts.contains(&".opus".to_string()));
@@ -412,7 +397,7 @@ mod tests {
         apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
         assert_eq!(cfg.port, 1234);
         assert_eq!(cfg.bind, "0.0.0.0");
-        assert_eq!(cfg.ttl_seconds, 60); // unset env leaves the default
+        assert_eq!(cfg.ttl_seconds, 10); // unset env leaves the default
     }
 
     #[test]
@@ -424,18 +409,10 @@ mod tests {
     }
 
     #[test]
-    fn defaults_prefer_client_poll_over_server_autosync() {
+    fn defaults_pin_the_client_poll_shape() {
         let cfg = Config::default();
         assert_eq!(cfg.poll_interval_seconds, 10);
-        assert_eq!(cfg.autosync_interval_seconds, 0);
-    }
-
-    #[test]
-    fn env_overrides_autosync_interval_seconds() {
-        let mut cfg = Config::default();
-        let env = fake_env(&[("MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS", "0")]);
-        apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
-        assert_eq!(cfg.autosync_interval_seconds, 0);
+        assert_eq!(cfg.ttl_seconds, 10);
     }
 
     #[test]

@@ -31,7 +31,7 @@ Each flagged row carries:
 - buttons that write a marker file into that folder
 - search links that open a prefilled book search in a new tab (Goodreads and OceanofPDF by default)
 
-A rescan button forces a cold scan (clears the dir index, walks every directory). With `autosync_interval_seconds > 0`, open pages also refresh live as the background warm scan detects changes. Scans are cached with a staleness backstop (`ttl_seconds`).
+A rescan button forces a cold scan (clears the dir index, walks every directory). Open pages also refresh on their own: while a tab is visible, the client polls a warm rescan every `poll_interval_seconds` and swaps any changed root sections into the page. Scans are cached with a staleness ceiling (`ttl_seconds`) that caps how often the underlying walk runs regardless of how many tabs are open.
 
 By default the page shows only the gaps. A "Show all folders" toggle beside the Rescan button switches to a fuller view that renders the whole library tree, covered folders included, so a gap can be read in the context of everything around it. Covered folders show dimmed with a check and carry no actions; the gaps keep their buttons and search links. The toggle is per view and is not saved.
 
@@ -73,8 +73,6 @@ Then open http://127.0.0.1:13379.
 
 > [!WARNING]
 > The app has no authentication. The compose file above binds the host port to `127.0.0.1`, so it is reachable only from the machine running it. To reach it from the LAN, change the mapping to `"13379:13379"`, and put a reverse proxy with authentication in front of it before exposing it beyond your network.
->
-> The `/events` SSE endpoint serves long-lived `text/event-stream` connections with a 15-second keepalive. The server sets `X-Accel-Buffering: no` on that response; any reverse proxy that honors the header passes it through with no extra config. nginx is the explicit exception: it ignores the header for response buffering, so add `proxy_buffering off;` and `proxy_read_timeout 60s;` (or longer) on the `/events` location.
 
 ## Configuration
 
@@ -108,7 +106,7 @@ These environment variables override the file when set:
 | `MISSING_EBOOKS_PORT`             | `port`                                   |
 | `MISSING_EBOOKS_TTL_SECONDS`      | `ttl_seconds`                            |
 | `MISSING_EBOOKS_SCAN_CONCURRENCY` | `scan_concurrency`                       |
-| `MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS` | `autosync_interval_seconds`              |
+| `MISSING_EBOOKS_POLL_INTERVAL_SECONDS` | `poll_interval_seconds`             |
 | `MISSING_EBOOKS_LOG`              | Log verbosity (see Logging below)        |
 | `PUID`                            | Container run-as user ID (Docker only)   |
 | `PGID`                            | Container run-as group ID (Docker only)  |
@@ -129,7 +127,7 @@ Reading more folders at once with `scan_concurrency` overlaps their round trips.
 
 `ttl_seconds` keeps a scanned view cached so repeat page loads do not rescan, and this matters more over SMB than locally. The client's own attribute cache ages out within a second, faster than a multi-second walk finishes, so a second walk re-queries the server and runs no faster than the first; the in-process cache is what spares the repeat cost. Raise `ttl_seconds` on a slow mount and treat the rescan button as the deliberate refresh.
 
-`autosync_interval_seconds` (default 10) governs the background sync loop. While at least one browser tab is open to the server, the loop runs a warm scan every N seconds (idle gap: the timer measures from completion to next start) and pushes any changed root sections back to the tab over SSE. Warm scans reuse a per-directory mtime index built up by previous scans; on the README's ~900-folder reference library a steady-state warm scan finishes in low single-digit milliseconds over SMB. Set the value to `0` to disable the loop; the SSE endpoint still serves the initial snapshot but emits no further section events. The Rescan button takes a different path: it clears the dir index and walks every directory (a cold scan), the explicit "fix any drift" action, which on the same library is about 1.9 s over SMB.
+`poll_interval_seconds` (default 10) governs how often a visible tab pulls a warm rescan from the server. The client is the driver: every open tab hits `/refresh` on that interval while the tab is focused, and stops the moment it goes into the background (the `visibilitychange` handler fires one immediate poll when it comes back). The server serves each `/refresh` from the cached view when it is younger than `ttl_seconds`, so the underlying scan runs at most once per TTL window regardless of how many tabs are polling. Warm scans reuse a per-directory mtime index built up by previous scans; on the README's ~900-folder reference library a steady-state warm scan finishes in low single-digit milliseconds over SMB. Set `poll_interval_seconds` to `0` to disable the poll (the tab stays quiet and refreshes only when you reload or hit Rescan). The Rescan button takes the cold-scan path: it clears the dir index and walks every directory, the explicit "fix any drift" action, which on the same library is about 1.9 s over SMB.
 
 Staleness detection keys off directory mtime; on filesystems with coarse or unreliable mtime (some NFS and FAT mounts), a change made inside the same mtime tick can be missed until the next cold rescan. Use the rescan button or a shorter TTL if your mount has this property.
 

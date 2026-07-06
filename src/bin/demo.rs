@@ -104,12 +104,9 @@ async fn main() -> anyhow::Result<()> {
     // demo builds a static base view once at startup (build_state) and never
     // rescans, so a polling client would just hit /refresh and get back the
     // same bytes. poll_interval_seconds=0 keeps the demo's zero-idle-work
-    // property. autosync_interval_seconds=0 stays pinned for the same reason
-    // and mirrors ADR-0023: the session sweep's idle signal does not track
-    // SSE traffic, so per-session loops would extend sessions inappropriately.
+    // property.
     let config = Config {
         library_roots: roots,
-        autosync_interval_seconds: 0,
         poll_interval_seconds: 0,
         ..Default::default()
     };

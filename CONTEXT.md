@@ -64,6 +64,10 @@ _Avoid_: incremental scan (the implementation detail), cached scan.
 A scan that does not reuse any dir index entries, either because the index is empty (process just started) or because the path explicitly clears it (`/rescan` click). Walks every directory. A cold scan is a `scan_warm` call against a fresh `DirIndex`; there is no separate `scan_cold` function.
 _Avoid_: full scan, rescan (the verb for the user action, not the scan type).
 
+**Refresh poll**:
+The client-driven refresh path: every open tab hits `GET /refresh` on `poll_interval_seconds` while `document.visibilityState` is `visible`, and swaps the response into `#roots`. The server serves each poll from the cached raw view when it is younger than `ttl_seconds`, so scan rate is capped by TTL regardless of how many tabs are polling. Rescan is the user's explicit "walk from scratch" action; refresh polls are the background pull that keeps a live tab current. See ADR-0034.
+_Avoid_: autosync, autorefresh, live update.
+
 **Library coverage**:
 The fraction of audiobooks across all successfully-scanned library roots that are covered by an ebook or marker. Numerator and denominator are folder counts: folders that directly hold audio. Errored roots contribute to neither; their failure is already surfaced on the per-root section banner. The reported percentage is `Math.round(covered / total * 100)`.
 _Avoid_: completion, progress, done.

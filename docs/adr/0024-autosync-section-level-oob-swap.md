@@ -4,6 +4,8 @@
 
 > Amended 2026-07-04 by ADR-0032: the rescan-swap ↔ autosync-push byte-equality now lives inside `SectionHandle` rather than being a cross-module contract between `render::single_oob_section` and `autosync::render_oob_section`.
 
+> Superseded 2026-07-06 by ADR-0034: the SSE OOB push is replaced by a plain HTMX `GET /refresh` response that swaps `#roots` with `innerHTML`. The section is still the swap unit, and byte-equality with `/rescan` still runs through `SectionHandle`, but the transport is no longer an OOB fragment.
+
 Date: 2026-06-21.
 
 ## Context

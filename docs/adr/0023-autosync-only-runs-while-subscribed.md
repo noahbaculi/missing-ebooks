@@ -1,5 +1,7 @@
 # ADR-0023: Autosync only runs while a browser is subscribed
 
+> Superseded 2026-07-06 by ADR-0034: the server-driven SSE autosync loop is removed. Refresh is now a client-driven poll of `GET /refresh` gated on `document.visibilityState`, bounded on the server by `ttl_seconds`.
+
 Date: 2026-06-21.
 
 ## Context

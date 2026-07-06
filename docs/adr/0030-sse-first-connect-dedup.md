@@ -1,5 +1,7 @@
 # ADR-0030: SSE first connect skips the snapshot
 
+> Superseded 2026-07-06 by ADR-0034: the SSE endpoint is removed. No snapshot event, no `Last-Event-ID` discriminator, no `ack` sentinel; refresh is a client-driven poll of `GET /refresh`.
+
 Date: 2026-06-25.
 
 ## Context
