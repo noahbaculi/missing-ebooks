@@ -24,5 +24,4 @@ pub mod telemetry;
 pub mod tree;
 
 // Internal-only: no external consumer reaches into these.
-pub(crate) mod autosync;
 pub(crate) mod query;

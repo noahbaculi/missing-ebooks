@@ -318,18 +318,17 @@ pub(super) fn footer() -> Markup {
     }
 }
 
-/// The HTML document shell: head, noscript notice, connection banner, SSE
-/// listener, navbar, confirm dialog, toast machinery, and the script tags.
+/// The HTML document shell: head, noscript notice, connection banner, poll
+/// marker, navbar, confirm dialog, toast machinery, and the script tags.
 /// Wraps a prebuilt `body` markup (typically the gap summary plus the
 /// `#roots` block, assembled inside `render::page`). Pure shell: takes
-/// no domain types, only the current `ViewMode` for the navbar and the SSE
-/// query string.
+/// no domain types, only the current `ViewMode` for the navbar and the
+/// poll marker.
 ///
-/// `poll_interval_seconds` gates the client-driven refresh path. When `> 0`,
-/// the shell emits a `<div id="poll-root">` marker that `app.js` reads on
-/// load and uses to poll `/refresh?view=...` while the tab is visible. When
-/// `0`, the shell keeps the legacy SSE mount so behavior is unchanged until
-/// the rollout task flips the default. See ADR-0034 (added in a later task).
+/// `poll_interval_seconds` gates the client-driven refresh path. The shell
+/// always emits a `<div id="poll-root">` marker so `app.js` has one place to
+/// read the interval; a value of `0` disables the poll on the client side
+/// without a server-side branch. See ADR-0034.
 pub(crate) fn page(mode: ViewMode, poll_interval_seconds: u64, body: &Markup) -> Markup {
     html! {
         (DOCTYPE)
@@ -352,19 +351,13 @@ pub(crate) fn page(mode: ViewMode, poll_interval_seconds: u64, body: &Markup) ->
                     }
                 }
                 (conn_banner())
-                @if poll_interval_seconds > 0 {
-                    // Client-driven refresh. See ADR-0034. `app.js` reads
-                    // data-poll-interval and data-view on load and starts a
-                    // setInterval gated on document.visibilityState.
-                    div #poll-root
-                        data-poll-interval=(poll_interval_seconds)
-                        data-view=(mode.as_query()) {}
-                } @else {
-                    // Legacy SSE mount. Deleted in the task that removes autosync.
-                    div hx-ext="sse"
-                        sse-connect=(format!("/events?view={}", mode.as_query()))
-                        sse-swap="section,snapshot" {}
-                }
+                // Client-driven refresh. See ADR-0034. `app.js` reads
+                // data-poll-interval and data-view on load and starts a
+                // setInterval gated on document.visibilityState. A zero
+                // interval disables the poll client-side.
+                div #poll-root
+                    data-poll-interval=(poll_interval_seconds)
+                    data-view=(mode.as_query()) {}
                 nav.navbar {
                     // The title is a home link: a plain GET to "/" that survives the
                     // htmx swaps, landing on the default gaps-only view with no filter,
@@ -398,7 +391,6 @@ pub(crate) fn page(mode: ViewMode, poll_interval_seconds: u64, body: &Markup) ->
                 (mark_warn_template())
                 (footer())
                 script src="/static/htmx.min.js" {}
-                script src="/static/htmx-sse.js" {}
                 script src="/static/app.js" {}
             }
         }
@@ -422,15 +414,16 @@ mod tests {
         assert!(html.contains(r#"id="poll-root""#));
         assert!(html.contains(r#"data-poll-interval="10""#));
         assert!(html.contains(r#"data-view="gaps""#));
-        // The SSE mount is suppressed when polling is active.
-        assert!(!html.contains(r#"hx-ext="sse""#));
     }
 
     #[test]
-    fn page_emits_the_sse_mount_when_interval_is_zero() {
+    fn page_emits_the_poll_marker_even_at_zero_interval() {
+        // With no server-side branch, the marker still renders. `app.js` reads
+        // data-poll-interval and skips scheduling the poll when it is 0.
         let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
-        assert!(html.contains(r#"hx-ext="sse""#));
-        assert!(!html.contains(r#"id="poll-root""#));
+        assert!(html.contains(r#"id="poll-root""#));
+        assert!(html.contains(r#"data-poll-interval="0""#));
+        assert!(!html.contains(r#"hx-ext="sse""#));
     }
 
     #[test]
@@ -501,13 +494,12 @@ mod tests {
     }
 
     #[test]
-    fn page_loads_htmx_htmx_sse_and_app_scripts() {
+    fn page_loads_htmx_and_app_scripts() {
         // The body-end <script> half of the original
         // `index_renders_the_marker_buttons_and_script` (the marker-button
         // half landed in render::tests during the cluster E migration).
         let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         assert!(html.contains(r#"src="/static/htmx.min.js""#));
-        assert!(html.contains(r#"src="/static/htmx-sse.js""#));
         assert!(html.contains(r#"src="/static/app.js""#));
     }
 

@@ -61,10 +61,10 @@ fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
     }
 }
 
-/// One packaged section plus the identifying context needed to render or
-/// hash it. Constructed by `packaged_section`, which owns the raw →
-/// packaged step. The handle owns its `RootSection` so callers do not
-/// name intermediate types.
+/// One packaged section plus the identifying context needed to render it.
+/// Constructed by `packaged_section`, which owns the raw → packaged step.
+/// The handle owns its `RootSection` so callers do not name intermediate
+/// types.
 pub struct SectionHandle {
     section: RootSection,
     root: usize,
@@ -72,50 +72,17 @@ pub struct SectionHandle {
 }
 
 impl SectionHandle {
-    /// Hash the packaged section for per-mode autosync dedup. See ADR-0024.
-    /// Equality of `content_hash` implies equality of rendered HTML because
-    /// both `render` and `render_oob` route through the same internal
-    /// section renderer, and the packaged `RootSection` is the only
-    /// per-tick input that varies.
-    #[must_use]
-    pub fn content_hash(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        self.section.hash(&mut hasher);
-        hasher.finish()
-    }
-
     /// Render the section for an inline swap. `alert` shows as an
     /// in-section error banner when `Some`.
     #[must_use]
     pub fn render(&self, links: &[SearchLink], alert: Option<&str>) -> Markup {
         render_section(&self.section, self.root, alert, links, self.mode)
     }
-
-    /// Render the section wrapped in the `hx-swap-oob` fragment the SSE
-    /// stream pushes. Byte-equal to `render(links, None)` inside the
-    /// wrap div by construction (both route through `render_section`).
-    #[must_use]
-    pub fn render_oob(&self, links: &[SearchLink]) -> Markup {
-        single_oob_section(&self.section, self.root, links, self.mode)
-    }
 }
 
-/// How `all_sections` wraps each section: plain for the /rescan swap into
-/// `#roots`, OOB for the SSE snapshot payload.
-#[derive(Debug, Clone, Copy)]
-pub enum SectionWrap {
-    /// Emit each section as a plain `<section>` for the /rescan swap into
-    /// `#roots`.
-    Plain,
-    /// Wrap each section in the `hx-swap-oob` fragment used by the SSE
-    /// snapshot payload.
-    Oob,
-}
-
-/// Package one root's section from `raw`, ready to hash or render. Panics
-/// if `root >= raw.len()`; callers validate the index before reaching
-/// this seam (`WriteFailure::BadRoot` in `web::mark`/`unmark`, an explicit
+/// Package one root's section from `raw`, ready to render. Panics if
+/// `root >= raw.len()`; callers validate the index before reaching this
+/// seam (`WriteFailure::BadRoot` in `web::mark`/`unmark`, an explicit
 /// bounds check in `demo::apply_mark`).
 #[must_use]
 pub fn packaged_section(raw: &RawView, root: usize, mode: ViewMode) -> SectionHandle {
@@ -131,9 +98,9 @@ pub fn packaged_section(raw: &RawView, root: usize, mode: ViewMode) -> SectionHa
 /// view, then hands it to `render_view` for the shell + gap summary +
 /// roots block. Single call site: the index handler (prod and demo).
 ///
-/// `poll_interval_seconds` threads down to the page shell, where a nonzero
-/// value emits the poll marker in place of the SSE mount. Zero preserves
-/// the legacy SSE mount during rollout. See ADR-0034.
+/// `poll_interval_seconds` threads down to the page shell, where it drives
+/// the client-side poll cadence embedded in the `#poll-root` marker. See
+/// ADR-0034.
 #[must_use]
 pub fn page(
     raw: &RawView,
@@ -145,20 +112,12 @@ pub fn page(
     render_view(&view, links, mode, poll_interval_seconds)
 }
 
-/// Every root section in one payload, either plain (rescan swap) or
-/// OOB-wrapped (SSE snapshot).
+/// Every root section as one payload for the `#roots` `innerHTML` swap.
+/// Shared by the `/rescan` and `/refresh` handlers.
 #[must_use]
-pub fn all_sections(
-    raw: &RawView,
-    links: &[SearchLink],
-    mode: ViewMode,
-    wrap: SectionWrap,
-) -> Markup {
+pub fn all_sections(raw: &RawView, links: &[SearchLink], mode: ViewMode) -> Markup {
     let view = package_view(raw, mode);
-    match wrap {
-        SectionWrap::Plain => roots(&view, links, mode),
-        SectionWrap::Oob => oob_sections(&view, links, mode),
-    }
+    roots(&view, links, mode)
 }
 
 /// The rotating folder caret used on collapsible rows.
@@ -171,42 +130,13 @@ fn folder_icon() -> Markup {
     html! { (PreEscaped(include_str!("../../assets/svg/folder.svg"))) }
 }
 
-/// The root sections in order. Shared by the full page and the htmx rescan
-/// response, which swaps just this list into `#roots`.
+/// The root sections in order. Shared by the full page and the htmx swap
+/// responses (`/rescan`, `/refresh`), which target `#roots` with an
+/// `innerHTML` swap.
 fn roots(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
     html! {
         @for (root, section) in view.iter().enumerate() {
             (render_section(section, root, None, links, mode))
-        }
-    }
-}
-
-/// Wrap one rendered section in the OOB-swap fragment the SSE stream uses, so
-/// HTMX routes the fragment to its `<section id="root-N-section">` target on
-/// the open page (see ADR-0024). Shared by the page-level snapshot helper and
-/// the autosync per-root push so the bytes a tab receives via SSE equal the
-/// bytes a direct render would produce.
-fn single_oob_section(
-    section: &RootSection,
-    root: usize,
-    links: &[SearchLink],
-    mode: ViewMode,
-) -> Markup {
-    html! {
-        div hx-swap-oob=(format!("outerHTML:#root-{root}-section")) {
-            (render_section(section, root, None, links, mode))
-        }
-    }
-}
-
-/// Render every section of `view` as a sequence of OOB swap fragments, suitable
-/// for an SSE snapshot payload. Walks the view and delegates each section to
-/// `single_oob_section` so the per-section bytes are identical to what the
-/// autosync loop pushes one root at a time.
-fn oob_sections(view: &FlaggedView, links: &[SearchLink], mode: ViewMode) -> Markup {
-    html! {
-        @for (root, section) in view.iter().enumerate() {
-            (single_oob_section(section, root, links, mode))
         }
     }
 }
@@ -734,135 +664,6 @@ fn search_links(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// htmx 2.x parses `hx-swap-oob` by splitting on the *first* colon: the
-    /// part before is the swap style, the part after is the CSS selector
-    /// (`He` in `htmx.min.js`, confirmed against htmx 2.0.4 source). Any
-    /// `hx-swap` modifier with a colon ("transition:true", "swap:200ms", and
-    /// friends) inside the OOB attribute would land in the selector portion
-    /// and silently break OOB routing: htmx fires `htmx:oobErrorNoTarget` and
-    /// drops the swap. Section events would reach the browser but never
-    /// update the DOM. The earlier `transition:true` regression was exactly
-    /// this. Lock the attribute to `<style>:<#id>` with no whitespace or
-    /// extra colons so the next person to reach for an OOB modifier fails
-    /// this test instead of shipping silent breakage.
-    #[test]
-    fn render_oob_attribute_survives_htmx_first_colon_parse() {
-        use crate::scanner::RootScan;
-        use std::path::PathBuf;
-        let empty = || RootScan::Walked {
-            canonical_path: PathBuf::from("/some/root"),
-            folders: Vec::new(),
-        };
-        // Build a raw view with four roots so `packaged_section(.., 3, ..)`
-        // is in bounds, keeping the OOB target id `#root-3-section` we assert
-        // on below.
-        let raw = vec![empty(), empty(), empty(), empty()];
-        let handle = packaged_section(&raw, 3, ViewMode::GapsOnly);
-        let html = handle.render_oob(&[]).into_string();
-
-        let oob_value = extract_attr_value(&html, "hx-swap-oob")
-            .expect("rendered fragment carries an hx-swap-oob attribute");
-
-        let (style, selector) = oob_value
-            .split_once(':')
-            .expect("OOB attribute uses the <style>:<selector> form");
-
-        assert_eq!(style, "outerHTML", "OOB swap style");
-        assert_eq!(
-            selector, "#root-3-section",
-            "OOB selector must be a plain id; htmx splits on the first colon, \
-             so any whitespace or extra colon corrupts the selector",
-        );
-    }
-
-    /// Render byte-equality across the handle's two output shapes: the
-    /// OOB-wrapped fragment must contain the plain render byte-for-byte.
-    /// This is ADR-0024's cross-path contract lifted inside the module
-    /// that now owns both shapes.
-    #[tokio::test]
-    async fn section_handle_render_oob_wraps_render_byte_for_byte() {
-        use crate::scenarios;
-        let dir = tempfile::tempdir().unwrap();
-        let scenario = scenarios::find_scenario("mixed-forest").expect("scenario exists");
-        let roots = scenarios::materialize(&(scenario.spec)(), dir.path());
-        let cfg = Config {
-            library_roots: roots,
-            ttl_seconds: 600,
-            ..Config::default()
-        };
-        let links = cfg.search_links.clone();
-        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
-        let raw = build_view(
-            &cfg,
-            &Arc::new(settings),
-            &test_indices(cfg.library_roots.len()),
-        )
-        .await;
-        for mode in [ViewMode::GapsOnly, ViewMode::All] {
-            for root in 0..raw.len() {
-                let handle = packaged_section(&raw, root, mode);
-                let plain = handle.render(&links, None).into_string();
-                let oob = handle.render_oob(&links).into_string();
-                assert!(
-                    oob.contains(&plain),
-                    "root={root} mode={mode:?}: OOB fragment must contain the plain render byte-for-byte",
-                );
-            }
-        }
-    }
-
-    /// Equal packaged sections hash equally, and a real per-mode change
-    /// flips the hash. Fails closed if a future field lands outside the
-    /// derived `Hash`. Companion to `content_hash_equals_render_parity`
-    /// in autosync::tests, but expressed at the handle boundary.
-    #[test]
-    fn section_handle_content_hash_stability() {
-        use crate::scanner::{RootScan, ScannedFolder};
-        use std::path::PathBuf;
-
-        let raw_a = vec![RootScan::Walked {
-            canonical_path: PathBuf::from("/lib"),
-            folders: vec![ScannedFolder {
-                rel_path: PathBuf::from("Book"),
-                directly_holds_audio: true,
-                missing_ebook: true,
-                cover_files: std::sync::Arc::from(Vec::<String>::new()),
-                audio_files: std::sync::Arc::from(vec!["01.mp3".to_string()]),
-            }],
-        }];
-        let raw_b = raw_a.clone();
-        assert_eq!(
-            packaged_section(&raw_a, 0, ViewMode::GapsOnly).content_hash(),
-            packaged_section(&raw_b, 0, ViewMode::GapsOnly).content_hash(),
-        );
-
-        let raw_c = vec![RootScan::Walked {
-            canonical_path: PathBuf::from("/lib"),
-            folders: vec![ScannedFolder {
-                rel_path: PathBuf::from("Book"),
-                directly_holds_audio: true,
-                missing_ebook: false,
-                cover_files: std::sync::Arc::from(vec!["Book.epub".to_string()]),
-                audio_files: std::sync::Arc::from(vec!["01.mp3".to_string()]),
-            }],
-        }];
-        assert_ne!(
-            packaged_section(&raw_a, 0, ViewMode::GapsOnly).content_hash(),
-            packaged_section(&raw_c, 0, ViewMode::GapsOnly).content_hash(),
-            "flipping a folder from flagged to covered must change the hash",
-        );
-    }
-
-    /// Pull the value of a double-quoted attribute out of a snippet of HTML.
-    /// Good enough for fragments produced by maud, which always emits attribute
-    /// values inside double quotes.
-    fn extract_attr_value<'a>(html: &'a str, name: &str) -> Option<&'a str> {
-        let needle = format!("{name}=\"");
-        let start = html.find(&needle)? + needle.len();
-        let end = html[start..].find('"')? + start;
-        Some(&html[start..end])
-    }
 
     /// A directly-flagged leaf: holds audio, missing an ebook, audio filenames
     /// as given. Cover files empty.
@@ -1957,10 +1758,7 @@ mod tests {
     /// Render byte-equality is a load-bearing invariant: two reads of the
     /// same mode must serialize identically, a mode flip must change the
     /// bytes, and a mark+undo round trip on the same folder must restore the
-    /// packaged view byte-for-byte. The OOB-wrapped snapshot for an unchanged
-    /// view must contain the same root fragment a direct `render_section`
-    /// would produce, so an SSE subscriber and a Rescan click see identical
-    /// bytes for that root (ADR-0024).
+    /// packaged view byte-for-byte.
     #[tokio::test]
     async fn render_is_byte_equal_across_hits_and_a_mark_undo_round_trip() {
         use crate::marker::Marker;
@@ -2026,16 +1824,6 @@ mod tests {
             render_view(&gaps_one, &links, ViewMode::GapsOnly, 0).into_string(),
             render_view(&restored, &links, ViewMode::GapsOnly, 0).into_string(),
             "undoing the mark must restore the gaps view byte-for-byte",
-        );
-
-        // The OOB-wrapped snapshot payload must contain the byte-for-byte
-        // fragment a direct render_section produces.
-        let direct =
-            render_section(&restored[0], 0, None, &links, ViewMode::GapsOnly).into_string();
-        let snapshot = oob_sections(&restored, &links, ViewMode::GapsOnly).into_string();
-        assert!(
-            snapshot.contains(&direct),
-            "the OOB-wrapped snapshot must contain the same root-0 fragment as a direct render"
         );
 
         /// Walk the rendered gaps view for the first `(root, rel)` whose state

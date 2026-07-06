@@ -5,7 +5,6 @@
 //! view per request, then rendered for the requested mode. The full index
 //! page carries the demo banner. The `/mark` partial does not.
 
-use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -13,17 +12,15 @@ use std::time::Instant;
 use axum::Router;
 use axum::extract::{Form, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
-use axum::response::sse::Event;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use tokio::sync::mpsc;
 
 use crate::raw_view::RawView;
 use crate::scanner;
 use crate::tree::ViewMode;
-use crate::web::assets::{app_css, app_js, htmx_script, htmx_sse_script};
+use crate::web::assets::{app_css, app_js, htmx_script};
 use crate::web::render;
-use crate::web::{MarkRequest, ViewQuery, events_response};
+use crate::web::{MarkRequest, ViewQuery};
 
 use super::banner;
 use super::overlay::{MarkOverlay, package_view_with_overlay};
@@ -52,10 +49,8 @@ pub fn router(state: Arc<DemoState>) -> Router {
         .route("/unmark", post(unmark))
         .route("/reset", post(reset))
         .route("/rescan", post(rescan))
-        .route("/events", get(events))
         .route("/healthz", get(healthz))
         .route("/static/htmx.min.js", get(htmx_script))
-        .route("/static/htmx-sse.js", get(htmx_sse_script))
         .route("/static/app.css", get(app_css))
         .route("/static/app.js", get(app_js))
         .with_state(state)
@@ -174,8 +169,8 @@ async fn index(
     let raw = package_view_with_overlay(&state.base_raw, &overlay);
     // The demo runs no autosync loop and never rescans (its library is static
     // and its marks are in-process), so a nonzero poll interval would just
-    // hit /refresh and get back the same bytes. Emit the SSE mount here so
-    // the demo path stays byte-identical to today until task 4 rips both.
+    // hit /refresh and get back the same bytes. Pass 0 so the page shell
+    // suppresses the poll marker for the demo.
     let html = render::page(&raw, &state.search_links, mode, 0).into_string();
     let mut response = Html(banner::inject(&html, mode)).into_response();
     if let Some(cookie) = set_cookie {
@@ -302,52 +297,6 @@ async fn rescan(Form(query): Form<ViewQuery>) -> Redirect {
     // returns the visitor to their current view.
     let mode = ViewMode::from_query(query.view.as_deref());
     redirect_to_view(mode)
-}
-
-/// The demo's `/events` endpoint. Every connection emits an `ack` sentinel
-/// first so the browser's `lastEventId` is seeded for any future reconnect.
-/// The `snapshot` event only follows when the request carries
-/// `Last-Event-ID`, since first connect just rendered the same state inline
-/// via `index`. The demo runs no autosync loop (its library is static and its
-/// marks are in-process), so no `section` events are ever emitted
-/// (ADR-0023). Session cookies are minted on both branches so a visitor who
-/// arrived via the SSE handshake still gets one. See ADR-0030.
-async fn events(
-    State(state): State<Arc<DemoState>>,
-    headers: HeaderMap,
-    Query(query): Query<ViewQuery>,
-) -> Response {
-    let mode = ViewMode::from_query(query.view.as_deref());
-    let now = Instant::now();
-    let existing = read_cookie(&headers, &state.config.cookie_name);
-    let resolved = {
-        let mut store = state.lock_sessions();
-        resolve_in_store(&mut store, &state.config, existing, now)
-            .map(|(sid, set_cookie)| (set_cookie, store.marks(&sid).clone()))
-    };
-    let Some((set_cookie, marks)) = resolved else {
-        return capacity_response();
-    };
-
-    let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(4);
-    // Ack first on every connect, before any session-specific work, so the
-    // browser's lastEventId is seeded even if the snapshot is skipped.
-    let _ = tx.send(crate::web::ack_event()).await;
-
-    if headers.contains_key("last-event-id") {
-        let overlay = MarkOverlay::new(&marks);
-        let raw = package_view_with_overlay(&state.base_raw, &overlay);
-        let snapshot =
-            render::all_sections(&raw, &state.search_links, mode, render::SectionWrap::Oob)
-                .into_string();
-        let _ = tx.send(crate::web::snapshot_event(snapshot)).await;
-    }
-
-    let mut response = events_response(rx);
-    if let Some(cookie) = set_cookie {
-        response.headers_mut().append(header::SET_COOKIE, cookie);
-    }
-    response
 }
 
 /// Liveness probe for the container healthcheck. Answers without minting a
@@ -767,61 +716,6 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let content_type = response.headers().get("content-type").unwrap();
         assert!(content_type.to_str().unwrap().contains("javascript"));
-    }
-
-    #[tokio::test]
-    async fn demo_events_first_connect_emits_only_ack() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
-
-        let response = router(state)
-            .oneshot(
-                Request::builder()
-                    .uri("/events?view=gaps")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        assert!(
-            response.headers().get(header::SET_COOKIE).is_some(),
-            "demo /events must mint a session cookie even on first connect",
-        );
-
-        let body = body_string(response).await;
-        assert!(body.contains("event: ack"), "ack must appear in the stream");
-        assert!(
-            !body.contains("event: snapshot"),
-            "first connect must skip the snapshot, got body: {body}"
-        );
-    }
-
-    #[tokio::test]
-    async fn demo_events_reconnect_emits_ack_then_snapshot() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(&dir.path().join("Book/01.mp3"));
-        let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
-
-        let response = router(state)
-            .oneshot(
-                Request::builder()
-                    .uri("/events?view=gaps")
-                    .header("last-event-id", "r")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = body_string(response).await;
-        let ack_at = body.find("event: ack").expect("ack must appear");
-        let snapshot_at = body
-            .find("event: snapshot")
-            .expect("snapshot must follow ack on reconnect");
-        assert!(ack_at < snapshot_at, "ack must come before snapshot");
     }
 
     #[tokio::test]

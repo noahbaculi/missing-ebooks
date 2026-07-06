@@ -19,15 +19,11 @@ use crate::marker::Marker;
 use crate::raw_view::{RawView, apply_mark_raw, build_section, build_view};
 use crate::scanner::{DirIndex, ScanSettings};
 
-/// Everything a request handler needs: the immutable config and settings, the
-/// scan cache, and the autosync registry. Shared as `Arc<AppState>`.
+/// Everything a request handler needs: the immutable config and settings, and
+/// the scan cache. Shared as `Arc<AppState>`.
 pub struct AppState {
     pub(crate) config: Arc<Config>,
     pub(crate) store: RawViewStore,
-    /// The autosync subscriber registry and loop handle. The loop spawns on the
-    /// first SSE subscription with a non-zero `autosync_interval_seconds` and
-    /// exits when the last subscriber disconnects (ADR-0023).
-    pub(crate) autosync: crate::autosync::Autosync,
 }
 
 /// A stored raw view and the instant it was scanned. Owned by `RawViewStore`'s
@@ -173,13 +169,6 @@ impl RawViewStore {
         raw
     }
 
-    /// Rebuild ignoring the TTL, keeping the dir index. The autosync tick
-    /// path: the loop calls this each tick to pick up filesystem changes
-    /// without forcing a cold walk.
-    pub(crate) async fn refresh(&self) -> Arc<RawView> {
-        self.build_coalesced(false).await
-    }
-
     /// Force a cold scan: clear every per-root index, then rebuild. Ignores
     /// the TTL. The explicit "fix any drift" path, used by the /rescan click.
     pub(crate) async fn rescan(&self) -> Arc<RawView> {
@@ -220,16 +209,11 @@ impl AppState {
             Some(Duration::from_secs(config.ttl_seconds))
         };
         let config = Arc::new(config);
-        let autosync = crate::autosync::Autosync::new(config.autosync_interval_seconds);
         let dir_indices = (0..config.library_roots.len())
             .map(|_| Arc::new(DirIndex::new()))
             .collect();
         let store = RawViewStore::new(Arc::clone(&config), Arc::new(settings), dir_indices, ttl);
-        AppState {
-            config,
-            store,
-            autosync,
-        }
+        AppState { config, store }
     }
 
     /// Warm the cache slot by reading the current raw view. Used by the binary

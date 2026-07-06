@@ -3,21 +3,17 @@
 //! decoupled from the axum version. Marker writes use htmx to swap only the
 //! affected root's section. htmx is vendored and served from `/static`.
 
-use std::convert::Infallible;
 use std::fmt::Write as _;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use axum::Router;
 use axum::extract::{Form, Query, State};
 use axum::http::{HeaderName, HeaderValue};
-use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use maud::Markup;
 use serde::Deserialize;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
 
 use crate::marker::Marker;
 use crate::state::{AppState, WriteFailure};
@@ -58,9 +54,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/unmark", post(unmark))
         .route("/rescan", post(rescan))
         .route("/refresh", get(refresh))
-        .route("/events", get(events))
         .route("/static/htmx.min.js", get(assets::htmx_script))
-        .route("/static/htmx-sse.js", get(assets::htmx_sse_script))
         .route("/static/app.css", get(assets::app_css))
         .route("/static/app.js", get(assets::app_js))
         .with_state(state)
@@ -169,12 +163,7 @@ async fn rescan(State(state): State<Arc<AppState>>, Form(query): Form<ViewQuery>
     let raw = state.store.rescan().await;
     // Swap the fresh sections into #roots and push the mode path, so the address bar
     // tracks the view without ever showing the /rescan POST URL.
-    let markup = render::all_sections(
-        &raw,
-        &state.config.search_links,
-        mode,
-        render::SectionWrap::Plain,
-    );
+    let markup = render::all_sections(&raw, &state.config.search_links, mode);
     let resp = ([("HX-Push-Url", mode.path())], Html(markup.into_string())).into_response();
     tracing::debug!(
         op = "rescan",
@@ -189,12 +178,7 @@ async fn refresh(State(state): State<Arc<AppState>>, Query(query): Query<ViewQue
     let started = Instant::now();
     let mode = ViewMode::from_query(query.view.as_deref());
     let raw = state.store.current().await;
-    let markup = render::all_sections(
-        &raw,
-        &state.config.search_links,
-        mode,
-        render::SectionWrap::Plain,
-    );
+    let markup = render::all_sections(&raw, &state.config.search_links, mode);
     let resp = Html(markup.into_string()).into_response();
     tracing::debug!(
         op = "refresh",
@@ -203,78 +187,6 @@ async fn refresh(State(state): State<Arc<AppState>>, Query(query): Query<ViewQue
         "handled request"
     );
     resp
-}
-
-/// Wrap an SSE receiver into an axum `Response` with the `X-Accel-Buffering: no`
-/// header set so nginx (and other reverse proxies that respect this header) do
-/// not buffer the stream. axum's `Sse::into_response` sets `Content-Type:
-/// text/event-stream` and `Cache-Control: no-cache` but not this one. Shared
-/// by the production and demo `/events` handlers so they cannot drift.
-pub(crate) fn events_response(rx: mpsc::Receiver<Result<Event, Infallible>>) -> Response {
-    let sse = Sse::new(ReceiverStream::new(rx)).keep_alive(
-        KeepAlive::new()
-            .interval(Duration::from_secs(15))
-            .text("ping"),
-    );
-    let mut response = sse.into_response();
-    response
-        .headers_mut()
-        .insert("x-accel-buffering", HeaderValue::from_static("no"));
-    response
-}
-
-/// The SSE event sent first on every `/events` connection. Carries `event: ack`,
-/// `id: r`, and empty data. No client listens to `ack`. Its sole purpose is to
-/// seed the browser's `lastEventId` so any reconnect carries `Last-Event-ID`,
-/// which `events` uses to discriminate first connect from reconnect. See
-/// ADR-0030.
-#[allow(
-    clippy::unnecessary_wraps,
-    reason = "SSE senders take Result<Event, Infallible>; the wrap lets callers do tx.send(ack_event()) directly."
-)]
-pub(crate) fn ack_event() -> Result<Event, Infallible> {
-    Ok(Event::default().event("ack").id("r"))
-}
-
-/// The SSE `snapshot` event. The `id: r` stamp is identical to every other
-/// event on the channel. The server only checks header presence on reconnect,
-/// not the id value. See ADR-0030.
-#[allow(
-    clippy::unnecessary_wraps,
-    reason = "SSE senders take Result<Event, Infallible>; the wrap lets callers do tx.send(snapshot_event(...)) directly."
-)]
-pub(crate) fn snapshot_event(payload: String) -> Result<Event, Infallible> {
-    Ok(Event::default().event("snapshot").id("r").data(payload))
-}
-
-/// The per-autosync-tick `section` event. Same `id: r` stamp as the rest of
-/// the channel for the same reason as `snapshot_event`.
-pub(crate) fn section_event(html: String) -> Event {
-    Event::default().event("section").id("r").data(html)
-}
-
-/// SSE endpoint. The first event is always `ack`, an id-stamped sentinel that
-/// seeds the browser's `lastEventId` so a future reconnect carries
-/// `Last-Event-ID`. The second event is `snapshot` only when the request
-/// already carries `Last-Event-ID`: presence means the browser is reconnecting
-/// after a drop and the snapshot fills the gap. Absence means first connect,
-/// when the page just rendered the same state inline. Subsequent events are
-/// `section` events from the autosync loop. `ping` events come from
-/// `KeepAlive` every 15 seconds to survive idle TCP drops by reverse proxies.
-/// See ADR-0030.
-async fn events(
-    State(state): State<Arc<AppState>>,
-    headers: axum::http::HeaderMap,
-    Query(query): Query<ViewQuery>,
-) -> Response {
-    let mode = ViewMode::from_query(query.view.as_deref());
-    // Last-Event-ID is set by the browser's EventSource on any reconnect after
-    // it has received at least one id'd event. Presence means reconnect, so
-    // the snapshot is needed to catch the client up. Absence means first
-    // connect. The page just rendered the same state inline.
-    let send_snapshot = headers.contains_key("last-event-id");
-    let rx = crate::autosync::attach(&state, mode, send_snapshot).await;
-    events_response(rx)
 }
 
 /// JSON-escape any non-ASCII char to `\uXXXX` so an `HX-Trigger` value stays pure
@@ -830,37 +742,6 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         let body = body_string(response).await;
         assert!(body.contains(r#"id="roots""#));
-    }
-
-    #[test]
-    fn ack_event_carries_event_name_and_id_for_last_event_id_seeding() {
-        let event = ack_event().unwrap();
-        let rendered = format!("{event:?}");
-        assert!(
-            rendered.contains("event: ack"),
-            "ack_event must carry event: ack, got {rendered}"
-        );
-        assert!(
-            rendered.contains("id: r"),
-            "ack_event must carry id: r, got {rendered}"
-        );
-    }
-
-    #[test]
-    fn snapshot_event_carries_event_name_and_id_and_payload() {
-        let event = snapshot_event("<oob>payload</oob>".to_string()).unwrap();
-        let rendered = format!("{event:?}");
-        assert!(rendered.contains("event: snapshot"));
-        assert!(rendered.contains("id: r"));
-        assert!(rendered.contains("payload"));
-    }
-
-    #[test]
-    fn section_event_carries_event_name_and_id_and_payload() {
-        let event = section_event("<oob>section</oob>".to_string());
-        let rendered = format!("{event:?}");
-        assert!(rendered.contains("event: section"));
-        assert!(rendered.contains("id: r"));
     }
 
     #[tokio::test]

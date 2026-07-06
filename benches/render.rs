@@ -1,4 +1,4 @@
-//! Criterion bench for `render::page` and the per-section OOB render. Three
+//! Criterion bench for `render::page` and the per-section render. Three
 //! sizes (1k, 10k, 50k folders), depth=3 (the audiobook Author/Series/Book
 //! shape), gap_rate=0.5, both view modes. Fanout grows with size so each row
 //! actually hits the leaf level and `Throughput::Elements` reports honest
@@ -52,22 +52,22 @@ fn bench_render(c: &mut Criterion) {
         group.finish();
 
         // The group name stays `render_oob_section` so Criterion's baseline
-        // history carries across the ADR-0032 fold that renamed the underlying
-        // symbol to `SectionHandle::render_oob`. The measured paths are the
-        // same; only the label is a historical anchor.
+        // history carries across the ADR-0034 fold that dropped OOB rendering.
+        // The label is a historical anchor; the measured path is the plain
+        // per-section render now used by /mark, /unmark, and the section swap.
         let mut group = c.benchmark_group("render_oob_section");
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::new("gaps", label), &input, |b, i| {
             b.iter(|| {
                 render::packaged_section(&i.raw, 0, ViewMode::GapsOnly)
-                    .render_oob(&[])
+                    .render(&[], None)
                     .into_string()
             });
         });
         group.bench_with_input(BenchmarkId::new("all", label), &input, |b, i| {
             b.iter(|| {
                 render::packaged_section(&i.raw, 0, ViewMode::All)
-                    .render_oob(&[])
+                    .render(&[], None)
                     .into_string()
             });
         });
