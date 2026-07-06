@@ -100,15 +100,17 @@ async fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(&seed_dir)?;
     let roots = scenarios::materialize(&(scenario.spec)(), &seed_dir);
 
-    // The production config over the seeded roots, defaulted otherwise.
-    // autosync_interval_seconds=0 disables the autosync loop everywhere a
-    // production AppState would build one (ADR-0023). The demo never builds an
-    // AppState today, so this is a placeholder that documents the choice: the
-    // session sweep's idle signal does not yet track SSE traffic, so per-session
-    // loops would extend sessions inappropriately.
+    // The production config over the seeded roots, defaulted otherwise. The
+    // demo builds a static base view once at startup (build_state) and never
+    // rescans, so a polling client would just hit /refresh and get back the
+    // same bytes. poll_interval_seconds=0 keeps the demo's zero-idle-work
+    // property. autosync_interval_seconds=0 stays pinned for the same reason
+    // and mirrors ADR-0023: the session sweep's idle signal does not track
+    // SSE traffic, so per-session loops would extend sessions inappropriately.
     let config = Config {
         library_roots: roots,
         autosync_interval_seconds: 0,
+        poll_interval_seconds: 0,
         ..Default::default()
     };
     let settings = ScanSettings::compile(config.scan_inputs())?;

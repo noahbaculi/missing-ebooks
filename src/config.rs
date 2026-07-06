@@ -73,8 +73,8 @@ impl Default for Config {
             port: 13379,
             ttl_seconds: 60,
             scan_concurrency: 16,
-            autosync_interval_seconds: 10,
-            poll_interval_seconds: 0,
+            autosync_interval_seconds: 0,
+            poll_interval_seconds: 10,
             // Audiobookshelf's full supported sets (see ADR-0006).
             audio_exts: strings(&[
                 ".m4b", ".mp3", ".m4a", ".flac", ".opus", ".ogg", ".oga", ".mp4", ".aac", ".wma",
@@ -287,20 +287,18 @@ ttl_seconds = 60
 # parallelism. Also settable as MISSING_EBOOKS_SCAN_CONCURRENCY.
 scan_concurrency = 16
 
-# Live updates while a browser tab is open. When at least one tab is subscribed
-# to /events, the server runs a warm scan every N seconds and pushes any
-# changed root sections back to the tab. The timer measures from completion to
-# next start, so a slow scan does not stack. Set to 0 to disable the loop
-# entirely. The SSE endpoint still serves the initial snapshot but emits no
-# further section events. Also settable as
+# Legacy background sync loop. Disabled by default. Kept during rollout so a
+# deployment that pinned MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS to a nonzero
+# value still gets SSE pushes. The next release removes both the field and the
+# loop; new deployments should use poll_interval_seconds. Also settable as
 # MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS.
-autosync_interval_seconds = 10
+autosync_interval_seconds = 0
 
 # Client-side poll cadence. When > 0, open tabs pull /refresh every N seconds
 # while the tab is visible, and the server's ttl_seconds caps how often the
 # scan runs regardless of tab count. 0 leaves the older SSE autosync path in
 # place during rollout. Also settable as MISSING_EBOOKS_POLL_INTERVAL_SECONDS.
-poll_interval_seconds = 0
+poll_interval_seconds = 10
 
 # File extensions, compared case-insensitively. Leading dot required. The
 # defaults mirror Audiobookshelf's full supported sets (see ADR-0006).
@@ -426,8 +424,10 @@ mod tests {
     }
 
     #[test]
-    fn autosync_interval_seconds_defaults_to_ten() {
-        assert_eq!(Config::default().autosync_interval_seconds, 10);
+    fn defaults_prefer_client_poll_over_server_autosync() {
+        let cfg = Config::default();
+        assert_eq!(cfg.poll_interval_seconds, 10);
+        assert_eq!(cfg.autosync_interval_seconds, 0);
     }
 
     #[test]
@@ -436,11 +436,6 @@ mod tests {
         let env = fake_env(&[("MISSING_EBOOKS_AUTOSYNC_INTERVAL_SECONDS", "0")]);
         apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
         assert_eq!(cfg.autosync_interval_seconds, 0);
-    }
-
-    #[test]
-    fn poll_interval_seconds_defaults_to_zero_until_rollout_flips_it() {
-        assert_eq!(Config::default().poll_interval_seconds, 0);
     }
 
     #[test]
