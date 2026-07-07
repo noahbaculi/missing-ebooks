@@ -1859,18 +1859,35 @@
   // immediate poll on 'visible' so a refocused tab does not sit stale for
   // up to poll_interval_seconds.
   document.addEventListener("DOMContentLoaded", function () {
-    var root = document.getElementById("poll-root");
-    if (!root) return;
+    var found = document.getElementById("poll-root");
+    if (!found) return;
+    var root = found;
     var intervalSecs = parseInt(root.dataset.pollInterval || "0", 10);
     if (!(intervalSecs > 0)) return;
-    var view = root.dataset.view || "gaps";
+    var inFlight = false;
     function pollOnce() {
+      if (inFlight) return;
       if (document.visibilityState !== "visible") return;
       if (!window.htmx) return;
-      window.htmx.ajax("GET", "/refresh?view=" + encodeURIComponent(view), {
-        target: "#roots",
-        swap: "innerHTML",
-      });
+      var view = root.dataset.view;
+      if (!view) return;
+      inFlight = true;
+      var done = function () {
+        inFlight = false;
+      };
+      var req = window.htmx.ajax(
+        "GET",
+        "/refresh?view=" + encodeURIComponent(view),
+        {
+          target: "#roots",
+          swap: "innerHTML",
+        },
+      );
+      if (req && typeof req.then === "function") {
+        req.then(done, done);
+      } else {
+        done();
+      }
     }
     setInterval(pollOnce, intervalSecs * 1000);
     document.addEventListener("visibilitychange", function () {
