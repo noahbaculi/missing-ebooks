@@ -1,5 +1,7 @@
 # ADR-0033: raw-view type and rule split out of state.rs
 
+> Amended 2026-07-06 by ADR-0034: SSE autosync is removed. The `autosync` module named as a raw-view consumer in the Context section is gone; `web::render` and `demo::overlay` remain.
+
 Date: 2026-07-05.
 
 ## Context

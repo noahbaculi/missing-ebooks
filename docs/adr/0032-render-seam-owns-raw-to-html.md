@@ -1,5 +1,7 @@
 # ADR-0032: render seam owns raw → packaged → HTML
 
+> Amended 2026-07-06 by ADR-0034: SSE autosync is removed. `all_sections` no longer takes a wrap parameter, `SectionHandle` no longer exposes `content_hash` or `render_oob`, and the byte-equality contract inside the handle now covers the rescan and refresh paths.
+
 Date: 2026-07-04.
 
 ## Context
@@ -12,14 +14,14 @@ Candidate #02 of the 2026-07 architecture review flagged the pattern and recomme
 
 The render module's outward surface is:
 
-- `render::page(raw, links, mode)` for the full HTML document.
-- `render::all_sections(raw, links, mode, wrap)` for the multi-section payload (`SectionWrap::Plain` for the /rescan swap, `SectionWrap::Oob` for the SSE snapshot).
-- `render::packaged_section(raw, root, mode)` returning a `SectionHandle` that carries the packaged section plus the identifying root and mode.
+- `render::page(raw, links, mode, poll_interval_seconds)` for the full HTML document.
+- `render::all_sections(raw, links, mode)` for the multi-section payload (`/rescan` and `/refresh`).
+- `render::packaged_section(raw, root, mode)` returning a `SectionHandle` for one root.
 - `render::error_section(root, message)` for the standalone bad-root card, unchanged.
 
-`SectionHandle` owns three methods: `content_hash` for autosync dedup, `render(links, alert)` for inline swaps, and `render_oob(links)` for SSE section events. Both render methods route through the same internal per-section renderer, so ADR-0024's byte-equality between rescan-swap and autosync-push is now an internal invariant of the handle.
+`SectionHandle` owns one method, `render(links, alert)`, which routes through the internal per-section renderer. ADR-0024's byte-equality invariant now holds between the mark response, the rescan swap, and the refresh swap as an internal property of that renderer.
 
-Everything else in `render.rs` (`FlaggedView`, `RootSection`, `package_view`, `package_section`, `render_view`, `render_section`, `roots`, `oob_sections`, `single_oob_section`) is module-private. `autosync`'s `section_content_hash` and `render_oob_section` free helpers are deleted; their roles are the handle's methods.
+Everything else in `render.rs` (`FlaggedView`, `RootSection`, `package_view`, `package_section`, `render_view`, `render_section`, `roots`) is module-private.
 
 The demo overlay's `package_view_with_overlay` now returns the synthesized `RawView` instead of a `FlaggedView`, so the demo handlers call the same seams the production handlers use.
 

@@ -4,6 +4,8 @@
 
 > Amended 2026-07-04 by ADR-0032: `web::render::package_section` and `web::render::RootSection` are now module-internal; future per-root fields still land in one place, now inside `SectionHandle`.
 
+> Amended 2026-07-06 by ADR-0034: SSE autosync is removed. The per-root push path is now `SectionHandle::render` on `/refresh` and mark responses; `render_oob` no longer exists. The data-attribute invariant is unchanged.
+
 Date: 2026-06-22.
 
 ## Context
@@ -16,11 +18,11 @@ The total audiobook count per root rides to the browser as `data-total-audiobook
 
 The strip carries two readouts that `app.js` toggles between on the same recompute. The head holds `{pct}% covered · {covered} of {total} audiobooks` with the progress bar when gaps remain; the all-clear line carries a trailing ` · 100% covered ({T} of {T} audiobooks)` fragment when the library has audiobooks but no gaps, and stays bare when the library is empty (so the line never reads "0 of 0"). The all-clear tail's two numeric values ride in their own child spans so `app.js` only rewrites the digits and the surrounding wording lives once in the server template. The head readout floors the percent so 199 of 200 reads "99% covered" next to a hero "1 gap to fill", never a false "100%" while gaps remain.
 
-A small `scanner::RootScan::audiobook_count(&self) -> usize` method filters the raw `Vec<ScannedFolder>` already in the cache (ADR-0022). One `web::render::package_section(scan, mode)` packages a `RootScan` with its rendered state and audiobook total; both the snapshot path (`web::render::page`) and the per-root push path (`SectionHandle::render_oob`, via `packaged_section`) route through it, so any future per-root field lands in one place. `render_section` emits the attribute on the section open tag.
+A small `scanner::RootScan::audiobook_count(&self) -> usize` method filters the raw `Vec<ScannedFolder>` already in the cache (ADR-0022). One `web::render::package_section(scan, mode)` packages a `RootScan` with its rendered state and audiobook total; both the snapshot path (`web::render::page`) and the per-root render path (`SectionHandle::render`, via `packaged_section`) route through it, so any future per-root field lands in one place. `render_section` emits the attribute on the section open tag.
 
 ## Consequences
 
-The coverage readout rides every existing swap channel: a mark replaces the closest section (the per-root total is invariant within a scan, so it rides along unchanged), a rescan swaps `#roots`, an autosync push swaps one section. No new OOB target, no new event type, no autosync protocol bump.
+The coverage readout rides every existing swap channel: a mark replaces the closest section (the per-root total is invariant within a scan, so it rides along unchanged), a rescan swaps `#roots`, a refresh poll swaps `#roots`. No new OOB target, no new event type, no autosync protocol bump.
 
 The cost is one filter over the raw vec per render per root. On `mixed-forest` (81 folders across three roots) this is negligible; on a 10k-folder library it is one pass over 10k entries, well under the 25 ms render gate ADR-0022 measured.
 
