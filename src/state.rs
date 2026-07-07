@@ -111,7 +111,7 @@ impl RawViewStore {
 
     /// Return the cached raw view if still fresh, otherwise build one. Reads
     /// are lock-free. Concurrent cold reads coalesce onto one build.
-    /// TTL-respecting. Used by page loads and the SSE first event.
+    /// TTL-respecting. Used by page loads and the `/refresh` poll handler.
     pub async fn current(&self) -> Arc<RawView> {
         if let Some(entry) = self.cache.load_full()
             && is_fresh(&entry, self.ttl)

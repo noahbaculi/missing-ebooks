@@ -51,7 +51,7 @@ impl DemoState {
     /// session table itself is intact as far as the surviving thread can
     /// tell, so we proceed with a `tracing::warn` rather than propagate the
     /// panic. The poison-recovery pattern duplicates `DirIndex`'s internal lock
-    /// recovery and `autosync::lock_inner`.
+    /// recovery.
     pub(crate) fn lock_sessions(&self) -> std::sync::MutexGuard<'_, SessionStore> {
         self.sessions.lock().unwrap_or_else(|poisoned| {
             tracing::warn!("demo session mutex poisoned; recovering");

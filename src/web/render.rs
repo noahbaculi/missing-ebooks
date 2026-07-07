@@ -45,8 +45,8 @@ fn package_view(raw: &RawView, mode: ViewMode) -> FlaggedView {
 ///
 /// The single owner of the raw-to-packaged step. `package_view` calls it on
 /// the snapshot path; `packaged_section` calls it to build a `SectionHandle`
-/// for autosync's per-root pushes and every mark/unmark response. Any
-/// future per-root field lands here once.
+/// for every mark/unmark response. Any future per-root field lands here
+/// once.
 fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
     let state = tree::build(scan, mode);
     let gaps_within = match &state {
@@ -186,8 +186,8 @@ fn gap_word(n: usize) -> &'static str {
 /// The gap summary strip between the navbar and the roots. Holds the hero gap
 /// total on the left, a library coverage readout with its bar on the right,
 /// and optional per-root chips for a multi-root setup. `app.js` keeps every
-/// number current as marks land, rescans complete, and autosync section pushes
-/// arrive. This render is the first paint.
+/// number current as marks land, rescans complete, and refresh polls swap
+/// `#roots`. This render is the first paint.
 fn gap_summary(view: &FlaggedView) -> Markup {
     let total_gaps = total_gaps(view);
     let total_audiobooks: usize = view.iter().map(|s| s.total_audiobooks).sum();
@@ -326,9 +326,10 @@ fn root_badge(section: &RootSection) -> Markup {
     }
 }
 
-/// Render one root's section with an optional inline alert. Shared by
-/// `SectionHandle::render` and the OOB-wrap variant so the two output
-/// shapes stay byte-identical inside the wrap.
+/// Render one root's section with an optional inline alert. Called by
+/// `SectionHandle::render` (mark responses) and `all_sections` (rescan
+/// and refresh responses) so every path emits byte-identical section
+/// HTML.
 fn render_section(
     section: &RootSection,
     root: usize,
