@@ -427,6 +427,21 @@ mod tests {
     }
 
     #[test]
+    fn page_emits_data_view_all_for_all_mode() {
+        let html = page(ViewMode::All, 10, &stub_body()).into_string();
+        assert!(html.contains(r#"data-view="all""#));
+    }
+
+    #[test]
+    fn page_emits_data_view_even_when_polling_is_disabled() {
+        // The client reads data-view unconditionally; the marker must carry it
+        // regardless of interval so a future refactor cannot drop the
+        // attribute silently.
+        let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
+        assert!(html.contains(r#"data-view="gaps""#));
+    }
+
+    #[test]
     fn index_links_an_inline_favicon() {
         let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // An inline SVG data-URI favicon, so the browser stops requesting
