@@ -1,45 +1,79 @@
 # Benchmarks
 
-`scan_bench` times the real scanner against the configured library roots, cold and warm, and writes a JSON report. The harness is `benches/scan_bench.rs`; run it with `cargo bench --bench scan_bench`. The analysis that drives the default `concurrency` value lives in [ADR-0019](../docs/adr/0019-scan-walk-parallel-sized-by-concurrency.md).
+`benches/scan_bench.rs` is a criterion bench that times the scanner across four groups: `scan_full` (full listing walk), `scan_gaps` (listing walk plus the reduce to flagged folders), `scan_warm` (reuse walk against a primed `DirIndex`), and `scan_concurrent` (five concurrent `RawViewStore::current()` callers against a fresh store). Default input is a synthetic tempdir at `total = 1000`, `depth = 3`, `fanout = 10`, `gap_rate = 0.5`, seeded per bench setup. The design decision is recorded in [ADR-0035](../docs/adr/0035-scan-bench-is-a-criterion-bench.md).
 
-## Report shape
-
-Each report is a single JSON object with a `runs` array. Each run carries a `concurrency`, a `mode` (`cold` or `warm`), per-iteration timings, and a derived `iteration_counts` block. Filenames are `scan-bench-<label>-<host>-<unix-ts>.json`; the timestamp orders the reports within a host.
-
-## Running
-
-Replace the path with your own library root:
-
-    cargo bench --bench scan_bench -- --root /path/to/audiobooks --label local --drop-caches --concurrency 1,4,8,16,32
-
-For the SMB sweep, mount the share first and point `--root` at the mount.
-
-## Snapshot fixture
-
-`tests/fixtures/example-nas/audiobooks.snapshot` is a frozen capture of one library's structure (about 900 directories, 7,900 files). Use it for relative comparisons within one machine. Numbers from it are not comparable against the reports in this directory, which came from real mounts.
-
-## Run logs
-
-The per-run findings, fstab and `smb.conf` levers, and the result narratives for the 2026-06 sweep live in [`EXPERIMENTS-2026-06.md`](EXPERIMENTS-2026-06.md).
-
-## Render regression bench
-
-`benches/render.rs` is a `criterion` bench that guards the ADR-0022 per-folder render claim. It seeds three sizes (1k, 10k, 50k folders) at one shape (`depth = 5`, `fanout = 10`, `gap_rate = 0.5`) via `missing_ebooks::synthetic::synthetic_root_scan`, then times `render_view` and the per-section OOB render across both view modes. The synthetic seeder is shared with `benches/tree_bench.rs`, which keeps its sweep-table role for ad hoc shape exploration (`cargo bench --bench tree_bench`). Audit `deep-dive/missing-ebooks-audit-2026-06-25.md` item #7 motivates the bench.
+## Regression check
 
 Capture a baseline on `main` once:
 
 ```bash
-cargo bench --bench render -- --save-baseline main
+cargo bench --bench scan_bench -- --save-baseline main
 ```
 
 On a branch, compare against it:
 
 ```bash
+cargo bench --bench scan_bench -- --baseline main
+```
+
+Criterion prints a `change: [-0.5% .. +0.3%]` delta per bench ID and flags meaningful regressions. `cargo bench --bench scan_bench -- --quick` runs the whole grid at reduced sample count for a smoke test.
+
+## Backend probes
+
+Point the bench at a real filesystem or a rehydrated snapshot via env vars. All are prefixed `MISSING_EBOOKS_SCAN_BENCH_`:
+
+- `ROOT=/mnt/nas/Audiobooks` swaps the synthetic tempdir for a real path. Mutually exclusive with `SNAPSHOT`.
+- `SNAPSHOT=1` rehydrates `tests/fixtures/example-nas/audiobooks.snapshot` into a tempdir and points the bench at that.
+- `DROP_CACHES=1` (Linux only, sudo) runs `sync && echo 3 > /proc/sys/vm/drop_caches` before each `scan_full` and `scan_gaps` iteration. `scan_warm` and `scan_concurrent` ignore it. Pre-authenticate with `sudo -v` before the run.
+- `CONCURRENCY=1,4,8,16,32` sweeps the rayon pool size for `scan_full`/`scan_gaps`/`scan_warm`. For `scan_concurrent`, the values are caller counts instead. Defaults are 16 threads for the first three and 5 callers for the last.
+- `LABEL=smb` tags the companion JSON. Defaults to `unlabeled`.
+
+A sample SMB run mirroring the ADR-0023 warm-reuse gate:
+
+```bash
+sudo -v
+MISSING_EBOOKS_SCAN_BENCH_ROOT=/mnt/jane-nas/Audiobooks \
+MISSING_EBOOKS_SCAN_BENCH_DROP_CACHES=1 \
+MISSING_EBOOKS_SCAN_BENCH_LABEL=smb \
+cargo bench --bench scan_bench --release -- scan_warm
+```
+
+For the ADR-0019 concurrency curve:
+
+```bash
+sudo -v
+MISSING_EBOOKS_SCAN_BENCH_ROOT=/mnt/pool/Audiobooks \
+MISSING_EBOOKS_SCAN_BENCH_CONCURRENCY=1,4,8,16,32 \
+MISSING_EBOOKS_SCAN_BENCH_DROP_CACHES=1 \
+MISSING_EBOOKS_SCAN_BENCH_LABEL=local \
+cargo bench --bench scan_bench --release -- scan_full
+```
+
+`scan_warm` assumes nothing else writes to the tree between iterations. Before a warm run against a real library, pause backups, indexers, and beets.
+
+## Companion JSON
+
+Each run writes `benchmarks/scan-context-<label>-<host>-<unix>.json`. It records host, kernel, build profile, whether `DROP_CACHES` was set, `input_source` (`synthetic`, `snapshot`, or `root`), and the root's fstype and mount options. Criterion owns the timings under `target/criterion/`; the companion carries only environmental context.
+
+## Snapshot fixture
+
+`tests/fixtures/example-nas/audiobooks.snapshot` is a frozen capture of one library's structure (about 900 directories, 7,900 files). Use it for relative comparisons within one machine via `MISSING_EBOOKS_SCAN_BENCH_SNAPSHOT=1`. Numbers from it are not comparable against the 2026-06 reports in this directory, which came from real mounts.
+
+## 2026-06 sweep
+
+Eighteen `scan-bench-*.json` files (schema v1 through v5) and three `cifs-*` text artifacts under this directory are the evidence base for ADR-0019, ADR-0020, ADR-0022, and ADR-0023. They no longer round-trip through the bench binary; the per-run findings, fstab and `smb.conf` levers, and the result narratives live in [`EXPERIMENTS-2026-06.md`](EXPERIMENTS-2026-06.md).
+
+## Render regression bench
+
+`benches/render.rs` is a `criterion` bench that guards the ADR-0022 per-folder render claim. It seeds three sizes (1k, 10k, 50k folders) at one shape (`depth = 3`, `fanout` sized per row via `missing_ebooks::synthetic::synthetic_root_scan`), then times `render::page` and the per-section render across both view modes. The synthetic seeder is shared with `benches/scan_bench.rs` and `benches/tree_bench.rs`, which keeps its sweep-table role for ad hoc shape exploration (`cargo bench --bench tree_bench`).
+
+The baseline/compare workflow matches `scan_bench`:
+
+```bash
+cargo bench --bench render -- --save-baseline main
 cargo bench --bench render -- --baseline main
 ```
 
-Criterion prints a `change: [-0.5% .. +0.3%]` delta per bench ID and flags meaningful regressions in red. The per-folder column (under `Throughput`) is the figure ADR-0022 cites.
+The per-folder column (under `Throughput`) is the figure ADR-0022 cites.
 
-`cargo bench --bench render -- --quick` runs the whole grid in a few seconds at reduced sample count, for a smoke test or coarse iteration. JSON reports under `target/criterion/` are not committed; this directory holds only the long-lived `scan_bench` reports.
-
-The bench is excluded from `cargo test`. CI's `cargo clippy --all-targets` step in `.github/workflows/ci.yml` compile-checks `benches/render.rs` on every push, so a breaking change to the renderer surface fails CI before it reaches a developer's bench run.
+Both benches are excluded from `cargo test`. CI's `cargo clippy --all-targets` step in `.github/workflows/ci.yml` compile-checks `benches/render.rs` and `benches/scan_bench.rs` on every push, so a breaking change to their consumed surface fails CI before it reaches a developer's bench run. JSON reports under `target/criterion/` are not committed; this directory holds only long-lived scan-bench artifacts (the 2026-06 reports and per-run companion JSONs).
