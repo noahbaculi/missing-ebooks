@@ -9,7 +9,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
-use arc_swap::ArcSwapOption;
 use futures_util::FutureExt;
 use futures_util::future::{BoxFuture, Shared};
 use tokio::sync::Mutex;
@@ -47,9 +46,11 @@ type SharedBuild = Shared<BoxFuture<'static, Arc<RawView>>>;
 /// IO. The single place where raw scan output is produced, memoized, and
 /// edited. See ADR-0027.
 pub struct RawViewStore {
-    /// The cache slot, swapped atomically. Reads are lock-free: `current`
-    /// loads the `Arc<CacheEntry>` and clones the inner `Arc<RawView>` out.
-    cache: ArcSwapOption<CacheEntry>,
+    /// The cache slot. Reads clone the `Arc<CacheEntry>` out under the read
+    /// lock; at self-hosted request rates an uncontended read is equivalent
+    /// to the lock-free swap this replaced, and the in-place edit paths are
+    /// atomic under the write lock.
+    cache: std::sync::RwLock<Option<Arc<CacheEntry>>>,
     /// Holds only the in-flight build handle (as a `Weak`, so it expires when
     /// the last awaiter drops it). Held for microseconds to register or join
     /// a build, never across the walk. Also serializes marker edits so a
@@ -85,7 +86,7 @@ impl RawViewStore {
         ttl: Option<Duration>,
     ) -> RawViewStore {
         RawViewStore {
-            cache: ArcSwapOption::empty(),
+            cache: std::sync::RwLock::new(None),
             inflight: Mutex::new(None),
             rebuild_count: AtomicU64::new(0),
             ttl,
@@ -95,25 +96,43 @@ impl RawViewStore {
         }
     }
 
+    /// Read the cache slot, recovering the guard on poison. A poisoned slot
+    /// still holds a coherent entry (writers replace the whole `Option` in
+    /// one assignment), so recovery beats wedging every later read.
+    fn load(&self) -> Option<Arc<CacheEntry>> {
+        self.cache
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Write-lock the cache slot, recovering the guard on poison for the
+    /// same reason `load` does.
+    fn slot(&self) -> std::sync::RwLockWriteGuard<'_, Option<Arc<CacheEntry>>> {
+        self.cache
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// Stamp and store a freshly built raw view, bumping `rebuild_count`. The
     /// single place that sets `stored_at = now`. The in-place marker edit
     /// stores directly (preserving `stored_at`) and never calls this, so a
     /// warm write leaves both the freshness clock and the rebuild count
     /// unchanged.
     fn store_fresh(&self, raw: Arc<RawView>) -> Arc<RawView> {
-        self.cache.store(Some(Arc::new(CacheEntry {
+        *self.slot() = Some(Arc::new(CacheEntry {
             stored_at: Instant::now(),
             raw: Arc::clone(&raw),
-        })));
+        }));
         self.rebuild_count.fetch_add(1, Ordering::Relaxed);
         raw
     }
 
     /// Return the cached raw view if still fresh, otherwise build one. Reads
-    /// are lock-free. Concurrent cold reads coalesce onto one build.
+    /// take an uncontended read lock. Concurrent cold reads coalesce onto one build.
     /// TTL-respecting. Used by page loads and the `/refresh` poll handler.
     pub async fn current(&self) -> Arc<RawView> {
-        if let Some(entry) = self.cache.load_full()
+        if let Some(entry) = self.load()
             && is_fresh(&entry, self.ttl)
         {
             tracing::debug!("cache hit");
@@ -139,7 +158,7 @@ impl RawViewStore {
         let (handle, owns) = {
             let mut slot = self.inflight.lock().await;
             if recheck_fresh
-                && let Some(entry) = self.cache.load_full()
+                && let Some(entry) = self.load()
                 && is_fresh(&entry, self.ttl)
             {
                 return Arc::clone(&entry.raw);
@@ -319,20 +338,27 @@ impl RawViewStore {
             // serializes a warm in-place edit against any concurrent cold
             // build's store, and against another concurrent edit.
             let _edit = self.inflight.lock().await;
-            match self.cache.load_full() {
-                Some(entry) if is_fresh(&entry, self.ttl) => {
-                    let mut next = (*entry.raw).clone();
-                    apply_mark_raw(&mut next, root, &rel_for_edit, marker);
-                    let next = Arc::new(next);
-                    // Preserve `stored_at`: an in-place edit does not refresh
-                    // the freshness clock.
-                    self.cache.store(Some(Arc::new(CacheEntry {
-                        stored_at: entry.stored_at,
-                        raw: Arc::clone(&next),
-                    })));
-                    next
+            let edited = {
+                let mut slot = self.slot();
+                match slot.as_ref() {
+                    Some(entry) if is_fresh(entry, self.ttl) => {
+                        let mut next = (*entry.raw).clone();
+                        apply_mark_raw(&mut next, root, &rel_for_edit, marker);
+                        let next = Arc::new(next);
+                        // Preserve `stored_at`: an in-place edit does not
+                        // refresh the freshness clock.
+                        *slot = Some(Arc::new(CacheEntry {
+                            stored_at: entry.stored_at,
+                            raw: Arc::clone(&next),
+                        }));
+                        Some(next)
+                    }
+                    _ => None,
                 }
-                _ => self.store_fresh(Arc::new(self.build_view().await)),
+            };
+            match edited {
+                Some(next) => next,
+                None => self.store_fresh(Arc::new(self.build_view().await)),
             }
         };
         Ok(Applied { raw, created })
@@ -412,17 +438,18 @@ impl RawViewStore {
         // another concurrent edit.
         let spliced = {
             let _edit = self.inflight.lock().await;
-            match self.cache.load_full() {
-                Some(entry) if is_fresh(&entry, self.ttl) => {
+            let mut slot = self.slot();
+            match slot.as_ref() {
+                Some(entry) if is_fresh(entry, self.ttl) => {
                     let mut next = (*entry.raw).clone();
                     if root < next.len() {
                         next[root] = section;
                     }
                     let next = Arc::new(next);
-                    self.cache.store(Some(Arc::new(CacheEntry {
+                    *slot = Some(Arc::new(CacheEntry {
                         stored_at: entry.stored_at,
                         raw: Arc::clone(&next),
-                    })));
+                    }));
                     Some(next)
                 }
                 _ => None,

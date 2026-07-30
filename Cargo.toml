@@ -36,7 +36,6 @@ path = "benches/scan_bench.rs"
 harness = false
 
 [dependencies]
-arc-swap = "1.7"
 axum = "0.8.9"
 clap = { version = "4", features = ["derive", "env"] }
 futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
