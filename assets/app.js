@@ -1166,7 +1166,7 @@
       // section markup swaps in for the chip, duplicating row state and
       // throwing the live gap-hero count off.
       htmx.ajax("POST", "/unmark", {
-        target: 'section.root[data-root="' + detail.root + '"]',
+        target: 'section.root[data-root="' + CSS.escape(detail.root) + '"]',
         swap: "outerHTML",
         values: {
           root: detail.root,
@@ -1436,7 +1436,7 @@
     for (var i = 0; i < chips.length; i++) {
       if (chips[i].classList.contains("gap-chip-error")) continue;
       var root = chips[i].getAttribute("data-root") || "";
-      var section = document.querySelector('section.root[data-root="' + root + '"]');
+      var section = document.querySelector('section.root[data-root="' + CSS.escape(root) + '"]');
       var num = chips[i].querySelector(".gap-chip-num");
       if (section && num) {
         num.textContent = String(countGapRows(section));
@@ -1520,22 +1520,15 @@
     if (!cfg || cfg.path !== "/unmark" || !cfg.parameters) return;
     if (cfg.parameters.view !== "gaps") return;
     var section = document.querySelector(
-      'section.root[data-root="' + cfg.parameters.root + '"]'
+      'section.root[data-root="' + CSS.escape(cfg.parameters.root) + '"]'
     );
     if (!section) return;
-    var rel = cfg.parameters.rel;
-    // rel can carry quotes or slashes, so match on the marker form's hidden input
-    // value rather than build an attribute selector from it.
-    var forms = section.querySelectorAll("form.mark");
-    for (var i = 0; i < forms.length; i++) {
-      var input = /** @type {HTMLInputElement | null} */ (
-        forms[i].querySelector('input[name="rel"]')
-      );
-      if (input && input.value === rel) {
-        expandRow(forms[i].closest("li"));
-        return;
-      }
-    }
+    // rel can carry quotes or slashes; CSS.escape makes it selector-safe, so
+    // the restored leaf is found by its marker form's hidden input directly.
+    var input = section.querySelector(
+      'form.mark input[name="rel"][value="' + CSS.escape(cfg.parameters.rel) + '"]'
+    );
+    if (input) expandRow(input.closest("li"));
   }
 
   // An undo and the delayed mark swap both land as a section swap. A rescan swaps
