@@ -27,12 +27,7 @@ pub(crate) fn clean_query(name: &str) -> String {
             ')' | ']' | '}' => depth = depth.saturating_sub(1),
             _ if depth > 0 => {}
             // `_`, `.`, and whitespace all normalize to a single deferred space.
-            ' ' | '\t' | '_' | '.' => {
-                if !out.is_empty() {
-                    pending_space = true;
-                }
-            }
-            _ if ch.is_whitespace() => {
+            _ if ch == '_' || ch == '.' || ch.is_whitespace() => {
                 if !out.is_empty() {
                     pending_space = true;
                 }
