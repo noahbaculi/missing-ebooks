@@ -58,8 +58,7 @@ pub(crate) fn clean_query(name: &str) -> String {
 
 /// Percent-encode a string for use as a URL query value (RFC 3986):
 /// unreserved characters pass through, everything else becomes uppercase
-/// `%XX` per UTF-8 byte. Matches what the `urlencoding` crate produced for
-/// the search-link templates before it was dropped.
+/// `%XX` per UTF-8 byte.
 #[must_use]
 pub(crate) fn percent_encode(input: &str) -> String {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
