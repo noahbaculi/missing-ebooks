@@ -36,7 +36,6 @@ path = "benches/scan_bench.rs"
 harness = false
 
 [dependencies]
-anyhow = "1.0.102"
 arc-swap = "1.7"
 axum = "0.8.9"
 clap = { version = "4", features = ["derive", "env"] }

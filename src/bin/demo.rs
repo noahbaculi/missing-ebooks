@@ -52,7 +52,7 @@ fn var_or(name: &str, default: &str) -> String {
 
 /// Build the demo config: defaults, then env-var overrides, then CLI overrides.
 /// CLI flags win because they sit closest to the invocation.
-fn load_config(cli: &Cli) -> anyhow::Result<DemoConfig> {
+fn load_config(cli: &Cli) -> Result<DemoConfig, Box<dyn std::error::Error>> {
     let bind = cli
         .bind
         .clone()
@@ -83,14 +83,14 @@ async fn run_reaper(state: Arc<DemoState>) {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     missing_ebooks::telemetry::init();
     let cli = Cli::parse();
     let demo_config = load_config(&cli)?;
 
     // Resolve the scenario first, so an unknown name fails fast.
     let scenario = scenarios::find_scenario(&demo_config.scenario)
-        .ok_or_else(|| anyhow::anyhow!("unknown scenario {:?}", demo_config.scenario))?;
+        .ok_or_else(|| format!("unknown scenario {:?}", demo_config.scenario))?;
 
     // Seed the scenario into a stable directory under /tmp. The data is synthetic
     // and the container is ephemeral, so it is never cleaned up explicitly. /tmp
