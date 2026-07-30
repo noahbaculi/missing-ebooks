@@ -65,7 +65,7 @@ Eighteen `scan-bench-*.json` files (schema v1 through v5) and three `cifs-*` tex
 
 ## Render regression bench
 
-`benches/render.rs` is a `criterion` bench that guards the ADR-0022 per-folder render claim. It seeds three sizes (1k, 10k, 50k folders) at one shape (`depth = 3`, `fanout` sized per row via `missing_ebooks::synthetic::synthetic_root_scan`), then times `render::page` and the per-section render across both view modes. The synthetic seeder is shared with `benches/scan_bench.rs` and `benches/tree_bench.rs`, which keeps its sweep-table role for ad hoc shape exploration (`cargo bench --bench tree_bench`).
+`benches/render.rs` is a `criterion` bench that guards the ADR-0022 per-folder render claim. It seeds three sizes (1k, 10k, 50k folders) at one shape (`depth = 3`, `fanout` sized per row via `missing_ebooks::synthetic::synthetic_root_scan`), then times `render::page` and the per-section render across both view modes. The synthetic seeder is shared with `benches/scan_bench.rs`. The old `tree_bench` shape-sweep tool was removed once the render bench covered its regression role (`render::page` includes `tree::build`); it lives in git history.
 
 The baseline/compare workflow matches `scan_bench`:
 

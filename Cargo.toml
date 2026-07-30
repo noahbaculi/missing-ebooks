@@ -35,11 +35,6 @@ name = "scan_bench"
 path = "benches/scan_bench.rs"
 harness = false
 
-[[bench]]
-name = "tree_bench"
-path = "benches/tree_bench.rs"
-harness = false
-
 [dependencies]
 anyhow = "1.0.102"
 arc-swap = "1.7"
