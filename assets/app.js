@@ -1332,12 +1332,9 @@
   function syncViewLink() {
     if (!viewLink) return;
     var query = searchInput ? searchInput.value.trim() : "";
-    viewLink.href = query
-      ? viewLinkBase +
-        (viewLinkBase.indexOf("?") === -1 ? "?" : "&") +
-        "q=" +
-        encodeURIComponent(query)
-      : viewLinkBase;
+    var url = new URL(viewLinkBase, location.origin);
+    if (query) url.searchParams.set("q", query);
+    viewLink.href = url.pathname + url.search;
   }
 
   document.addEventListener("DOMContentLoaded", function () {
