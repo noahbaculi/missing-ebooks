@@ -89,8 +89,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let demo_config = load_config(&cli)?;
 
     // Resolve the scenario first, so an unknown name fails fast.
-    let scenario = scenarios::find_scenario(&demo_config.scenario)
-        .ok_or_else(|| format!("unknown scenario {:?}", demo_config.scenario))?;
+    let Some(scenario) = scenarios::find_scenario(&demo_config.scenario) else {
+        eprintln!("Error: unknown scenario {:?}", demo_config.scenario);
+        std::process::exit(1);
+    };
 
     // Seed the scenario into a stable directory under /tmp. The data is synthetic
     // and the container is ephemeral, so it is never cleaned up explicitly. /tmp
