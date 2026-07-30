@@ -32,6 +32,11 @@ name = "scan_bench"
 path = "benches/scan_bench.rs"
 harness = false
 
+[[example]]
+name = "explore"
+path = "examples/explore.rs"
+test = true
+
 [dependencies]
 axum = "0.8.9"
 clap = { version = "4", features = ["derive", "env"] }
