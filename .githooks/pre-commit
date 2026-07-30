@@ -15,8 +15,8 @@ staged=$(git diff --cached --name-only --diff-filter=ACMR)
 # Each language's checks run only when a staged file could change their result,
 # so unrelated commits (docs, or the other language) stay fast.
 rust_changed=$(printf '%s\n' "$staged" | grep -Eq '(\.rs$|(^|/)Cargo\.(toml|lock)$|(^|/)(rust-toolchain|rustfmt|\.rustfmt|clippy)\.toml$)' && echo 1 || true)
-js_changed=$(printf '%s\n' "$staged" | grep -Eq '((^|/)assets/app\.js$|\.d\.ts$|(^|/)tsconfig\.json$)' && echo 1 || true)
-accent_changed=$(printf '%s\n' "$staged" | grep -Eq '((^|/)assets/app\.(css|js)$|(^|/)tests/accent/)' && echo 1 || true)
+js_changed=$(printf '%s\n' "$staged" | grep -Eq '((^|/)assets/app\.js$|(^|/)assets/prepaint\.js$|\.d\.ts$|(^|/)tsconfig\.json$)' && echo 1 || true)
+accent_changed=$(printf '%s\n' "$staged" | grep -Eq '((^|/)assets/app\.(css|js)$|(^|/)assets/prepaint\.js$|(^|/)tests/accent/)' && echo 1 || true)
 toml_changed=$(printf '%s\n' "$staged" | grep -Eq '\.toml$' && echo 1 || true)
 
 if [ -n "$rust_changed" ]; then
