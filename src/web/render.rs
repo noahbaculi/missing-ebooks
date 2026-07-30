@@ -5,7 +5,7 @@
 use maud::{Markup, PreEscaped, html};
 
 use crate::config::SearchLink;
-use crate::query::clean_query;
+use crate::query::{clean_query, percent_encode};
 use crate::raw_view::RawView;
 use crate::scanner::RootScan;
 use crate::tree;
@@ -639,7 +639,7 @@ fn search_links(
 ) -> Markup {
     html! {
         @if !links.is_empty() {
-            @let query = urlencoding::encode(&clean_query(name)).into_owned();
+            @let query = percent_encode(&clean_query(name));
             @let id = next_id("links", root, counter);
             span.links {
                 span.sheet-divider { "Search" }

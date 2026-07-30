@@ -56,6 +56,29 @@ pub(crate) fn clean_query(name: &str) -> String {
     }
 }
 
+/// Percent-encode a string for use as a URL query value (RFC 3986):
+/// unreserved characters pass through, everything else becomes uppercase
+/// `%XX` per UTF-8 byte. Matches what the `urlencoding` crate produced for
+/// the search-link templates before it was dropped.
+#[must_use]
+pub(crate) fn percent_encode(input: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut out = String::with_capacity(input.len());
+    for &byte in input.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(char::from(byte));
+            }
+            _ => {
+                out.push('%');
+                out.push(char::from(HEX[usize::from(byte >> 4)]));
+                out.push(char::from(HEX[usize::from(byte & 0x0f)]));
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
@@ -103,6 +126,18 @@ mod tests {
         // text around it survives. An unclosed opener drops everything after it.
         assert_eq!(clean_query("Book )extra("), "Book extra");
         assert_eq!(clean_query("Book ("), "Book");
+    }
+
+    #[test]
+    fn percent_encodes_reserved_space_and_multibyte() {
+        // Unreserved characters (RFC 3986) pass through verbatim.
+        assert_eq!(percent_encode("AZaz09-_.~"), "AZaz09-_.~");
+        // Space is %20, not +.
+        assert_eq!(percent_encode("a b"), "a%20b");
+        // Reserved characters are escaped with uppercase hex.
+        assert_eq!(percent_encode("a&b?c=d/e"), "a%26b%3Fc%3Dd%2Fe");
+        // Multibyte UTF-8 escapes per byte.
+        assert_eq!(percent_encode("Dûne"), "D%C3%BBne");
     }
 
     proptest! {
