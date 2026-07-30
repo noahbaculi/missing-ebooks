@@ -6,15 +6,6 @@
 
 use std::path::{Path, PathBuf};
 
-/// Marker file kind a scenario can drop into a folder. The dot prefix lives
-/// in `materialize`, so a missing dot is unrepresentable.
-pub enum MarkerKind {
-    /// `.no_ebook`: this folder has audio but no ebook is expected.
-    NoEbook,
-    /// `.ebook_elsewhere`: the ebook lives in another library root.
-    EbookElsewhere,
-}
-
 /// One node in a `ScenarioSpec` tree.
 pub enum Entry {
     /// A subdirectory containing further entries.
@@ -34,8 +25,10 @@ pub enum Entry {
         /// Ebook filename written into the parent folder.
         name: String,
     },
-    /// Marker file (`.no_ebook` or `.ebook_elsewhere`) in the parent folder.
-    Marker(MarkerKind),
+    /// Marker filename (`.no_ebook` or `.ebook_elsewhere`) written into the
+    /// parent folder. Built via the private `no_ebook()` / `elsewhere()`
+    /// helpers, so a non-marker name never lands here.
+    Marker(&'static str),
 }
 
 /// A library root that `materialize` seeds under `base`.
@@ -161,11 +154,7 @@ fn write_entry(parent: &Path, entry: &Entry) {
         Entry::Audio { name } | Entry::Ebook { name } => {
             touch(&parent.join(name));
         }
-        Entry::Marker(kind) => {
-            let file = match kind {
-                MarkerKind::NoEbook => ".no_ebook",
-                MarkerKind::EbookElsewhere => ".ebook_elsewhere",
-            };
+        Entry::Marker(file) => {
             touch(&parent.join(file));
         }
     }
@@ -187,11 +176,11 @@ fn ebook(name: &str) -> Entry {
 }
 
 fn no_ebook() -> Entry {
-    Entry::Marker(MarkerKind::NoEbook)
+    Entry::Marker(".no_ebook")
 }
 
 fn elsewhere() -> Entry {
-    Entry::Marker(MarkerKind::EbookElsewhere)
+    Entry::Marker(".ebook_elsewhere")
 }
 
 fn root(name: &str, items: Vec<Entry>) -> RootPlan {
