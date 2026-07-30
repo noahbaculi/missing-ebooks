@@ -47,8 +47,8 @@ type SharedBuild = Shared<BoxFuture<'static, Arc<RawView>>>;
 /// edited. See ADR-0027.
 pub struct RawViewStore {
     /// The cache slot. Reads clone the `Arc<CacheEntry>` out under the read
-    /// lock; at self-hosted request rates an uncontended read is equivalent
-    /// to the lock-free swap this replaced, and the in-place edit paths are
+    /// lock. At self-hosted request rates an uncontended read costs about as
+    /// much as an atomic pointer load, and the in-place edit paths are
     /// atomic under the write lock.
     cache: std::sync::RwLock<Option<Arc<CacheEntry>>>,
     /// Holds only the in-flight build handle (as a `Weak`, so it expires when
