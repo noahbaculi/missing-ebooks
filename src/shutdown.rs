@@ -5,22 +5,17 @@
 /// Resolves when the process receives SIGINT or SIGTERM (Unix) or Ctrl-C
 /// (Windows). Logs which signal fired before returning. Intended to be
 /// passed to `axum::serve(..).with_graceful_shutdown(..)`.
+///
+/// # Panics
+///
+/// Panics when the tokio runtime was built without signal support: a
+/// failed SIGTERM install is a build bug to surface loudly, not a
+/// condition to degrade around.
 pub async fn signal() {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal as unix_signal};
-        let mut term = match unix_signal(SignalKind::terminate()) {
-            Ok(s) => s,
-            Err(err) => {
-                tracing::warn!(
-                    error = %err,
-                    "could not install SIGTERM handler; waiting for SIGINT only"
-                );
-                let _ = tokio::signal::ctrl_c().await;
-                tracing::info!("received SIGINT, shutting down");
-                return;
-            }
-        };
+        let mut term = unix_signal(SignalKind::terminate()).expect("install SIGTERM handler");
         tokio::select! {
             _ = tokio::signal::ctrl_c() => tracing::info!("received SIGINT, shutting down"),
             _ = term.recv() => tracing::info!("received SIGTERM, shutting down"),
