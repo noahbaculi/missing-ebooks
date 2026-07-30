@@ -1009,7 +1009,6 @@ mod tests {
 
     #[tokio::test]
     async fn store_ttl_zero_rescans_every_call() {
-        use filetime::{FileTime, set_file_mtime};
         let dir = tempfile::tempdir().unwrap();
         let book = dir.path().join("Book");
         crate::scenarios::touch(&book.join("01.mp3"));
@@ -1023,7 +1022,10 @@ mod tests {
         // index keys off mtime equality, so back-to-back touches inside one tick
         // would otherwise reuse the pre-cover listing and hide the new ebook.
         crate::scenarios::touch(&book.join("Book.epub"));
-        set_file_mtime(&book, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
+        std::fs::File::open(&book)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(4_000_000_000))
+            .unwrap();
         let second = store.current().await;
         assert!(!book_missing(&second), "ttl 0 rescanned and saw the cover");
     }

@@ -700,6 +700,15 @@ mod tests {
         pool.install(|| scan_warm(root, settings, &DirIndex::new()).0)
     }
 
+    /// Push a directory's mtime far into the future so a rescan sees the
+    /// change regardless of the filesystem's mtime resolution.
+    fn bump_mtime(dir: &Path) {
+        std::fs::File::open(dir)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(4_000_000_000))
+            .unwrap();
+    }
+
     #[test]
     fn parallel_gaps_walk_matches_across_concurrency_levels() {
         // A nested tree with a covered subtree, a glob-pruned subtree, loose audio
@@ -1151,7 +1160,6 @@ mod tests {
     /// A directory whose mtime moved is re-listed and its new contents take effect.
     #[test]
     fn warm_scan_relists_a_changed_dir_and_flips_the_gap() {
-        use filetime::{FileTime, set_file_mtime};
         let dir = tempfile::tempdir().unwrap();
         let book = dir.path().join("Author/Book");
         touch(&book.join("01.mp3"));
@@ -1167,7 +1175,7 @@ mod tests {
         // Cover the gap, then push the folder mtime forward so the change is seen
         // regardless of the filesystem's mtime resolution.
         touch(&book.join("Book.epub"));
-        set_file_mtime(&book, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
+        bump_mtime(&book);
 
         let (second, stats) = scan_warm(dir.path(), &settings, &index);
         let book_after = second
@@ -1189,7 +1197,6 @@ mod tests {
     /// walked and flagged.
     #[test]
     fn warm_scan_picks_up_a_new_subdir() {
-        use filetime::{FileTime, set_file_mtime};
         let dir = tempfile::tempdir().unwrap();
         let author = dir.path().join("Author");
         touch(&author.join("Book 1/01.mp3"));
@@ -1213,7 +1220,7 @@ mod tests {
         // Add a sibling, then push the parent mtime forward so the change is seen
         // regardless of the filesystem's mtime resolution.
         touch(&author.join("Book 2/01.mp3"));
-        set_file_mtime(&author, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
+        bump_mtime(&author);
 
         let (second, stats) = scan_warm(dir.path(), &settings, &index);
         assert!(
@@ -1233,7 +1240,6 @@ mod tests {
     /// no longer reported even though its stale index entry lingers.
     #[test]
     fn warm_scan_drops_a_removed_subdir() {
-        use filetime::{FileTime, set_file_mtime};
         let dir = tempfile::tempdir().unwrap();
         let author = dir.path().join("Author");
         touch(&author.join("Book 1/01.mp3"));
@@ -1251,7 +1257,7 @@ mod tests {
 
         // Remove the sibling, then push the parent mtime forward.
         std::fs::remove_dir_all(author.join("Book 2")).unwrap();
-        set_file_mtime(&author, FileTime::from_unix_time(4_000_000_000, 0)).unwrap();
+        bump_mtime(&author);
 
         let (second, _) = scan_warm(dir.path(), &settings, &index);
         assert!(
