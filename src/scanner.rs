@@ -380,26 +380,18 @@ pub(crate) fn scan_root(root: &Path, settings: &ScanSettings, index: &DirIndex) 
 /// A warm scan: stat each directory and reuse the `index` entry when the
 /// mtime is unchanged, listing and re-indexing the rest. The same `index`
 /// passed across calls makes each rescan cheaper than the last cold walk.
-///
 /// Pass a fresh `DirIndex::new()` to perform what `CONTEXT.md` calls a
 /// cold scan: a walk with no warm cache to consult.
+///
+/// The walk is level-synchronous breadth-first: each level is read in
+/// parallel with the index borrowed shared, then the index is updated
+/// sequentially before descending, so no concurrent mutation is needed
+/// (see ADR-0019 for the walk shape).
 #[must_use]
 pub fn scan_warm(
     root: &Path,
     settings: &ScanSettings,
     index: &DirIndex,
-) -> (Vec<ScannedFolder>, WalkStats) {
-    walk_all(root, settings, Some(index))
-}
-
-/// The level-synchronous breadth-first walk shared by warm and cold scans.
-/// Each level is read in parallel with the index borrowed shared. The index is
-/// then updated sequentially before descending, so no concurrent mutation is
-/// needed (see ADR-0019 for the walk shape).
-fn walk_all(
-    root: &Path,
-    settings: &ScanSettings,
-    index: Option<&DirIndex>,
 ) -> (Vec<ScannedFolder>, WalkStats) {
     let mut out = Vec::new();
     let mut stats = WalkStats::default();
@@ -419,9 +411,7 @@ fn walk_all(
             stats.dirs_visited += dir.stats.dirs_visited;
             stats.entries_seen += dir.stats.entries_seen;
             stats.dirs_reused += dir.stats.dirs_reused;
-            if let Some(index) = index
-                && let Some(cached) = dir.cache_update.take()
-            {
+            if let Some(cached) = dir.cache_update.take() {
                 index.insert(dir.path.clone(), cached);
             }
             if let Some(folder) = dir.folder.take() {
@@ -447,33 +437,29 @@ struct AllDir {
     /// The path this `AllDir` describes, so the driver can key the index.
     path: PathBuf,
     /// Set when this directory was listed under an index: the driver stores it.
-    /// `None` when reused, when no index is in use, or when the listing failed.
+    /// `None` when reused or when the listing failed.
     cache_update: Option<CachedDir>,
 }
 
-/// Read and classify one directory for the full walk. With an index, stat the
-/// directory first and reuse the cached entry when its mtime is unchanged,
-/// listing only on a miss or a changed mtime. Without an index, always list (the
-/// escape-hatch path pays no stat). Read-only on the filesystem.
+/// Read and classify one directory for the full walk: stat it first and
+/// reuse the cached entry when its mtime is unchanged, listing only on a
+/// miss or a changed mtime. Read-only on the filesystem.
 fn read_dir_all(
     root: &Path,
     dir: &Path,
     covered_from_above: bool,
     settings: &ScanSettings,
-    index: Option<&DirIndex>,
+    index: &DirIndex,
 ) -> AllDir {
-    if let Some(index) = index {
-        if let Ok(mtime) = std::fs::metadata(dir).and_then(|m| m.modified()) {
-            if let Some(cached) = index.get_cloned(dir)
-                && cached.mtime == mtime
-            {
-                return reuse_dir_all(root, dir, covered_from_above, &cached);
-            }
-            return list_dir_all(root, dir, covered_from_above, settings, Some(mtime));
+    if let Ok(mtime) = std::fs::metadata(dir).and_then(|m| m.modified()) {
+        if let Some(cached) = index.get_cloned(dir)
+            && cached.mtime == mtime
+        {
+            return reuse_dir_all(root, dir, covered_from_above, &cached);
         }
-        // Stat failed (likely unreadable): fall through to a listing, cache nothing.
-        return list_dir_all(root, dir, covered_from_above, settings, None);
+        return list_dir_all(root, dir, covered_from_above, settings, Some(mtime));
     }
+    // Stat failed (likely unreadable): list without caching.
     list_dir_all(root, dir, covered_from_above, settings, None)
 }
 
