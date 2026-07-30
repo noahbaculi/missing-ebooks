@@ -29,10 +29,15 @@ multiple-versions = "deny"
 # Current, accepted duplicates. Each entry is a known transitive conflict.
 # Remove it when the tree converges. Re-run `cargo deny check bans` after a dep bump.
 skip = [
-  { name = "getrandom", version = "=0.2.17" },
-  { name = "getrandom", version = "=0.4.2" },
-  { name = "wit-bindgen", version = "=0.51.0" },
-  { name = "wit-bindgen", version = "=0.57.1" },
+  # proptest 1.11 pulls rand 0.9 (getrandom 0.3); tempfile 3.27 still uses getrandom 0.4.
+  { name = "getrandom", version = "=0.3.4" },
+  { name = "getrandom", version = "=0.4.3" },
+  # tempfile 3.27's rustix pulls r-efi 5.x while other wasi bits pull 6.x.
+  { name = "r-efi", version = "=5.3.0" },
+  { name = "r-efi", version = "=6.0.0" },
+  # syn 3.x is the new common version; some transitives still pull syn 2.x.
+  { name = "syn", version = "=2.0.119" },
+  { name = "syn", version = "=3.0.3" },
 ]
 
 [sources]

@@ -79,7 +79,7 @@ const HEX: &[u8; 16] = b"0123456789abcdef";
 /// Mint a new random session id as 32 hex characters.
 fn new_session_id() -> SessionId {
     let mut buf = [0u8; 16];
-    getrandom::getrandom(&mut buf).expect("OS rng");
+    getrandom::fill(&mut buf).expect("OS rng");
     let mut out = String::with_capacity(32);
     for &b in &buf {
         out.push(HEX[(b >> 4) as usize] as char);

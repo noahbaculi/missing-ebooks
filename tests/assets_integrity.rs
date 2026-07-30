@@ -13,7 +13,12 @@ const HTMX_MIN_JS_SHA256: &str = "e7dc9320d16ad5a4ebe5204f7cb3a74f11d084cee65fce
 #[test]
 fn htmx_min_js_matches_pinned_digest() {
     let bytes = include_bytes!("../assets/htmx.min.js");
-    let actual = format!("{:x}", Sha256::digest(bytes));
+    let digest = Sha256::digest(bytes);
+    let mut actual = String::with_capacity(digest.len() * 2);
+    for byte in &digest {
+        use std::fmt::Write;
+        write!(actual, "{byte:02x}").unwrap();
+    }
     assert_eq!(
         actual, HTMX_MIN_JS_SHA256,
         "vendored htmx.min.js has drifted; update the provenance header and the pinned digest together"
