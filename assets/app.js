@@ -581,7 +581,7 @@
 
   // htmx has no request timeout by default. A generous backstop frees a truly hung
   // request without aborting a legitimately slow big-library rescan.
-  if (window.htmx && window.htmx.config) window.htmx.config.timeout = 30000;
+  htmx.config.timeout = 30000;
 
   /** @type {HTMLElement | null} */
   var connBanner = null;
@@ -1693,26 +1693,18 @@
     function pollOnce() {
       if (inFlight) return;
       if (document.visibilityState !== "visible") return;
-      if (!window.htmx) return;
       var view = root.dataset.view;
       if (!view) return;
       inFlight = true;
       var done = function () {
         inFlight = false;
       };
-      var req = window.htmx.ajax(
-        "GET",
-        "/refresh?view=" + encodeURIComponent(view),
-        {
+      htmx
+        .ajax("GET", "/refresh?view=" + encodeURIComponent(view), {
           target: "#roots",
           swap: "innerHTML",
-        },
-      );
-      if (req && typeof req.then === "function") {
-        req.then(done, done);
-      } else {
-        done();
-      }
+        })
+        .then(done, done);
     }
     setInterval(pollOnce, intervalSecs * 1000);
     document.addEventListener("visibilitychange", function () {
