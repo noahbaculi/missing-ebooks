@@ -1369,4 +1369,25 @@ mod tests {
         };
         assert_eq!(failed.audiobook_count(), 0);
     }
+
+    #[test]
+    fn scan_warm_reuses_an_unchanged_tree() {
+        // Pins the reuse invariant the scan_bench `scan_warm` group depends
+        // on: after the priming walk the index serves every directory without
+        // a listing, and the reused walk still produces the right gaps.
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Gap/01.mp3"));
+        touch(&dir.path().join("Covered/01.mp3"));
+        touch(&dir.path().join("Covered/Book.epub"));
+        let settings = default_settings(&[]);
+        let index = DirIndex::new();
+        let (_, first) = scan_warm(dir.path(), &settings, &index);
+        assert_eq!(first.dirs_reused, 0);
+        let (folders, second) = scan_warm(dir.path(), &settings, &index);
+        assert_eq!(second.dirs_visited, 3);
+        assert_eq!(second.dirs_reused, 3);
+        assert_eq!(second.entries_seen, 0);
+        let flagged = reduce_to_flagged(&folders);
+        assert_eq!(flagged.len(), 1);
+    }
 }
