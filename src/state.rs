@@ -474,11 +474,7 @@ impl RawViewStore {
 fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(bool, PathBuf), WriteError> {
     let started = Instant::now();
     let canonical_root = std::fs::canonicalize(root).map_err(|_| WriteError::TargetMissing)?;
-    let target = if rel == "." {
-        canonical_root.clone()
-    } else {
-        canonical_root.join(rel)
-    };
+    let target = canonical_root.join(rel);
     let canonical_target = std::fs::canonicalize(&target).map_err(|_| WriteError::TargetMissing)?;
     if !canonical_target.starts_with(&canonical_root) {
         return Err(WriteError::OutsideRoots);
@@ -517,11 +513,7 @@ fn delete_marker(root: &Path, rel: &str, marker: Marker) -> Result<PathBuf, Writ
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(root.to_path_buf()),
         Err(_) => return Err(WriteError::TargetMissing),
     };
-    let target = if rel == "." {
-        canonical_root.clone()
-    } else {
-        canonical_root.join(rel)
-    };
+    let target = canonical_root.join(rel);
     let canonical_target = match std::fs::canonicalize(&target) {
         Ok(path) => path,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(canonical_root),
@@ -733,6 +725,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write_marker(dir.path(), ".", Marker::NoEbook).unwrap();
         assert!(dir.path().join(".no_ebook").exists());
+    }
+
+    #[test]
+    fn canonicalize_resolves_root_join_dot_to_the_root() {
+        // Pins the invariant the rel == "." special case in write_marker and
+        // delete_marker relied on: joining "." and canonicalizing lands on
+        // the canonical root, so the join needs no special-casing.
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            std::fs::canonicalize(dir.path().join(".")).unwrap(),
+            std::fs::canonicalize(dir.path()).unwrap()
+        );
     }
 
     #[test]
