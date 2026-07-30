@@ -15,6 +15,7 @@ use axum::routing::{get, post};
 use maud::Markup;
 use serde::Deserialize;
 
+use crate::config::SearchLink;
 use crate::marker::Marker;
 use crate::state::{AppState, WriteFailure};
 use crate::tree::ViewMode;
@@ -103,12 +104,7 @@ async fn mark(
             });
             section_response(markup, trigger)
         }
-        Err(WriteFailure::BadRoot) => bad_root_response(req.root, &req.rel, "mark"),
-        Err(WriteFailure::Failed { error, raw }) => {
-            let handle = render::packaged_section(&raw, req.root, mode);
-            let message = format!("Could not mark {}: {error}", req.rel);
-            section_response(handle.render(links, Some(&message)), None)
-        }
+        Err(failure) => failure_response(failure, &req, mode, links, "mark"),
     };
     tracing::debug!(
         op = "mark",
@@ -132,12 +128,7 @@ async fn unmark(
             let handle = render::packaged_section(&raw, req.root, mode);
             section_response(handle.render(links, None), None)
         }
-        Err(WriteFailure::BadRoot) => bad_root_response(req.root, &req.rel, "undo"),
-        Err(WriteFailure::Failed { error, raw }) => {
-            let handle = render::packaged_section(&raw, req.root, mode);
-            let message = format!("Could not undo {}: {error}", req.rel);
-            section_response(handle.render(links, Some(&message)), None)
-        }
+        Err(failure) => failure_response(failure, &req, mode, links, "undo"),
     };
     tracing::debug!(
         op = "unmark",
@@ -149,12 +140,28 @@ async fn unmark(
     resp
 }
 
-/// Render the standalone error card. Used by `mark` and `unmark` for the
-/// `WriteFailure::BadRoot` arm, where the submitted root index is out of
-/// range and there is no section to render the alert into.
-fn bad_root_response(root: usize, rel: &str, op: &str) -> axum::response::Response {
-    let message = format!("Could not {op} {rel}: no such library root");
-    section_response(render::error_section(root, &message), None)
+/// Render the failure arms shared by `mark` and `unmark`: the standalone
+/// error card when the submitted root index names no configured root, or
+/// the still-valid section with an inline alert for an in-root write
+/// failure. `verb` is "mark" or "undo", matching the click that failed.
+fn failure_response(
+    failure: WriteFailure,
+    req: &MarkRequest,
+    mode: ViewMode,
+    links: &[SearchLink],
+    verb: &str,
+) -> Response {
+    match failure {
+        WriteFailure::BadRoot => {
+            let message = format!("Could not {verb} {}: no such library root", req.rel);
+            section_response(render::error_section(req.root, &message), None)
+        }
+        WriteFailure::Failed { error, raw } => {
+            let handle = render::packaged_section(&raw, req.root, mode);
+            let message = format!("Could not {verb} {}: {error}", req.rel);
+            section_response(handle.render(links, Some(&message)), None)
+        }
+    }
 }
 
 async fn rescan(State(state): State<Arc<AppState>>, Form(query): Form<ViewQuery>) -> Response {
