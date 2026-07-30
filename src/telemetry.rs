@@ -10,9 +10,6 @@
 
 use tracing_subscriber::EnvFilter;
 
-/// The levels `MISSING_EBOOKS_LOG` accepts, ordered least to most verbose.
-const LEVELS: [&str; 5] = ["error", "warn", "info", "debug", "trace"];
-
 /// Install the global tracing subscriber: human-readable events to stderr, with
 /// verbosity from the environment (see `resolve`). Idempotent via `try_init`, so
 /// a second call (a test, an example) is a no-op, not a panic.
@@ -54,25 +51,23 @@ fn resolve(getenv: &dyn Fn(&str) -> Option<String>) -> Resolution {
             unknown_level: None,
         };
     };
-    if !LEVELS.contains(&level.as_str()) {
-        return Resolution {
+    // `debug`/`trace` pin dependencies at the `info` baseline and raise only
+    // this crate. `info` and below apply one level everywhere, so dependencies
+    // are never louder than the app. Anything else falls back to `info` and
+    // is flagged for `init` to warn about.
+    match level.as_str() {
+        "debug" | "trace" => Resolution {
+            directive: format!("info,missing_ebooks={level}"),
+            unknown_level: None,
+        },
+        "error" | "warn" | "info" => Resolution {
+            directive: level,
+            unknown_level: None,
+        },
+        _ => Resolution {
             directive: "info".to_string(),
             unknown_level: Some(level),
-        };
-    }
-    Resolution {
-        directive: scoped_directive(&level),
-        unknown_level: None,
-    }
-}
-
-/// Build the directive for a known level. `debug`/`trace` pin dependencies at the
-/// `info` baseline and raise only this crate. `info` and below apply one level
-/// everywhere, so dependencies are never louder than the app.
-fn scoped_directive(level: &str) -> String {
-    match level {
-        "debug" | "trace" => format!("info,missing_ebooks={level}"),
-        _ => level.to_string(),
+        },
     }
 }
 
@@ -147,7 +142,7 @@ mod tests {
 
     #[test]
     fn every_known_level_builds_a_valid_filter() {
-        for level in LEVELS {
+        for level in ["error", "warn", "info", "debug", "trace"] {
             let resolved = resolve(&env(&[("MISSING_EBOOKS_LOG", level)]));
             assert!(
                 EnvFilter::try_new(&resolved.directive).is_ok(),
