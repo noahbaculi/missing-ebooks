@@ -7,7 +7,7 @@ Self-hosted web server that scans audiobook library trees and surfaces folders t
 Try it without installing anything: **[demo-missing-ebooks.noahbaculi.com](https://demo-missing-ebooks.noahbaculi.com)**.
 Each visit opens a private, throwaway sandbox seeded with sample audiobooks. Changes stay in your session and reset when idle.
 
-For an offline-equivalent run on your own machine, `cargo run --bin explore -- mixed-forest` serves the production router against a synthetic library in a temp directory. Several scenarios are available; see `src/bin/explore.rs`.
+For an offline-equivalent run on your own machine, `cargo run --example explore -- mixed-forest` serves the production router against a synthetic library in a temp directory. Several scenarios are available; see `examples/explore.rs`.
 
 ## How it works
 
@@ -144,18 +144,18 @@ A marker covers the folder it sits in and everything below it, the same as an eb
 
 ## Exploring the UI
 
-`src/bin/explore.rs` seeds a synthetic library into a temp directory, serves it through the real UI on a loopback port, and tears the directory down on Ctrl-C. Use it to eyeball the rendered output across a catalog of known library states without pointing the server at a real library.
+`examples/explore.rs` seeds a synthetic library into a temp directory, serves it through the real UI on a loopback port, and tears the directory down on Ctrl-C. Use it to eyeball the rendered output across a catalog of known library states without pointing the server at a real library.
 
 Run a scenario:
 
 ```shell
-cargo run --bin explore -- mixed-forest
+cargo run --example explore -- mixed-forest
 ```
 
 It prints the URL (the app's default port 13379, or an OS-assigned one if that port is busy) and serves until Ctrl-C. Run with no scenario, or `--help`, to print the catalog:
 
 ```shell
-cargo run --bin explore
+cargo run --example explore
 ```
 
 Scenarios:

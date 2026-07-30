@@ -1,6 +1,6 @@
 //! Disposable, seeded instance of the real server for eyeballing the UI.
 //!
-//! `cargo run --bin explore -- <scenario>` seeds a synthetic library into a
+//! `cargo run --example explore -- <scenario>` seeds a synthetic library into a
 //! temp directory, serves it through the production `web::router` and `AppState`
 //! unchanged, and tears the directory down on Ctrl-C. There are no assertions and
 //! no browser automation: it just lets you click around a catalog of known

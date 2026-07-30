@@ -15,7 +15,7 @@ Never bypass the hook with `--no-verify`. The hook runs the same checks CI enfor
 ```shell
 cargo build --release
 cargo test
-cargo run --bin explore -- mixed-forest    # UI harness on http://127.0.0.1:13379
+cargo run --example explore -- mixed-forest    # UI harness on http://127.0.0.1:13379
 ```
 
 The UI harness seeds a synthetic library into a temp directory and serves the production router against it. Scenarios: `mixed-forest`, `messy-shelf`, `clean-error`, `root-flagged`, `pre-marked`, `big-library`. Pass `--port N` to pin a port (the default 13379 falls back to an OS-assigned port if in use), `--ttl SECS` to set the cache window, or `--keep` to preserve the seeded files on exit.
@@ -46,4 +46,4 @@ Work lands on `main` by rebase and fast-forward only, so each commit sits inline
 
 Open an issue first for non-trivial work so the design conversation happens before code does. Keep commits granular. Each one reads on its own and passes CI on its own. Include the user-facing why in the commit body, along with the scope caveat (`No behavior change.`, `Prose only:`, etc.) when one applies.
 
-If you change anything that renders in the UI (HTML in `src/web.rs`, styles in `assets/app.css`, behavior in `assets/app.js`), include the UI harness command you used to eyeball it (e.g. `cargo run --bin explore -- mixed-forest`).
+If you change anything that renders in the UI (HTML in `src/web.rs`, styles in `assets/app.css`, behavior in `assets/app.js`), include the UI harness command you used to eyeball it (e.g. `cargo run --example explore -- mixed-forest`).

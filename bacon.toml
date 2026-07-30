@@ -1,7 +1,7 @@
 # Dev-only bacon jobs for iterating on the UI. Not part of the build or tests.
 #
 # `bacon explore` rebuilds and reruns the seeded UI exploration harness
-# (src/bin/explore.rs) whenever src/ or the vendored assets/ change, serving it
+# (examples/explore.rs) whenever src/ or the vendored assets/ change, serving it
 # on a fixed port so a browser tab and the Playwright MCP keep a stable URL
 # across restarts. CSS lives in assets/ and is baked in with include_str!, so a
 # style edit is a full rebuild; watching assets/ covers it.
@@ -16,7 +16,7 @@
 command = [
   "cargo",
   "run",
-  "--bin",
+  "--example",
   "explore",
   "--",
   "mixed-forest",
