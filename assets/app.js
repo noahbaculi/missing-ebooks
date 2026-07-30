@@ -1146,7 +1146,6 @@
   function showSuccessToast(detail) {
     if (!stack || !template || !detail) return;
     var node = newToastNode();
-    node.classList.add("toast--success");
     node.setAttribute("role", "status");
     node.setAttribute("aria-live", "polite");
     /** @type {Element} */ (node.querySelector(".toast-undo")).addEventListener("click", function () {

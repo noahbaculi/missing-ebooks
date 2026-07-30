@@ -1490,30 +1490,31 @@ li.entering {
   align-items: center;
   gap: 0.7rem;
   /* a fixed width so every toast is the same size. a short message keeps the
-     full box rather than shrinking and looking magnified. */
+     full box rather than shrinking and looking magnified. a faint success-tinted
+     border ties the card to the confirmed mark without a heavy fill. */
   width: min(92vw, 26rem);
   padding: 0.7rem 0.8rem;
   background: var(--color-base-100);
   color: var(--color-base-content);
-  border: var(--border) solid var(--color-border);
+  border: var(--border) solid color-mix(in srgb, var(--color-success) 35%, var(--color-border));
   border-radius: var(--radius-field);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
   animation: toast-in 380ms ease both;
 }
-/* a faint variant-tinted border ties the card to its status without a heavy fill */
-.toast--success {
-  border-color: color-mix(in srgb, var(--color-success) 35%, var(--color-border));
-}
-/* status badge: a filled, tinted circle carrying the success glyph, so the
-   read lands instantly instead of leaning on a thin spine */
+/* status badge: a filled success-tinted circle carrying the check glyph, so
+   the read lands instantly. every toast is a confirmed mark's undo offer;
+   write failures render inline by the row (src/web/page.rs), so there is no
+   variant. */
 .toast .toast-icon {
-  display: none;
+  display: inline-flex;
   flex: none;
   width: 1.7rem;
   height: 1.7rem;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
+  color: var(--color-success-text);
+  background: color-mix(in srgb, var(--color-success) 16%, var(--color-base-100));
 }
 /* the global `.icon` rule paints the svg muted, so reset it so the glyph takes the
    badge's variant color (the confirm dialog resets the same way) */
@@ -1521,11 +1522,6 @@ li.entering {
   width: 1rem;
   height: 1rem;
   color: currentColor;
-}
-.toast--success .toast-icon-success {
-  display: inline-flex;
-  color: var(--color-success-text);
-  background: color-mix(in srgb, var(--color-success) 16%, var(--color-base-100));
 }
 /* the message column: a primary line plus a quieter detail line */
 .toast .toast-msg {
