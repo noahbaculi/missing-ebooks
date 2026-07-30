@@ -15,7 +15,6 @@ pub mod web;
 // `pub` so the workspace targets keep compiling. The crate is `publish =
 // false`, so the rendered docs only serve in-workspace navigation.
 pub mod demo;
-pub mod raw_view;
 pub mod scenarios;
 pub mod shutdown;
 pub mod state;
@@ -25,3 +24,4 @@ pub mod tree;
 
 // Internal-only: no external consumer reaches into these.
 pub(crate) mod query;
+pub(crate) mod raw_view;

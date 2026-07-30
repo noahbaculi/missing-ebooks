@@ -5,14 +5,14 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use thiserror::Error;
 
 use crate::scanner::ScanInputs;
 
 /// A search-link template. `{query}` is replaced with the cleaned, encoded
 /// folder name when a row renders (see ADR 0010).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct SearchLink {
     /// Text shown on the link button.
     pub label: String,
@@ -21,7 +21,7 @@ pub struct SearchLink {
 }
 
 /// The fully resolved configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// Library roots to scan. Each is rendered as its own tree.
