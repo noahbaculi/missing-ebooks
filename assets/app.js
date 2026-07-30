@@ -543,22 +543,13 @@
   }
 
   /**
-   * True for any mark button, in either view.
-   * @param {Element | null} btn
-   * @returns {boolean}
-   */
-  function isMark(btn) {
-    return !!(btn && btn.matches && btn.matches('[hx-post="/mark"]'));
-  }
-
-  /**
    * True for a gaps-only mark request (the kind whose row should collapse on success).
    * A show-all mark carries view=all and stays put, flipping to covered in place.
    * @param {Element | null} btn
    * @returns {boolean}
    */
   function isCollapsingMark(btn) {
-    if (!isMark(btn)) return false;
+    if (opOf(btn) !== "mark") return false;
     var form = /** @type {Element} */ (btn).closest("form.mark");
     var view = form && /** @type {HTMLInputElement | null} */ (form.querySelector('input[name="view"]'));
     return !(view && view.value === "all");
@@ -570,7 +561,7 @@
   // until the server confirms, never looking handled before the write lands.
   document.body.addEventListener("htmx:beforeRequest", function (evt) {
     var btn = evt.detail.elt;
-    if (!isMark(btn)) return;
+    if (opOf(btn) !== "mark") return;
     if (document.activeElement === btn) btn.blur();
     if (isCollapsingMark(btn)) setSaving(btn.closest(".row"), true);
   });
