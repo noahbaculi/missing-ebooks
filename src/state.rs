@@ -197,11 +197,6 @@ impl RawViewStore {
         self.build_coalesced(false).await
     }
 
-    /// Build the raw view for every configured root, in config order.
-    async fn build_view(&self) -> RawView {
-        build_view(self.config.as_ref(), &self.settings, &self.dir_indices).await
-    }
-
     /// Returns the count of fresh builds stored into the slot since this
     /// store was created.
     #[cfg(test)]
@@ -358,7 +353,9 @@ impl RawViewStore {
             };
             match edited {
                 Some(next) => next,
-                None => self.store_fresh(Arc::new(self.build_view().await)),
+                None => self.store_fresh(Arc::new(
+                    build_view(self.config.as_ref(), &self.settings, &self.dir_indices).await,
+                )),
             }
         };
         Ok(Applied { raw, created })
