@@ -301,38 +301,56 @@ fn concurrency_levels(default: usize) -> Vec<usize> {
     }
 }
 
-fn bench_scan_full(c: &mut Criterion) {
-    let input = resolve_input();
-    let drop_flag = std::env::var_os(ENV_DROP_CACHES).is_some();
-    let mut group = c.benchmark_group("scan_full");
-    for threads in concurrency_levels(DEFAULT_THREADS) {
+/// One rayon pool per requested concurrency level, primed with a single walk
+/// so callers can size `Throughput` from the stats and (for the warm group)
+/// reuse the hot index. The Full and Gaps groups discard the index and walk
+/// fresh ones per iteration. ADR-0035's four-group design is unchanged.
+fn for_each_pool(
+    input: &BenchInput,
+    default_threads: usize,
+    mut f: impl FnMut(usize, &rayon::ThreadPool, scanner::WalkStats, &DirIndex),
+) {
+    for threads in concurrency_levels(default_threads) {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(threads)
             .build()
             .expect("build rayon pool");
-        // Capture dirs for Throughput from one warm-up walk.
-        let (_, warm_stats) = pool.install(|| {
-            let index = DirIndex::new();
-            scanner::scan_warm(&input.root, &input.settings, &index)
-        });
-        group.throughput(Throughput::Elements(warm_stats.dirs_visited as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(threads),
-            &(&input, &pool, drop_flag),
-            |b, (input, pool, drop_flag)| {
-                b.iter_batched(
-                    DirIndex::new,
-                    |index| {
-                        if *drop_flag {
-                            drop_caches();
-                        }
-                        pool.install(|| scanner::scan_warm(&input.root, &input.settings, &index))
-                    },
-                    criterion::BatchSize::SmallInput,
-                );
-            },
-        );
+        let index = DirIndex::new();
+        let (_, warm_stats) =
+            pool.install(|| scanner::scan_warm(&input.root, &input.settings, &index));
+        f(threads, &pool, warm_stats, &index);
     }
+}
+
+fn bench_scan_full(c: &mut Criterion) {
+    let input = resolve_input();
+    let drop_flag = std::env::var_os(ENV_DROP_CACHES).is_some();
+    let mut group = c.benchmark_group("scan_full");
+    for_each_pool(
+        &input,
+        DEFAULT_THREADS,
+        |threads, pool, warm_stats, _index| {
+            group.throughput(Throughput::Elements(warm_stats.dirs_visited as u64));
+            group.bench_with_input(
+                BenchmarkId::from_parameter(threads),
+                &(&input, pool, drop_flag),
+                |b, (input, pool, drop_flag)| {
+                    b.iter_batched(
+                        DirIndex::new,
+                        |index| {
+                            if *drop_flag {
+                                drop_caches();
+                            }
+                            pool.install(|| {
+                                scanner::scan_warm(&input.root, &input.settings, &index)
+                            })
+                        },
+                        criterion::BatchSize::SmallInput,
+                    );
+                },
+            );
+        },
+    );
     group.finish();
 }
 
@@ -340,63 +358,55 @@ fn bench_scan_gaps(c: &mut Criterion) {
     let input = resolve_input();
     let drop_flag = std::env::var_os(ENV_DROP_CACHES).is_some();
     let mut group = c.benchmark_group("scan_gaps");
-    for threads in concurrency_levels(DEFAULT_THREADS) {
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build()
-            .expect("build rayon pool");
-        let (folders, warm_stats) = pool.install(|| {
-            let index = DirIndex::new();
-            scanner::scan_warm(&input.root, &input.settings, &index)
-        });
-        let _ = scanner::reduce_to_flagged(&folders);
-        group.throughput(Throughput::Elements(warm_stats.dirs_visited as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(threads),
-            &(&input, &pool, drop_flag),
-            |b, (input, pool, drop_flag)| {
-                b.iter_batched(
-                    DirIndex::new,
-                    |index| {
-                        if *drop_flag {
-                            drop_caches();
-                        }
-                        pool.install(|| {
-                            let (folders, _) =
-                                scanner::scan_warm(&input.root, &input.settings, &index);
-                            scanner::reduce_to_flagged(&folders)
-                        })
-                    },
-                    criterion::BatchSize::SmallInput,
-                );
-            },
-        );
-    }
+    for_each_pool(
+        &input,
+        DEFAULT_THREADS,
+        |threads, pool, warm_stats, _index| {
+            group.throughput(Throughput::Elements(warm_stats.dirs_visited as u64));
+            group.bench_with_input(
+                BenchmarkId::from_parameter(threads),
+                &(&input, pool, drop_flag),
+                |b, (input, pool, drop_flag)| {
+                    b.iter_batched(
+                        DirIndex::new,
+                        |index| {
+                            if *drop_flag {
+                                drop_caches();
+                            }
+                            pool.install(|| {
+                                let (folders, _) =
+                                    scanner::scan_warm(&input.root, &input.settings, &index);
+                                scanner::reduce_to_flagged(&folders)
+                            })
+                        },
+                        criterion::BatchSize::SmallInput,
+                    );
+                },
+            );
+        },
+    );
     group.finish();
 }
 
 fn bench_scan_warm(c: &mut Criterion) {
     let input = resolve_input();
     let mut group = c.benchmark_group("scan_warm");
-    for threads in concurrency_levels(DEFAULT_THREADS) {
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build()
-            .expect("build rayon pool");
-        let index = DirIndex::new();
-        // Prime the index with one discarded listing walk so the timed closure
-        // measures the reuse walk against a hot index.
-        let (_, warm_stats) =
-            pool.install(|| scanner::scan_warm(&input.root, &input.settings, &index));
-        group.throughput(Throughput::Elements(warm_stats.dirs_visited as u64));
-        group.bench_with_input(
-            BenchmarkId::from_parameter(threads),
-            &(&input, &pool, &index),
-            |b, (input, pool, index)| {
-                b.iter(|| pool.install(|| scanner::scan_warm(&input.root, &input.settings, index)));
-            },
-        );
-    }
+    for_each_pool(
+        &input,
+        DEFAULT_THREADS,
+        |threads, pool, warm_stats, index| {
+            group.throughput(Throughput::Elements(warm_stats.dirs_visited as u64));
+            group.bench_with_input(
+                BenchmarkId::from_parameter(threads),
+                &(&input, pool, index),
+                |b, (input, pool, index)| {
+                    b.iter(|| {
+                        pool.install(|| scanner::scan_warm(&input.root, &input.settings, index))
+                    });
+                },
+            );
+        },
+    );
     group.finish();
 }
 
