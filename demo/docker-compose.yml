@@ -5,9 +5,14 @@
 services:
   demo:
     build:
-      # Build context is the repo root so the image can compile the crate.
+      # Build context is the repo root so the image can compile the crate. The
+      # demo shares the root Dockerfile's builder stage; `target: demo` picks
+      # the demo runtime and BIN selects the demo binary.
       context: ..
-      dockerfile: demo/Dockerfile
+      dockerfile: Dockerfile
+      target: demo
+      args:
+        BIN: missing-ebooks-demo
     expose:
       - "8080"
     environment:

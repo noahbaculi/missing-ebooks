@@ -98,6 +98,9 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: demo/Dockerfile
+          file: Dockerfile
+          target: demo
+          build-args: |
+            BIN=missing-ebooks-demo
           push: false
           load: false

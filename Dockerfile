@@ -2,7 +2,11 @@
 # rust:alpine targets *-unknown-linux-musl by default, so cargo build emits a
 # fully static binary at target/release/.
 # Keep in sync with rust-toolchain.toml; bump both together.
+# BIN selects the binary: the production server by default, or the demo via
+# --build-arg BIN=missing-ebooks-demo (see demo/docker-compose.yml).
+ARG BIN=missing-ebooks
 FROM rust:1.96.0-alpine AS builder
+ARG BIN
 
 # Some crates link a C runtime; musl-dev provides it for the musl target.
 RUN apk add --no-cache musl-dev
@@ -15,10 +19,25 @@ COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY assets ./assets
 
-RUN cargo build --release --locked --bin missing-ebooks
+RUN cargo build --release --locked --bin "${BIN}"
 
-# Runtime: a small Alpine image with just the binary and a privilege-drop shim.
-FROM alpine:3.21
+# Demo runtime: the single demo binary plus a non-root user. /tmp is writable
+# for the seeded scenario directory. Built only with `--target demo` and
+# BIN=missing-ebooks-demo; a plain `docker build .` never reaches this stage.
+FROM alpine:3.21 AS demo
+RUN adduser -D -u 1000 demo
+COPY --from=builder /build/target/release/missing-ebooks-demo /usr/local/bin/missing-ebooks-demo
+USER demo
+
+ENV DEMO_BIND=0.0.0.0:8080 \
+    DEMO_SCENARIO=mixed-forest
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/missing-ebooks-demo"]
+
+# Production runtime, deliberately the last stage so an untargeted build (CI
+# publish, `docker build .`) produces it: a small Alpine image with just the
+# binary and a privilege-drop shim.
+FROM alpine:3.21 AS runtime
 
 # su-exec drops root to the configured PUID/PGID in the entrypoint. busybox
 # wget (already in the base) backs the healthcheck.
