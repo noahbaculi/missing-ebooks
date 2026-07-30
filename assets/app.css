@@ -460,22 +460,15 @@ details[open] > summary .chev {
 
 /* structural-smell microlabels: a muted organizational note on a flagged row,
    set off by a leading middot. Not a filled badge: organization is a different
-   axis from coverage, so it stays quieter than the amber "needs ebook" badge. */
-.smell {
-  flex: none;
-  font-size: 0.74rem;
-  color: var(--color-muted);
-}
-.smell::before {
-  content: "\00b7\00a0";
-}
-
-/* audio-file count: the same muted, middot-led note as the smell label. */
+   axis from coverage, so it stays quieter than the amber "needs ebook" badge.
+   the audio-file count is the same muted, middot-led note. */
+.smell,
 .file-count {
   flex: none;
   font-size: 0.74rem;
   color: var(--color-muted);
 }
+.smell::before,
 .file-count::before {
   content: "\00b7\00a0";
 }
