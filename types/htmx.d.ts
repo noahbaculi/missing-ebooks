@@ -19,6 +19,8 @@ interface Htmx {
 declare const htmx: Htmx;
 interface Window {
   htmx: Htmx;
+  /** The accent ink derivation, implemented once in assets/prepaint.js. */
+  deriveWarningInk(base: string, theme: "light" | "dark"): string;
 }
 
 // htmx:confirm fires before each request. detail.issueRequest resends it.

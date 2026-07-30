@@ -1,9 +1,9 @@
-// Guards the accent ink derivation, the load-bearing accessibility logic behind
-// the accent picker. It lives in two copies that no bundler can share: the typed
-// source in assets/app.js and the hand-minified pre-paint copy in `assets/prepaint.js`.
-// The ACCENT-DERIVE markers fence the shared block in each. This slices both,
-// runs them, and asserts (1) the two copies agree and (2) the derived ink clears
-// WCAG AA against the rendered pill, for the presets plus adversarial picks.
+// Guards the accent ink derivation, the load-bearing accessibility logic
+// behind the accent picker. The single implementation lives in
+// assets/prepaint.js (exposed to app.js as window.deriveWarningInk); the
+// ACCENT-DERIVE markers fence the block. This slices it, runs it, and asserts
+// the derived ink clears WCAG AA against the rendered pill, for the presets
+// plus adversarial picks.
 //
 // Run: node tests/accent/derive.test.mjs (mise run test:accent).
 
@@ -37,8 +37,8 @@ const BASES = {
   "near-black": "#101010",
 };
 
-// Slice the JS between the ACCENT-DERIVE markers: from the line after BEGIN to the
-// line before END.
+// Slice the JS between the ACCENT-DERIVE markers: from the line after BEGIN to
+// the line before END.
 function sliceBlock(src, label) {
   const begin = src.indexOf("ACCENT-DERIVE:BEGIN");
   const end = src.indexOf("ACCENT-DERIVE:END");
@@ -50,7 +50,7 @@ function sliceBlock(src, label) {
   return src.slice(from, to);
 }
 
-// Evaluate a sliced block in isolation and hand back the functions the test needs.
+// Evaluate the sliced block in isolation and hand back the functions the test needs.
 function load(block, label) {
   try {
     return new Function(
@@ -61,24 +61,17 @@ function load(block, label) {
   }
 }
 
-const appSrc = readFileSync(join(root, "assets", "app.js"), "utf8");
-const bootSrc = readFileSync(join(root, "assets", "prepaint.js"), "utf8");
-const app = load(sliceBlock(appSrc, "app.js"), "app.js");
-const boot = load(sliceBlock(bootSrc, "prepaint.js"), "prepaint.js");
+const src = readFileSync(join(root, "assets", "prepaint.js"), "utf8");
+const derive = load(sliceBlock(src, "prepaint.js"), "prepaint.js");
 
 const failures = [];
 for (const [name, base] of Object.entries(BASES)) {
   for (const theme of THEMES) {
-    const inkApp = app.deriveWarningInk(base, theme);
-    const inkBoot = boot.deriveWarningInk(base, theme);
-    if (inkApp !== inkBoot) {
-      failures.push(`${name} ${theme}: copies disagree (app ${inkApp}, boot ${inkBoot})`);
-      continue;
-    }
-    const pill = app.mixColors(base, 16, SURFACE[theme]);
-    const ratio = app.contrastRatio(inkApp, pill);
+    const ink = derive.deriveWarningInk(base, theme);
+    const pill = derive.mixColors(base, 16, SURFACE[theme]);
+    const ratio = derive.contrastRatio(ink, pill);
     if (ratio < AA) {
-      failures.push(`${name} ${theme}: ink ${inkApp} on pill ${pill} is ${ratio.toFixed(2)}, below AA ${AA}`);
+      failures.push(`${name} ${theme}: ink ${ink} on pill ${pill} is ${ratio.toFixed(2)}, below AA ${AA}`);
     }
   }
 }
@@ -90,4 +83,4 @@ if (failures.length) {
 }
 
 const cases = Object.keys(BASES).length * THEMES.length;
-console.log(`accent derivation OK: ${cases} cases, both copies agree and clear AA ${AA}`);
+console.log(`accent derivation OK: ${cases} cases clear AA ${AA}`);

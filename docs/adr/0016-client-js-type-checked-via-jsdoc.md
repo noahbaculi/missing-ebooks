@@ -1,5 +1,7 @@
 # Client JS is type-checked via JSDoc, with no build step
 
+> Amended 2026-07-30: assets/prepaint.js joined the tsc-checked set when the accent-derive duplicate in app.js was removed; the decision below is otherwise unchanged.
+
 Date: 2026-06-11.
 
 ## Context
