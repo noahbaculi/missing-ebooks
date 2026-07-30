@@ -405,6 +405,29 @@
   // mark: hold the row in place while saving, collapse only once confirmed
 
   /**
+   * The single-child spine from `li` upward: each row that is the sole
+   * `:scope > li` in its list, stopping at the first list that still has
+   * siblings. Both the collapse (mark) and expand (undo) animations walk this
+   * so an author or series wrapper moves together with its only book.
+   * @param {Element} li
+   * @returns {HTMLElement[]}
+   */
+  function spineOf(li) {
+    /** @type {HTMLElement[]} */
+    var rows = [];
+    /** @type {HTMLElement | null} */
+    var node = /** @type {HTMLElement} */ (li);
+    while (node) {
+      rows.push(node);
+      /** @type {HTMLElement | null} */
+      var list = node.parentElement;
+      if (!list || list.querySelectorAll(":scope > li").length > 1) break;
+      node = list.parentElement && list.parentElement.closest("li");
+    }
+    return rows;
+  }
+
+  /**
    * Collapse a row's <li> and fade it so the rows below glide up through normal
    * reflow. The section swap is delayed (the marker form's hx-swap "swap:" modifier)
    * to let this play, then it reconciles the fresh section. li.leaving owns the
@@ -413,22 +436,13 @@
    */
   function collapseRow(li) {
     if (!li || li.classList.contains("leaving")) return;
-    // Walk up from the marked leaf, collecting each row that is the sole `:scope > li`
-    // in its list. Push-then-check means the current row is always collected. The climb
-    // stops at the first list that still has a surviving gap, so that row and its
-    // ancestors stay. The result is the single-child spine above the leaf, up to and
-    // including the highest emptied row, so an author or series row whose last gap is
-    // being marked leaves together with the leaf instead of snapping out on the swap.
+    // The spine above the leaf, truncated at the first row already
+    // mid-collapse so a concurrent collapse is not re-pinned and restarted.
     /** @type {HTMLElement[]} */
     var rows = [];
-    /** @type {HTMLElement | null} */
-    var node = /** @type {HTMLElement} */ (li);
-    while (node && !node.classList.contains("leaving")) {
-      rows.push(node);
-      /** @type {HTMLElement | null} */
-      var list = node.parentElement;
-      if (!list || list.querySelectorAll(":scope > li").length > 1) break;
-      node = list.parentElement && list.parentElement.closest("li");
+    var spine = spineOf(li);
+    for (var i = 0; i < spine.length && !spine[i].classList.contains("leaving"); i++) {
+      rows.push(spine[i]);
     }
     // Pin each row's height, then drop them all to zero next frame so the transitions
     // share a definite start. `.leaving` owns the timing, fade, and reduced-motion.
@@ -458,20 +472,7 @@
    */
   function expandRow(li) {
     if (!li || li.classList.contains("entering")) return;
-    // Walk the same single-child spine collapseRow collapses, so a re-created
-    // Author or Series wrapper expands together with its restored book instead of
-    // popping in at full height above a sliding leaf.
-    /** @type {HTMLElement[]} */
-    var rows = [];
-    /** @type {HTMLElement | null} */
-    var node = /** @type {HTMLElement} */ (li);
-    while (node) {
-      rows.push(node);
-      /** @type {HTMLElement | null} */
-      var list = node.parentElement;
-      if (!list || list.querySelectorAll(":scope > li").length > 1) break;
-      node = list.parentElement && list.parentElement.closest("li");
-    }
+    var rows = spineOf(li);
     // Measure every row at its natural height before zeroing any, so an outer
     // wrapper's target height already includes its inner content.
     /** @type {number[]} */
