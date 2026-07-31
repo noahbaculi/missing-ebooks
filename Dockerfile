@@ -24,7 +24,7 @@ RUN cargo build --release --locked --bin "${BIN}"
 # Demo runtime: the single demo binary plus a non-root user. /tmp is writable
 # for the seeded scenario directory. Built only with `--target demo` and
 # BIN=missing-ebooks-demo; a plain `docker build .` never reaches this stage.
-FROM alpine:3.21 AS demo
+FROM alpine:3.24 AS demo
 RUN adduser -D -u 1000 demo
 COPY --from=builder /build/target/release/missing-ebooks-demo /usr/local/bin/missing-ebooks-demo
 USER demo
@@ -37,7 +37,7 @@ ENTRYPOINT ["/usr/local/bin/missing-ebooks-demo"]
 # Production runtime, deliberately the last stage so an untargeted build (CI
 # publish, `docker build .`) produces it: a small Alpine image with just the
 # binary and a privilege-drop shim.
-FROM alpine:3.21 AS runtime
+FROM alpine:3.24 AS runtime
 
 # su-exec drops root to the configured PUID/PGID in the entrypoint. busybox
 # wget (already in the base) backs the healthcheck.
