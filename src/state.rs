@@ -4,6 +4,7 @@
 //! (see ADR-0022). A marker write updates the stored raw view in place rather
 //! than rewalking (see docs/adr/0002-marker-writes-edit-cache-in-place.md).
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
@@ -153,12 +154,18 @@ impl RawViewStore {
     }
 
     /// Force a cold scan: clear every per-root index, then rebuild. Ignores
-    /// the TTL. The explicit "fix any drift" path, used by the /rescan click.
+    /// the TTL. Spawned so an aborted request cannot strand cleared indices
+    /// with nothing to refill them
     pub(crate) async fn rescan(&self) -> Arc<RawView> {
-        for index in &self.inner.dir_indices {
-            index.clear();
-        }
-        StoreInner::build_coalesced(&self.inner, false).await
+        let inner = Arc::clone(&self.inner);
+        tokio::spawn(async move {
+            for index in &inner.dir_indices {
+                index.clear();
+            }
+            StoreInner::build_coalesced(&inner, false).await
+        })
+        .await
+        .expect("rescan task panicked")
     }
 
     /// Returns the count of fresh builds stored into the slot since this
@@ -367,6 +374,135 @@ impl StoreInner {
         // Path equality and hashing normalize a trailing ".", so rel "." hits the root entry
         index.invalidate(&canonical_root.join(rel));
     }
+
+    /// The whole mark sequence: guard-and-write on the blocking pool, index
+    /// invalidation, cache edit or coalesced rebuild. Runs inside a spawned
+    /// task so a dropped handler cannot split the write from its bookkeeping
+    async fn apply_write_mark(
+        this: &Arc<StoreInner>,
+        root_path: PathBuf,
+        root: usize,
+        rel: &str,
+        marker: Marker,
+    ) -> Result<Applied, WriteFailure> {
+        let rel_owned = rel.to_string();
+        let io = tokio::task::spawn_blocking(move || write_marker(&root_path, &rel_owned, marker))
+            .await
+            .map_err(|_| WriteError::WriteFailed(std::io::Error::other("marker write task failed")))
+            .and_then(|io| io);
+        let (created, canonical_root) = match io {
+            Ok(pair) => pair,
+            Err(error) => {
+                // The write failed. Hand back the still-valid view so the
+                // caller renders an inline alert without a second store hop
+                let raw = StoreInner::current(this).await;
+                return Err(WriteFailure::Failed { error, raw });
+            }
+        };
+        // A re-mark created nothing on disk: no index entry went stale and no
+        // cover-file list changed, so skip the clone-and-edit entirely (F12)
+        if !created {
+            return Ok(Applied {
+                raw: StoreInner::current(this).await,
+                created,
+            });
+        }
+        // A self-write may not bump the folder mtime, so force a re-list
+        this.invalidate_index(root, &canonical_root, rel);
+
+        // Mirror remove_mark: the inflight guard scopes to the load-edit-store
+        // only, never across a walk (F1)
+        let edited = {
+            let _edit = this.inflight.lock().await;
+            this.edit_fresh(|next| apply_mark_raw(next, root, rel, marker))
+        };
+        let raw = match edited {
+            Some(next) => next,
+            // Cold or stale slot: the marker is already on disk, so a coalesced
+            // rebuild reflects it and concurrent cold marks share one walk
+            None => StoreInner::build_coalesced(this, false).await,
+        };
+        Ok(Applied { raw, created })
+    }
+
+    /// The whole undo sequence: guard-and-delete on the blocking pool, index
+    /// invalidation, per-root rewalk, splice or coalesced rebuild. Spawned for
+    /// the same reason as apply_write_mark
+    async fn apply_remove_mark(
+        this: &Arc<StoreInner>,
+        root_path: PathBuf,
+        root: usize,
+        rel: &str,
+        marker: Marker,
+    ) -> Result<Arc<RawView>, WriteFailure> {
+        let rel_owned = rel.to_string();
+        let delete_path = root_path.clone();
+        let io =
+            tokio::task::spawn_blocking(move || delete_marker(&delete_path, &rel_owned, marker))
+                .await
+                .map_err(|_| {
+                    WriteError::WriteFailed(std::io::Error::other("marker delete task failed"))
+                })
+                .and_then(|io| io);
+        let canonical_root = match io {
+            Ok(path) => path,
+            Err(error) => {
+                let raw = StoreInner::current(this).await;
+                return Err(WriteFailure::Failed { error, raw });
+            }
+        };
+
+        // A self-delete may not bump the folder mtime, so force a re-list
+        this.invalidate_index(root, &canonical_root, rel);
+
+        // Walk the one affected root BEFORE taking the lock. ADR-0027 keeps
+        // the inflight lock held for microseconds only, and the dir index is
+        // warm, so this is the cheap re-list of that subtree
+        let section = build_section(
+            root_path,
+            Arc::clone(&this.settings),
+            Arc::clone(&this.dir_indices[root]),
+        )
+        .await;
+
+        let spliced = {
+            let _edit = this.inflight.lock().await;
+            this.edit_fresh(|next| {
+                if root < next.len() {
+                    next[root] = section;
+                }
+            })
+        };
+        match spliced {
+            Some(raw) => Ok(raw),
+            // Cold or stale slot: rebuild through the single-flight coalescer
+            // with no lock held across the walk
+            None => Ok(StoreInner::build_coalesced(this, false).await),
+        }
+    }
+
+    /// Spawn a mutation's sequence and recover a task panic into the same
+    /// WriteFailure shape a normal write failure produces, so callers don't
+    /// see a spawn as a different error surface than an IO failure
+    async fn spawn_mutation<T: Send + 'static>(
+        inner: &Arc<StoreInner>,
+        op: &'static str,
+        fut: impl Future<Output = Result<T, WriteFailure>> + Send + 'static,
+    ) -> Result<T, WriteFailure> {
+        match tokio::spawn(fut).await {
+            Ok(result) => result,
+            Err(join_err) => {
+                tracing::error!(error = %join_err, "{op} task panicked");
+                let raw = StoreInner::current(inner).await;
+                Err(WriteFailure::Failed {
+                    error: WriteError::WriteFailed(std::io::Error::other(format!(
+                        "{op} task failed"
+                    ))),
+                    raw,
+                })
+            }
+        }
+    }
 }
 
 impl AppState {
@@ -463,48 +599,14 @@ impl RawViewStore {
             .get(root)
             .ok_or(WriteFailure::BadRoot)?
             .clone();
-        let rel_owned = rel.to_string();
-        let inner =
-            tokio::task::spawn_blocking(move || write_marker(&root_path, &rel_owned, marker))
-                .await
-                .map_err(|_| {
-                    WriteError::WriteFailed(std::io::Error::other("marker write task failed"))
-                })
-                .and_then(|inner| inner);
-        let (created, canonical_root) = match inner {
-            Ok(pair) => pair,
-            Err(error) => {
-                // The write failed. Hand back the still-valid view so the
-                // caller renders an inline alert without a second store hop.
-                let raw = self.current().await;
-                return Err(WriteFailure::Failed { error, raw });
-            }
-        };
-
-        // A re-mark created nothing on disk: no index entry went stale and no
-        // cover-file list changed, so skip the clone-and-edit entirely (F12)
-        if !created {
-            return Ok(Applied {
-                raw: self.current().await,
-                created,
-            });
-        }
-        self.inner.invalidate_index(root, &canonical_root, rel);
-
-        // Mirror remove_mark: the inflight guard scopes to the load-edit-store
-        // only, never across a walk (F1)
-        let edited = {
-            let _edit = self.inner.inflight.lock().await;
-            self.inner
-                .edit_fresh(|next| apply_mark_raw(next, root, rel, marker))
-        };
-        let raw = match edited {
-            Some(next) => next,
-            // Cold or stale slot: the marker is already on disk, so a coalesced
-            // rebuild reflects it and concurrent cold marks share one walk
-            None => StoreInner::build_coalesced(&self.inner, false).await,
-        };
-        Ok(Applied { raw, created })
+        let inner = Arc::clone(&self.inner);
+        let rel = rel.to_string();
+        // Spawned so a client disconnect cannot split the marker write from
+        // its index invalidation and cache edit (ADR-0036)
+        StoreInner::spawn_mutation(&self.inner, "mark", async move {
+            StoreInner::apply_write_mark(&inner, root_path, root, &rel, marker).await
+        })
+        .await
     }
 
     /// Delete a marker file and refresh the cached view by rescanning the one
@@ -523,56 +625,12 @@ impl RawViewStore {
             .get(root)
             .ok_or(WriteFailure::BadRoot)?
             .clone();
-        let rel_owned = rel.to_string();
-        let delete_path = root_path.clone();
-        let inner =
-            tokio::task::spawn_blocking(move || delete_marker(&delete_path, &rel_owned, marker))
-                .await
-                .map_err(|_| {
-                    WriteError::WriteFailed(std::io::Error::other("marker delete task failed"))
-                })
-                .and_then(|inner| inner);
-        let canonical_root = match inner {
-            Ok(path) => path,
-            Err(error) => {
-                let raw = self.current().await;
-                return Err(WriteFailure::Failed { error, raw });
-            }
-        };
-
-        // A self-delete may not bump the folder mtime, so force a re-list.
-        self.inner.invalidate_index(root, &canonical_root, rel);
-
-        // Walk the one affected root BEFORE taking the lock. The per-root walk
-        // can be slow on a network mount, and ADR-0027 keeps the inflight lock
-        // held for microseconds only. The dir index is warm (we just
-        // invalidated one entry), so this is the cheap re-list of that subtree.
-        let section = build_section(
-            root_path.clone(),
-            Arc::clone(&self.inner.settings),
-            Arc::clone(&self.inner.dir_indices[root]),
-        )
-        .await;
-
-        // Splice the freshly walked section into the cached view, holding the
-        // lock only for the load-clone-splice-store. The lock doubles as the
-        // edit-coordination lock against a concurrent cold build's store and
-        // another concurrent edit.
-        let spliced = {
-            let _edit = self.inner.inflight.lock().await;
-            self.inner.edit_fresh(|next| {
-                if root < next.len() {
-                    next[root] = section;
-                }
-            })
-        };
-        match spliced {
-            Some(raw) => Ok(raw),
-            // Cold or stale slot: rebuild through the single-flight coalescer
-            // with no lock held across the walk. recheck_fresh is false because
-            // the slot was just observed not-fresh and we want the rebuild.
-            None => Ok(StoreInner::build_coalesced(&self.inner, false).await),
-        }
+        let inner = Arc::clone(&self.inner);
+        let rel = rel.to_string();
+        StoreInner::spawn_mutation(&self.inner, "unmark", async move {
+            StoreInner::apply_remove_mark(&inner, root_path, root, &rel, marker).await
+        })
+        .await
     }
 }
 
@@ -978,6 +1036,105 @@ mod tests {
         assert!(
             folders.iter().any(|f| f.missing_ebook),
             "the rebuilt view shows the re-flagged gap",
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dropped_mark_still_lands_its_bookkeeping() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+        let _warm = store.current().await;
+        let canonical = std::fs::canonicalize(dir.path()).unwrap();
+        assert!(
+            store.inner.dir_indices[0]
+                .get_cloned(&canonical.join("Book"))
+                .is_some()
+        );
+
+        {
+            // One poll starts the spawned task, then the handler-side future
+            // drops, standing in for a client disconnect
+            let fut = store.write_mark(0, "Book", Marker::NoEbook);
+            let mut fut = std::pin::pin!(fut);
+            let _ = tokio::time::timeout(Duration::from_millis(0), fut.as_mut()).await;
+        }
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let marker_on_disk = dir.path().join("Book/.no_ebook").exists();
+                let index_invalidated = store.inner.dir_indices[0]
+                    .get_cloned(&canonical.join("Book"))
+                    .is_none();
+                let view_edited = store
+                    .peek_stored_arc()
+                    .is_some_and(|raw| !book_missing(&raw));
+                if marker_on_disk && index_invalidated && view_edited {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the spawned mark task never finished its bookkeeping");
+    }
+
+    #[tokio::test]
+    async fn a_dropped_unmark_still_lands_its_bookkeeping() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+        let _warm = store.current().await;
+        let _ = store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
+
+        {
+            let fut = store.remove_mark(0, "Book", Marker::NoEbook);
+            let mut fut = std::pin::pin!(fut);
+            let _ = tokio::time::timeout(Duration::from_millis(0), fut.as_mut()).await;
+        }
+
+        // The splice re-lists Book into the index, so assert on the two ends:
+        // the file is gone and the stored view re-flags the folder
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let marker_gone = !dir.path().join("Book/.no_ebook").exists();
+                let view_reflagged = store
+                    .peek_stored_arc()
+                    .is_some_and(|raw| book_missing(&raw));
+                if marker_gone && view_reflagged {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the spawned unmark task never finished its bookkeeping");
+    }
+
+    #[tokio::test]
+    async fn a_dropped_rescan_still_repopulates_the_index() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+        let _warm = store.current().await;
+        let before = store.rebuild_count();
+
+        {
+            let fut = store.rescan();
+            let mut fut = std::pin::pin!(fut);
+            let _ = tokio::time::timeout(Duration::from_millis(0), fut.as_mut()).await;
+        }
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while store.rebuild_count() == before {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the spawned rescan task never rebuilt");
+        assert!(
+            store.inner.dir_indices[0].len() > 0,
+            "the aborted rescan left a repopulated index, not a stranded empty one"
         );
     }
 
