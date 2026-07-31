@@ -388,6 +388,15 @@ mod tests {
     }
 
     #[test]
+    fn an_unreadable_config_file_is_a_read_error() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            Config::from_file(&dir.path().join("absent.toml")),
+            Err(ConfigError::Read { .. })
+        ));
+    }
+
+    #[test]
     fn env_overrides_scalar_fields() {
         let mut cfg = Config::default();
         let env = fake_env(&[
