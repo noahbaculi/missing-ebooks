@@ -1919,4 +1919,26 @@ mod tests {
             None
         }
     }
+
+    #[test]
+    fn container_and_leaf_each_emit_their_own_actions_group() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![container(
+                "Author",
+                "Author",
+                vec![flagged_leaf("Gap", "Author/Gap", &["01.mp3"])],
+            )]),
+            1,
+        )];
+        for mode in [ViewMode::GapsOnly, ViewMode::All] {
+            let html = render_view(&view, &default_links(), mode, 0).into_string();
+            assert_eq!(
+                html.matches(r#"class="actions-group""#).count(),
+                2,
+                "container and leaf each carry one actions group in {} view",
+                mode.as_query(),
+            );
+        }
+    }
 }
