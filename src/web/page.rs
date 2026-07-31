@@ -248,7 +248,7 @@ pub(super) fn toast() -> Markup {
         div.toast-stack id="toast-stack" {}
         template id="toast-template" {
             div.toast {
-                span.toast-icon.toast-icon-success { (PreEscaped(include_str!("../../assets/svg/check.svg"))) }
+                span.toast-icon { (PreEscaped(include_str!("../../assets/svg/check.svg"))) }
                 div.toast-msg {}
                 button.btn.btn-outline.btn-xs.toast-undo type="button" { "Undo" }
                 button.toast-close type="button" aria-label="Dismiss" { "\u{00D7}" }
