@@ -96,12 +96,14 @@ struct StoreInner {
     /// atomic under the write lock.
     cache: std::sync::RwLock<Slot>,
     /// Holds only the in-flight build handle (as a `Weak`, so it expires
-    /// when the last awaiter drops it). Held for microseconds to register
-    /// or join a build, never across the walk. Also serializes the
-    /// load-edit-store of marker edits against each other. Ordering against
-    /// a concurrent build's store is the slot generation's job, not this
-    /// lock's (see ADR-0036)
-    inflight: Mutex<Option<Weak<SharedBuild>>>,
+    /// when the last awaiter drops it), paired with the generation it was
+    /// registered at so a joiner can tell whether the build started before
+    /// a write it must not miss. Held for microseconds to register or join a
+    /// build, never across the walk. Also serializes the load-edit-store of
+    /// marker edits against each other. Ordering against a concurrent
+    /// build's store is the slot generation's job, not this lock's (see
+    /// ADR-0036)
+    inflight: Mutex<Option<(u64, Weak<SharedBuild>)>>,
     /// Test-only pause point armed by `set_build_gate`, checked by every cold
     /// build between its walk and its store.
     #[cfg(test)]
@@ -184,14 +186,14 @@ impl RawViewStore {
         if !honored {
             // Inside the window: keep the warm index, serve the fresh slot or
             // join the build already running
-            return StoreInner::build_coalesced(&self.inner, true).await;
+            return StoreInner::build_coalesced(&self.inner, true, None).await;
         }
         let inner = Arc::clone(&self.inner);
         tokio::spawn(async move {
             for index in &inner.dir_indices {
                 index.clear();
             }
-            StoreInner::build_coalesced(&inner, false).await
+            StoreInner::build_coalesced(&inner, false, None).await
         })
         .await
         .expect("rescan task panicked")
@@ -297,6 +299,18 @@ impl StoreInner {
         Some(next)
     }
 
+    /// Bump the slot generation with no other mutation. Used on the cold or
+    /// stale path, where `edit_fresh` returned `None` and so never bumped
+    /// the generation itself: a build already in flight, registered before
+    /// this call, must see the slot move and refuse to store its stale
+    /// result through `store_if_unchanged`'s existing generation check.
+    /// Returns the new generation, for `build_coalesced`'s `min_generation`.
+    fn bump_generation(&self) -> u64 {
+        let mut slot = self.slot();
+        slot.generation += 1;
+        slot.generation
+    }
+
     /// Block at the armed build gate, if any. Compiled out of production
     #[cfg(test)]
     async fn pause_at_build_gate(&self) {
@@ -326,7 +340,7 @@ impl StoreInner {
             return Arc::clone(&entry.raw);
         }
         tracing::debug!("cache miss");
-        StoreInner::build_coalesced(this, true).await
+        StoreInner::build_coalesced(this, true, None).await
     }
 
     /// Start a build, or join the one already running. The walk and its store
@@ -341,7 +355,18 @@ impl StoreInner {
     /// lock, which would otherwise trigger a redundant second full walk. The
     /// `refresh`/`rescan`/edit-fallback callers pass false: they must rebuild
     /// regardless of a live TTL.
-    async fn build_coalesced(this: &Arc<StoreInner>, recheck_fresh: bool) -> Arc<RawView> {
+    ///
+    /// `min_generation`: when `Some(g)`, an in-flight build registered before
+    /// generation `g` is not joined, even if one is running. A mark or undo's
+    /// cold fallback passes its own just-bumped generation here, so it cannot
+    /// join (and have its own return value and the slot's stored entry come
+    /// from) a walk that started before its write landed. Plain reads pass
+    /// `None` and join whatever is in flight, as before.
+    async fn build_coalesced(
+        this: &Arc<StoreInner>,
+        recheck_fresh: bool,
+        min_generation: Option<u64>,
+    ) -> Arc<RawView> {
         let handle = {
             let mut slot = this.inflight.lock().await;
             if recheck_fresh
@@ -350,7 +375,15 @@ impl StoreInner {
             {
                 return Arc::clone(&entry.raw);
             }
-            if let Some(existing) = slot.as_ref().and_then(Weak::upgrade) {
+            let joinable = slot.as_ref().and_then(|(registered_at, weak)| {
+                let existing = weak.upgrade()?;
+                if min_generation.is_some_and(|min| *registered_at < min) {
+                    None
+                } else {
+                    Some(existing)
+                }
+            });
+            if let Some(existing) = joinable {
                 existing
             } else {
                 let registered_at = this.generation();
@@ -377,7 +410,7 @@ impl StoreInner {
                 .boxed()
                 .shared();
                 let handle = Arc::new(build);
-                *slot = Some(Arc::downgrade(&handle));
+                *slot = Some((registered_at, Arc::downgrade(&handle)));
                 handle
             }
         };
@@ -429,7 +462,7 @@ impl StoreInner {
             }
         };
         // A re-mark created nothing on disk: no index entry went stale and no
-        // cover-file list changed, so skip the clone-and-edit entirely (F12)
+        // cover-file list changed, so skip the clone-and-edit entirely
         if !created {
             return Ok(Applied {
                 raw: StoreInner::current(this).await,
@@ -440,16 +473,22 @@ impl StoreInner {
         this.invalidate_index(root, &canonical_root, rel);
 
         // Mirror remove_mark: the inflight guard scopes to the load-edit-store
-        // only, never across a walk (F1)
+        // only, never across a walk
         let edited = {
             let _edit = this.inflight.lock().await;
             this.edit_fresh(|next| apply_mark_raw(next, root, rel, marker))
         };
         let raw = match edited {
             Some(next) => next,
-            // Cold or stale slot: the marker is already on disk, so a coalesced
-            // rebuild reflects it and concurrent cold marks share one walk
-            None => StoreInner::build_coalesced(this, false).await,
+            // Cold or stale slot: the marker is already on disk, but edit_fresh
+            // never bumped the generation, so bump it here and pass it as the
+            // join floor. That way a build already in flight (registered
+            // before this write) cannot be joined; its result would predate
+            // the marker and get returned to this call's own caller
+            None => {
+                let min_generation = this.bump_generation();
+                StoreInner::build_coalesced(this, false, Some(min_generation)).await
+            }
         };
         Ok(Applied { raw, created })
     }
@@ -505,8 +544,15 @@ impl StoreInner {
         match spliced {
             Some(raw) => Ok(raw),
             // Cold or stale slot: rebuild through the single-flight coalescer
-            // with no lock held across the walk
-            None => Ok(StoreInner::build_coalesced(this, false).await),
+            // with no lock held across the walk. edit_fresh never bumped the
+            // generation on this path, so bump it here and pass it as the
+            // join floor: a build already in flight (registered before this
+            // delete) cannot be joined, since its result would predate the
+            // delete and get returned to this call's own caller
+            None => {
+                let min_generation = this.bump_generation();
+                Ok(StoreInner::build_coalesced(this, false, Some(min_generation)).await)
+            }
         }
     }
 
@@ -1315,7 +1361,7 @@ mod tests {
 
         let _warm = store.current().await;
         let before = store.rebuild_count();
-        let _ = StoreInner::build_coalesced(&store.inner, true).await;
+        let _ = StoreInner::build_coalesced(&store.inner, true, None).await;
         assert_eq!(
             store.rebuild_count(),
             before,
@@ -1333,7 +1379,7 @@ mod tests {
 
         let _warm = store.current().await;
         let before = store.rebuild_count();
-        let _ = StoreInner::build_coalesced(&store.inner, false).await;
+        let _ = StoreInner::build_coalesced(&store.inner, false, None).await;
         assert_eq!(
             store.rebuild_count(),
             before + 1,
@@ -1377,19 +1423,24 @@ mod tests {
         }
     }
 
-    /// Helper: assert that `Book` under root 0 of `raw` has the expected
-    /// `missing_ebook` value. Used by ported tests that previously asserted on
-    /// the packaged `RootState`. The equivalent at the raw layer reads off the
-    /// matching `ScannedFolder` so the assertion stays at the store's layer.
-    fn book_missing(raw: &RawView) -> bool {
+    /// Helper: the `missing_ebook` value of `rel` under root 0 of `raw`. The
+    /// raw-layer equivalent of asserting on the packaged `RootState`.
+    fn folder_missing(raw: &RawView, rel: &str) -> bool {
         let RootScan::Walked { folders, .. } = &raw[0] else {
             panic!("expected Walked root");
         };
         folders
             .iter()
-            .find(|f| f.rel_path.as_os_str() == "Book")
-            .expect("Book folder in raw view")
+            .find(|f| f.rel_path.as_os_str() == rel)
+            .unwrap_or_else(|| panic!("{rel} folder in raw view"))
             .missing_ebook
+    }
+
+    /// Helper: assert that `Book` under root 0 of `raw` has the expected
+    /// `missing_ebook` value. Used by ported tests that previously asserted on
+    /// the packaged `RootState`.
+    fn book_missing(raw: &RawView) -> bool {
+        folder_missing(raw, "Book")
     }
 
     #[tokio::test]
@@ -1577,7 +1628,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn concurrent_cold_marks_coalesce_into_one_walk() {
+    async fn concurrent_cold_marks_each_see_their_own_mark() {
+        // Two cold marks racing on the same slot. The first mark's fallback
+        // build registers and walks (seeing only A on disk) before the second
+        // mark's write ever lands. That means the second mark's own bumped
+        // generation sits above the first build's registration, so it must
+        // not join that already-walked build: it starts a second build of its
+        // own. Each mark's own caller must see its own mark reflected, which
+        // is the property the old version of this test never checked (it
+        // asserted only `rebuild_count == 1`, a shape that would have passed
+        // even if the second mark's return value silently missed its mark).
         let dir = tempfile::tempdir().unwrap();
         crate::scenarios::touch(&dir.path().join("A/01.mp3"));
         crate::scenarios::touch(&dir.path().join("B/01.mp3"));
@@ -1590,9 +1650,8 @@ mod tests {
 
         let s1 = Arc::clone(&store);
         let first = tokio::spawn(async move { s1.write_mark(0, "A", Marker::NoEbook).await });
-        // The first cold mark's fallback build reaches the gate after its walk.
-        // A timeout here is the old shape failing: the private build_view arm
-        // never routes through the coalesced (gated) build
+        // The first cold mark's fallback build reaches the gate after its
+        // walk, with A on disk but B not yet marked.
         tokio::time::timeout(Duration::from_secs(5), gate.entered.acquire())
             .await
             .expect("the cold mark never routed through the coalesced build")
@@ -1601,25 +1660,93 @@ mod tests {
 
         let s2 = Arc::clone(&store);
         let second = tokio::spawn(async move { s2.write_mark(0, "B", Marker::NoEbook).await });
-        // Drive the second mark past its marker write and into the join
-        tokio::time::timeout(Duration::from_secs(5), async {
-            while !dir.path().join("B/.no_ebook").exists() {
-                tokio::task::yield_now().await;
-            }
-            for _ in 0..64 {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("the second mark never wrote its marker");
+        // The second mark's own build must not join the first (it predates
+        // B's write), so it registers and walks a second time, also reaching
+        // the gate.
+        tokio::time::timeout(Duration::from_secs(5), gate.entered.acquire())
+            .await
+            .expect("the second mark's own build never reached the gate")
+            .unwrap()
+            .forget();
 
-        gate.release.add_permits(1);
-        first.await.unwrap().unwrap();
-        second.await.unwrap().unwrap();
-        assert_eq!(
-            store.rebuild_count(),
-            1,
-            "concurrent cold marks share one coalesced walk"
+        gate.release.add_permits(2);
+        let first = first.await.unwrap().unwrap();
+        let second = second.await.unwrap().unwrap();
+
+        assert!(
+            !folder_missing(&first.raw, "A"),
+            "the first mark's own caller must see A reflected"
+        );
+        assert!(
+            !folder_missing(&second.raw, "B"),
+            "the second mark's own caller must see B reflected, not the first mark's stale walk"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_mark_does_not_join_a_build_that_predates_its_write() {
+        // The exact shape from the bug report: a build already in flight
+        // (standing in for a background refresh) registered before a mark's
+        // disk write. The mark's cold fallback must not join it: that walk's
+        // result predates the mark, so joining it would hand the mark's own
+        // caller the pre-mark view and, without the generation bump, would
+        // let the stale walk's `store_if_unchanged` persist over the mark's
+        // effect for a full TTL.
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        // A live TTL: the slot starts cold (entry is None, never warmed by a
+        // `current()` call) so both the owner build and the mark's own
+        // fallback hit the cold/stale path deliberately. Once the mark's
+        // build stores, the slot is fresh, so the closing `current()` below
+        // is a cache hit rather than a third gated build with nothing left
+        // to release it.
+        let store = Arc::new(test_store(
+            Some(Duration::from_secs(600)),
+            dir.path().to_path_buf(),
+        ));
+        let gate = BuildGate::new();
+        store.set_build_gate(gate.clone());
+
+        // Stand in for a background refresh: a plain build starts, walks (no
+        // marker on disk yet), and pauses with its pre-mark result in hand.
+        let inner = Arc::clone(&store.inner);
+        let owner =
+            tokio::spawn(async move { StoreInner::build_coalesced(&inner, false, None).await });
+        tokio::time::timeout(Duration::from_secs(5), gate.entered.acquire())
+            .await
+            .expect("the standing-in-for-refresh build never reached the gate")
+            .unwrap()
+            .forget();
+
+        // A mark lands while that build is gated. Its cold fallback bumps the
+        // generation and must start a fresh build rather than join the one
+        // above.
+        let s_mark = Arc::clone(&store);
+        let mark = tokio::spawn(async move { s_mark.write_mark(0, "Book", Marker::NoEbook).await });
+        tokio::time::timeout(Duration::from_secs(5), gate.entered.acquire())
+            .await
+            .expect("the mark's own fallback build never reached the gate")
+            .unwrap()
+            .forget();
+
+        gate.release.add_permits(2);
+
+        let stale = owner.await.unwrap();
+        assert!(
+            book_missing(&stale),
+            "the pre-mark build still reports its own (stale) walk to its own awaiter"
+        );
+
+        let applied = mark.await.unwrap().unwrap();
+        assert!(
+            !book_missing(&applied.raw),
+            "the mark's own caller must see its own mark, not the walk that predates it"
+        );
+
+        let served = store.current().await;
+        assert!(
+            !book_missing(&served),
+            "the stored slot must reflect the mark; the predating walk must not have clobbered it"
         );
     }
 
@@ -1778,7 +1905,8 @@ mod tests {
 
         // A forced rebuild pauses between its walk and its store
         let inner = Arc::clone(&store.inner);
-        let build = tokio::spawn(async move { StoreInner::build_coalesced(&inner, false).await });
+        let build =
+            tokio::spawn(async move { StoreInner::build_coalesced(&inner, false, None).await });
         gate.entered.acquire().await.unwrap().forget();
 
         // The mark lands while the walk's result is in hand but unstored
@@ -1808,7 +1936,8 @@ mod tests {
         store.set_build_gate(gate.clone());
 
         let inner = Arc::clone(&store.inner);
-        let owner = tokio::spawn(async move { StoreInner::build_coalesced(&inner, true).await });
+        let owner =
+            tokio::spawn(async move { StoreInner::build_coalesced(&inner, true, None).await });
         gate.entered.acquire().await.unwrap().forget();
 
         // The only awaiter vanishes mid-build
@@ -1835,7 +1964,7 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn a_non_utf8_name_scans_lossily_and_its_mark_fails_as_missing() {
-        // Accepted v1 behavior (F8 wontfix): the walk flags the folder, the
+        // Accepted v1 behavior: the walk flags the folder, the
         // name renders with U+FFFD, and the lossy rel round-trips to a path
         // that does not exist, so the mark fails with the missing-target arm
         use std::os::unix::ffi::OsStrExt;
