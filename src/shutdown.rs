@@ -2,11 +2,29 @@
 //! termination signal so `axum::serve` can drain in-flight requests before
 //! exit. Listens for SIGINT and SIGTERM on Unix, Ctrl-C on Windows.
 
+/// Await ctrl_c(), logging `received_msg` on receipt or `install_failed_msg`
+/// on an install failure. Returns whether the signal was actually received,
+/// so callers pick their own fallback instead of this deciding for them
+async fn await_ctrl_c(received_msg: &str, install_failed_msg: &str) -> bool {
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => {
+            tracing::info!("{received_msg}");
+            true
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "{install_failed_msg}");
+            false
+        }
+    }
+}
+
 /// Resolves when the process receives SIGINT or SIGTERM (Unix) or Ctrl-C
 /// (Windows). Logs which signal fired before returning. Intended to be
 /// passed to `axum::serve(..).with_graceful_shutdown(..)`.
-/// When the SIGTERM handler cannot be installed, logs a warning and waits
-/// on SIGINT alone rather than taking the server down.
+/// When a signal handler cannot be installed, this keeps waiting on
+/// whichever handler remains rather than resolving immediately. When no
+/// handler at all is available, it stays pending forever instead of
+/// stopping the server on a phantom signal.
 pub async fn signal() {
     #[cfg(unix)]
     {
@@ -18,20 +36,38 @@ pub async fn signal() {
                     error = %err,
                     "could not install SIGTERM handler, waiting for SIGINT only"
                 );
-                let _ = tokio::signal::ctrl_c().await;
-                tracing::info!("received SIGINT, shutting down");
+                if !await_ctrl_c(
+                    "received SIGINT, shutting down",
+                    "could not install the SIGINT handler either; signal-driven shutdown is disabled",
+                )
+                .await
+                {
+                    std::future::pending::<()>().await;
+                }
                 return;
             }
         };
         tokio::select! {
-            _ = tokio::signal::ctrl_c() => tracing::info!("received SIGINT, shutting down"),
+            received = await_ctrl_c(
+                "received SIGINT, shutting down",
+                "could not install SIGINT handler, waiting for SIGTERM only",
+            ) => if !received {
+                term.recv().await;
+                tracing::info!("received SIGTERM, shutting down");
+            },
             _ = term.recv() => tracing::info!("received SIGTERM, shutting down"),
         }
     }
     #[cfg(not(unix))]
     {
-        let _ = tokio::signal::ctrl_c().await;
-        tracing::info!("received Ctrl-C, shutting down");
+        if !await_ctrl_c(
+            "received Ctrl-C, shutting down",
+            "could not install the Ctrl-C handler; signal-driven shutdown is disabled",
+        )
+        .await
+        {
+            std::future::pending::<()>().await;
+        }
     }
 }
 
