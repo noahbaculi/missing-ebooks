@@ -322,4 +322,30 @@ mod tests {
         // Fence the helper off so it does not creep back in.
         assert!(!APP_JS_BYTES.contains("openCheatsheet"));
     }
+
+    #[test]
+    fn scripts_do_not_persist_the_view_toggle() {
+        // CONTEXT.md:31: the show-all toggle rides ?view= only and a reload
+        // lands on gaps-only. Fence any localStorage view key out
+        for shape in [
+            r#"localStorage.getItem("view")"#,
+            r#"localStorage.setItem("view""#,
+        ] {
+            assert!(
+                !APP_JS_BYTES.contains(shape),
+                "app.js must not persist {shape}"
+            );
+        }
+        for shape in [
+            "localStorage.getItem('view')",
+            "localStorage.setItem('view'",
+        ] {
+            assert!(
+                !PREPAINT_JS_BYTES.contains(shape),
+                "prepaint.js must not persist {shape}"
+            );
+        }
+        // The view still rides the query string
+        assert!(APP_JS_BYTES.contains("/refresh?view="));
+    }
 }
