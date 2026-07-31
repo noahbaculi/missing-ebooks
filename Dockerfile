@@ -5,7 +5,7 @@
 # BIN selects the binary: the production server by default, or the demo via
 # --build-arg BIN=missing-ebooks-demo (see demo/docker-compose.yml).
 ARG BIN=missing-ebooks
-FROM rust:1.96.0-alpine AS builder
+FROM rust:1.97.1-alpine AS builder
 ARG BIN
 
 # Some crates link a C runtime; musl-dev provides it for the musl target.
