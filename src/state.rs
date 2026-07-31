@@ -99,9 +99,9 @@ struct StoreInner {
     /// build between its walk and its store.
     #[cfg(test)]
     build_gate: std::sync::Mutex<Option<BuildGate>>,
-    /// Monotonic count of fresh builds stored into the slot. Bumped inside
-    /// `store_fresh` as a test-only observation. Tests diff before vs. after
-    /// to assert that a warm operation did not rebuild. See ADR-0022.
+    /// Monotonic count of fresh builds stored into the slot. Bumped by
+    /// `store_if_unchanged`. Tests diff before vs. after to assert that a
+    /// warm operation did not rebuild. See ADR-0022.
     rebuild_count: AtomicU64,
     /// `None` disables caching: every read rescans.
     ttl: Option<Duration>,
@@ -185,6 +185,12 @@ impl RawViewStore {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(gate);
     }
+
+    /// Test-only read of the stored raw slot, ignoring freshness
+    #[cfg(test)]
+    fn peek_stored_arc(&self) -> Option<Arc<RawView>> {
+        self.inner.load().map(|entry| Arc::clone(&entry.raw))
+    }
 }
 
 impl StoreInner {
@@ -253,20 +259,6 @@ impl StoreInner {
             raw: Arc::clone(&next),
         }));
         Some(next)
-    }
-
-    /// Temporary unconditional store for `write_mark`'s cold arm, kept until
-    /// Task 3 restructures `write_mark` and deletes this. Same body as
-    /// `store_if_unchanged` minus the generation compare.
-    fn store_fresh(&self, raw: Arc<RawView>) -> Arc<RawView> {
-        let mut slot = self.slot();
-        slot.generation += 1;
-        slot.entry = Some(Arc::new(CacheEntry {
-            stored_at: Instant::now(),
-            raw: Arc::clone(&raw),
-        }));
-        self.rebuild_count.fetch_add(1, Ordering::Relaxed);
-        raw
     }
 
     /// Block at the armed build gate, if any. Compiled out of production
@@ -489,29 +481,28 @@ impl RawViewStore {
             }
         };
 
-        // A self-write may not bump the folder mtime, so force a re-list on rescan.
+        // A re-mark created nothing on disk: no index entry went stale and no
+        // cover-file list changed, so skip the clone-and-edit entirely (F12)
+        if !created {
+            return Ok(Applied {
+                raw: self.current().await,
+                created,
+            });
+        }
         self.inner.invalidate_index(root, &canonical_root, rel);
 
-        let rel_for_edit = rel.to_string();
-        let raw = {
-            // The inflight lock doubles as the edit-coordination lock: it
-            // serializes a warm in-place edit against any concurrent cold
-            // build's store, and against another concurrent edit.
+        // Mirror remove_mark: the inflight guard scopes to the load-edit-store
+        // only, never across a walk (F1)
+        let edited = {
             let _edit = self.inner.inflight.lock().await;
-            let edited = self
-                .inner
-                .edit_fresh(|next| apply_mark_raw(next, root, &rel_for_edit, marker));
-            match edited {
-                Some(next) => next,
-                None => self.inner.store_fresh(Arc::new(
-                    build_view(
-                        self.inner.config.as_ref(),
-                        &self.inner.settings,
-                        &self.inner.dir_indices,
-                    )
-                    .await,
-                )),
-            }
+            self.inner
+                .edit_fresh(|next| apply_mark_raw(next, root, rel, marker))
+        };
+        let raw = match edited {
+            Some(next) => next,
+            // Cold or stale slot: the marker is already on disk, so a coalesced
+            // rebuild reflects it and concurrent cold marks share one walk
+            None => StoreInner::build_coalesced(&self.inner, false).await,
         };
         Ok(Applied { raw, created })
     }
@@ -1291,6 +1282,77 @@ mod tests {
         assert!(applied.created);
         assert!(!book_missing(&applied.raw));
         assert!(dir.path().join("Book/.ebook_elsewhere").exists());
+    }
+
+    #[tokio::test]
+    async fn concurrent_cold_marks_coalesce_into_one_walk() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("A/01.mp3"));
+        crate::scenarios::touch(&dir.path().join("B/01.mp3"));
+        let store = Arc::new(test_store(
+            Some(Duration::from_secs(600)),
+            dir.path().to_path_buf(),
+        ));
+        let gate = BuildGate::new();
+        store.set_build_gate(gate.clone());
+
+        let s1 = Arc::clone(&store);
+        let first = tokio::spawn(async move { s1.write_mark(0, "A", Marker::NoEbook).await });
+        // The first cold mark's fallback build reaches the gate after its walk.
+        // A timeout here is the old shape failing: the private build_view arm
+        // never routes through the coalesced (gated) build
+        tokio::time::timeout(Duration::from_secs(5), gate.entered.acquire())
+            .await
+            .expect("the cold mark never routed through the coalesced build")
+            .unwrap()
+            .forget();
+
+        let s2 = Arc::clone(&store);
+        let second = tokio::spawn(async move { s2.write_mark(0, "B", Marker::NoEbook).await });
+        // Drive the second mark past its marker write and into the join
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !dir.path().join("B/.no_ebook").exists() {
+                tokio::task::yield_now().await;
+            }
+            for _ in 0..64 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the second mark never wrote its marker");
+
+        gate.release.add_permits(1);
+        first.await.unwrap().unwrap();
+        second.await.unwrap().unwrap();
+        assert_eq!(
+            store.rebuild_count(),
+            1,
+            "concurrent cold marks share one coalesced walk"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_remark_returns_the_cached_view_without_cloning_the_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+        let _warm = store.current().await;
+        let first = store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        assert!(first.created);
+        let arc_before = store.peek_stored_arc().unwrap();
+        let generation_before = store.inner.generation();
+
+        let second = store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        assert!(!second.created);
+        assert!(
+            Arc::ptr_eq(&arc_before, &store.peek_stored_arc().unwrap()),
+            "a re-mark must not clone and restore the slot"
+        );
+        assert_eq!(
+            store.inner.generation(),
+            generation_before,
+            "a re-mark must not bump the slot generation"
+        );
     }
 
     #[tokio::test]
