@@ -32,6 +32,36 @@ struct CacheEntry {
     raw: Arc<RawView>,
 }
 
+/// The guarded cache cell: the entry plus a monotonically increasing
+/// generation. Every store and every in-place edit bumps the generation, so
+/// a build that began before the latest write detects the move and declines
+/// to overwrite it (newest write wins, ADR-0036)
+struct Slot {
+    generation: u64,
+    entry: Option<Arc<CacheEntry>>,
+}
+
+/// Test-only pause point between a cold build's walk and its store, so
+/// interleaving tests can act while the result is in hand but unpublished
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct BuildGate {
+    /// The build adds one permit here when it reaches the gate
+    pub(crate) entered: Arc<tokio::sync::Semaphore>,
+    /// The build consumes one permit from here before storing
+    pub(crate) release: Arc<tokio::sync::Semaphore>,
+}
+
+#[cfg(test)]
+impl BuildGate {
+    pub(crate) fn new() -> BuildGate {
+        BuildGate {
+            entered: Arc::new(tokio::sync::Semaphore::new(0)),
+            release: Arc::new(tokio::sync::Semaphore::new(0)),
+        }
+    }
+}
+
 /// Whether a stored entry is still within the staleness window. `ttl == None`
 /// disables the cache (every read rescans), so any stored entry is treated as
 /// stale.
@@ -58,13 +88,17 @@ struct StoreInner {
     /// lock. At self-hosted request rates an uncontended read costs about as
     /// much as an atomic pointer load, and the in-place edit paths are
     /// atomic under the write lock.
-    cache: std::sync::RwLock<Option<Arc<CacheEntry>>>,
+    cache: std::sync::RwLock<Slot>,
     /// Holds only the in-flight build handle (as a `Weak`, so it expires when
     /// the last awaiter drops it). Held for microseconds to register or join
     /// a build, never across the walk. Also serializes marker edits so a
     /// concurrent `write_mark` / `remove_mark` cannot interleave its
     /// load-edit-store with a cold build's store.
     inflight: Mutex<Option<Weak<SharedBuild>>>,
+    /// Test-only pause point armed by `set_build_gate`, checked by every cold
+    /// build between its walk and its store.
+    #[cfg(test)]
+    build_gate: std::sync::Mutex<Option<BuildGate>>,
     /// Monotonic count of fresh builds stored into the slot. Bumped inside
     /// `store_fresh` as a test-only observation. Tests diff before vs. after
     /// to assert that a warm operation did not rebuild. See ADR-0022.
@@ -95,8 +129,13 @@ impl RawViewStore {
     ) -> RawViewStore {
         RawViewStore {
             inner: Arc::new(StoreInner {
-                cache: std::sync::RwLock::new(None),
+                cache: std::sync::RwLock::new(Slot {
+                    generation: 0,
+                    entry: None,
+                }),
                 inflight: Mutex::new(None),
+                #[cfg(test)]
+                build_gate: std::sync::Mutex::new(None),
                 rebuild_count: AtomicU64::new(0),
                 ttl,
                 settings,
@@ -136,6 +175,16 @@ impl RawViewStore {
     pub(crate) fn dir_index_len_for_test(&self, root: usize) -> usize {
         self.inner.dir_indices[root].len()
     }
+
+    /// Arm the test-only build gate. Every later cold build pauses at it
+    #[cfg(test)]
+    pub(crate) fn set_build_gate(&self, gate: BuildGate) {
+        *self
+            .inner
+            .build_gate
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(gate);
+    }
 }
 
 impl StoreInner {
@@ -146,29 +195,96 @@ impl StoreInner {
         self.cache
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .entry
             .clone()
     }
 
     /// Write-lock the cache slot, recovering the guard on poison for the
     /// same reason `load` does.
-    fn slot(&self) -> std::sync::RwLockWriteGuard<'_, Option<Arc<CacheEntry>>> {
+    fn slot(&self) -> std::sync::RwLockWriteGuard<'_, Slot> {
         self.cache
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Stamp and store a freshly built raw view, bumping `rebuild_count`. The
-    /// single place that sets `stored_at = now`. The in-place marker edit
-    /// stores directly (preserving `stored_at`) and never calls this, so a
-    /// warm write leaves both the freshness clock and the rebuild count
-    /// unchanged.
+    /// Current slot generation. Read under the inflight lock at build
+    /// registration so the pairing with `store_if_unchanged` is race-free
+    fn generation(&self) -> u64 {
+        self.cache
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .generation
+    }
+
+    /// Store a freshly built raw view unless the slot moved since `expected`
+    /// was read. A mark or undo that landed mid-walk already bumped the
+    /// generation, and newer data must not be overwritten by an older walk.
+    /// Bumps `rebuild_count` only when the store happens
+    fn store_if_unchanged(&self, expected: u64, raw: &Arc<RawView>) {
+        let mut slot = self.slot();
+        if slot.generation != expected {
+            tracing::debug!("discarding a stale build; the slot moved during the walk");
+            return;
+        }
+        slot.generation += 1;
+        slot.entry = Some(Arc::new(CacheEntry {
+            stored_at: Instant::now(),
+            raw: Arc::clone(raw),
+        }));
+        self.rebuild_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Clone-edit-store the fresh entry under the write lock, preserving
+    /// `stored_at` and bumping the generation. `None` when the slot is cold or
+    /// stale, leaving the caller to rebuild
+    fn edit_fresh(&self, edit: impl FnOnce(&mut RawView)) -> Option<Arc<RawView>> {
+        let mut slot = self.slot();
+        let entry = slot.entry.as_ref()?;
+        if !is_fresh(entry, self.ttl) {
+            return None;
+        }
+        let stored_at = entry.stored_at;
+        let mut next = (*entry.raw).clone();
+        edit(&mut next);
+        let next = Arc::new(next);
+        slot.generation += 1;
+        slot.entry = Some(Arc::new(CacheEntry {
+            stored_at,
+            raw: Arc::clone(&next),
+        }));
+        Some(next)
+    }
+
+    /// Temporary unconditional store for `write_mark`'s cold arm, kept until
+    /// Task 3 restructures `write_mark` and deletes this. Same body as
+    /// `store_if_unchanged` minus the generation compare.
     fn store_fresh(&self, raw: Arc<RawView>) -> Arc<RawView> {
-        *self.slot() = Some(Arc::new(CacheEntry {
+        let mut slot = self.slot();
+        slot.generation += 1;
+        slot.entry = Some(Arc::new(CacheEntry {
             stored_at: Instant::now(),
             raw: Arc::clone(&raw),
         }));
         self.rebuild_count.fetch_add(1, Ordering::Relaxed);
         raw
+    }
+
+    /// Block at the armed build gate, if any. Compiled out of production
+    #[cfg(test)]
+    async fn pause_at_build_gate(&self) {
+        let gate = self
+            .build_gate
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some(gate) = gate {
+            gate.entered.add_permits(1);
+            gate.release
+                .acquire()
+                .await
+                .expect("build gate semaphore closed")
+                .forget();
+        }
     }
 
     /// Return the cached raw view if still fresh, otherwise build one. Reads
@@ -185,10 +301,10 @@ impl StoreInner {
         StoreInner::build_coalesced(this, true).await
     }
 
-    /// Start a build, or join the one already running. The first caller owns
-    /// the build and stores the result (bumping `rebuild_count` once).
-    /// Joiners share the same future and return its output without a second
-    /// walk or a second count bump.
+    /// Start a build, or join the one already running. The walk and its store
+    /// run in a spawned task, so a dropped request cannot discard a completed
+    /// build. The store is generation-guarded: registered under the inflight
+    /// lock, compared at store time, skipped when an edit landed mid-walk
     ///
     /// `recheck_fresh`: when true (the `current` read path), re-check the cache
     /// under the lock and return a fresh entry instead of starting a new walk.
@@ -198,7 +314,7 @@ impl StoreInner {
     /// `refresh`/`rescan`/edit-fallback callers pass false: they must rebuild
     /// regardless of a live TTL.
     async fn build_coalesced(this: &Arc<StoreInner>, recheck_fresh: bool) -> Arc<RawView> {
-        let (handle, owns) = {
+        let handle = {
             let mut slot = this.inflight.lock().await;
             if recheck_fresh
                 && let Some(entry) = this.load()
@@ -207,28 +323,39 @@ impl StoreInner {
                 return Arc::clone(&entry.raw);
             }
             if let Some(existing) = slot.as_ref().and_then(Weak::upgrade) {
-                (existing, false)
+                existing
             } else {
-                let config = Arc::clone(&this.config);
-                let settings = Arc::clone(&this.settings);
-                let indices: Vec<_> = this.dir_indices.iter().map(Arc::clone).collect();
-                let build: SharedBuild =
-                    async move { Arc::new(build_view(&config, &settings, &indices).await) }
-                        .boxed()
-                        .shared();
+                let registered_at = this.generation();
+                let task_inner = Arc::clone(this);
+                let task = tokio::spawn(async move {
+                    let raw = Arc::new(
+                        build_view(
+                            task_inner.config.as_ref(),
+                            &task_inner.settings,
+                            &task_inner.dir_indices,
+                        )
+                        .await,
+                    );
+                    #[cfg(test)]
+                    task_inner.pause_at_build_gate().await;
+                    task_inner.store_if_unchanged(registered_at, &raw);
+                    raw
+                });
+                let build: SharedBuild = async move {
+                    // JoinError is unreachable in practice: per-root panics are
+                    // folded into RootScan::Failed by build_section
+                    task.await.expect("cold build task panicked")
+                }
+                .boxed()
+                .shared();
                 let handle = Arc::new(build);
                 *slot = Some(Arc::downgrade(&handle));
-                (handle, true)
+                handle
             }
         };
         // Keep the Arc alive across the await so a concurrent caller can
-        // upgrade the Weak and join this build. Cloning the inner Shared
-        // future is what actually yields the awaitable.
-        let raw = (*handle).clone().await;
-        if owns {
-            this.store_fresh(Arc::clone(&raw));
-        }
-        raw
+        // upgrade the Weak and join this build
+        (*handle).clone().await
     }
 
     /// Drop the index entry for `rel` under `canonical_root` so the next walk
@@ -371,24 +498,9 @@ impl RawViewStore {
             // serializes a warm in-place edit against any concurrent cold
             // build's store, and against another concurrent edit.
             let _edit = self.inner.inflight.lock().await;
-            let edited = {
-                let mut slot = self.inner.slot();
-                match slot.as_ref() {
-                    Some(entry) if is_fresh(entry, self.inner.ttl) => {
-                        let mut next = (*entry.raw).clone();
-                        apply_mark_raw(&mut next, root, &rel_for_edit, marker);
-                        let next = Arc::new(next);
-                        // Preserve `stored_at`: an in-place edit does not
-                        // refresh the freshness clock.
-                        *slot = Some(Arc::new(CacheEntry {
-                            stored_at: entry.stored_at,
-                            raw: Arc::clone(&next),
-                        }));
-                        Some(next)
-                    }
-                    _ => None,
-                }
-            };
+            let edited = self
+                .inner
+                .edit_fresh(|next| apply_mark_raw(next, root, &rel_for_edit, marker));
             match edited {
                 Some(next) => next,
                 None => self.inner.store_fresh(Arc::new(
@@ -457,22 +569,11 @@ impl RawViewStore {
         // another concurrent edit.
         let spliced = {
             let _edit = self.inner.inflight.lock().await;
-            let mut slot = self.inner.slot();
-            match slot.as_ref() {
-                Some(entry) if is_fresh(entry, self.inner.ttl) => {
-                    let mut next = (*entry.raw).clone();
-                    if root < next.len() {
-                        next[root] = section;
-                    }
-                    let next = Arc::new(next);
-                    *slot = Some(Arc::new(CacheEntry {
-                        stored_at: entry.stored_at,
-                        raw: Arc::clone(&next),
-                    }));
-                    Some(next)
+            self.inner.edit_fresh(|next| {
+                if root < next.len() {
+                    next[root] = section;
                 }
-                _ => None,
-            }
+            })
         };
         match spliced {
             Some(raw) => Ok(raw),
@@ -1280,6 +1381,72 @@ mod tests {
             store.rebuild_count(),
             1,
             "follow-up current() reuses the warmed slot",
+        );
+    }
+
+    #[tokio::test]
+    async fn a_mark_landing_mid_build_survives_the_builds_store() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+        let _warm = store.current().await;
+
+        let gate = BuildGate::new();
+        store.set_build_gate(gate.clone());
+
+        // A forced rebuild pauses between its walk and its store
+        let inner = Arc::clone(&store.inner);
+        let build = tokio::spawn(async move { StoreInner::build_coalesced(&inner, false).await });
+        gate.entered.acquire().await.unwrap().forget();
+
+        // The mark lands while the walk's result is in hand but unstored
+        let applied = store.write_mark(0, "Book", Marker::NoEbook).await.unwrap();
+        assert!(applied.created);
+
+        gate.release.add_permits(1);
+        let built = build.await.unwrap();
+        assert!(
+            book_missing(&built),
+            "awaiters still receive the pre-mark walk"
+        );
+
+        let served = store.current().await;
+        assert!(
+            !book_missing(&served),
+            "the interleaved mark survives the build's store"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_aborted_owner_still_stores_the_completed_build() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+        let gate = BuildGate::new();
+        store.set_build_gate(gate.clone());
+
+        let inner = Arc::clone(&store.inner);
+        let owner = tokio::spawn(async move { StoreInner::build_coalesced(&inner, true).await });
+        gate.entered.acquire().await.unwrap().forget();
+
+        // The only awaiter vanishes mid-build
+        owner.abort();
+        let _ = owner.await;
+
+        gate.release.add_permits(1);
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while store.rebuild_count() == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the detached build task never stored its result");
+
+        let _ = store.current().await;
+        assert_eq!(
+            store.rebuild_count(),
+            1,
+            "the follow-up read serves the stored slot without a second walk"
         );
     }
 }
