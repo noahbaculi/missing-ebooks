@@ -1212,6 +1212,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn warm_scan_relists_a_dir_whose_mtime_moved_backwards() {
+        // The index compares mtime by equality, not newer-than, so a clock
+        // step or restored backup still re-lists. Pin the safe direction
+        let dir = tempfile::tempdir().unwrap();
+        let book = dir.path().join("Book");
+        touch(&book.join("01.mp3"));
+        let settings = default_settings(&[]);
+        let index = DirIndex::new();
+        let (first, _) = scan_warm(dir.path(), &settings, &index);
+        assert!(first.iter().any(|f| f.missing_ebook), "the gap is indexed");
+
+        touch(&book.join("Book.epub"));
+        // Push the mtime backwards, before anything the index has seen
+        std::fs::File::open(&book)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH)
+            .unwrap();
+        let (second, _) = scan_warm(dir.path(), &settings, &index);
+        let book_folder = second
+            .iter()
+            .find(|f| f.rel_path.as_os_str() == "Book")
+            .unwrap();
+        assert!(
+            !book_folder.missing_ebook,
+            "a backwards mtime must re-list, not reuse the stale entry"
+        );
+    }
+
     /// A subdir added under a parent is picked up on rescan once the parent's mtime
     /// moves: it re-lists, its cached subdirs gains the child, and the new folder is
     /// walked and flagged.
