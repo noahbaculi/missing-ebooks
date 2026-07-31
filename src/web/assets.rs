@@ -275,6 +275,19 @@ mod tests {
     }
 
     #[test]
+    fn app_script_guards_roots_state_across_refresh_swaps() {
+        // The /refresh poll swaps #roots innerHTML (ADR-0034). A bare swap
+        // resets every <details> to its server default and, with focus
+        // inside #roots, removes the focused element, which jumps scroll to
+        // the document bottom. Pin the three guards: the identical-response
+        // skip, the pre-swap blur, and the fold restore.
+        assert!(APP_JS_BYTES.contains(r#"addEventListener("htmx:beforeSwap""#));
+        assert!(APP_JS_BYTES.contains("shouldSwap = false"));
+        assert!(APP_JS_BYTES.contains(r#"addEventListener("htmx:afterSwap""#));
+        assert!(APP_JS_BYTES.contains("function foldKey("));
+    }
+
+    #[test]
     fn app_script_uses_the_search_empty_id() {
         // `search-empty` is the DOM id emitted by `search_empty()` in
         // page.rs. The filter reveals it when nothing matches.

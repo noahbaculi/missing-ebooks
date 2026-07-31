@@ -1673,6 +1673,91 @@
     }
   });
 
+  // refresh swap guards
+  //
+  // The poll below replaces #roots innerHTML wholesale. A bare swap resets
+  // every <details> to its server-rendered default (root folds pop back open)
+  // and, when focus sits inside #roots, removes the focused element, which
+  // jumps scroll to the document bottom (the same hazard the mark path blurs
+  // around). Three guards: skip the swap when the response matches the last
+  // one applied, blur focus out of #roots before a real swap, and put each
+  // fold back in its pre-swap state after it.
+
+  /**
+   * Last /refresh body applied to #roots, for the identical-response skip.
+   * @type {string | null}
+   */
+  var lastRefreshBody = null;
+
+  /**
+   * Fold state captured before a refresh swap, keyed by `foldKey`.
+   * @type {{ [key: string]: boolean } | null}
+   */
+  var savedFolds = null;
+
+  /**
+   * True when a swap event belongs to the background /refresh poll.
+   * @param {Event} evt
+   * @returns {boolean}
+   */
+  function isRefreshSwap(evt) {
+    var detail = /** @type {CustomEvent} */ (evt).detail;
+    var path = detail.pathInfo && detail.pathInfo.requestPath;
+    return typeof path === "string" && path.indexOf("/refresh") === 0;
+  }
+
+  /**
+   * Stable identity for a fold across an innerHTML swap: the section id plus
+   * the summary labels on the ancestor `<details>` chain.
+   * @param {Element} details
+   * @returns {string}
+   */
+  function foldKey(details) {
+    /** @type {string[]} */
+    var parts = [];
+    for (var el = /** @type {Element | null} */ (details); el && el.id !== "roots"; el = el.parentElement) {
+      if (el.tagName === "DETAILS") {
+        var label = el.querySelector(":scope > summary .name, :scope > summary h2");
+        parts.unshift(label ? label.textContent || "" : "");
+      } else if (el.classList.contains("root")) {
+        parts.unshift(el.id);
+      }
+    }
+    return parts.join("/");
+  }
+
+  document.body.addEventListener("htmx:beforeSwap", function (evt) {
+    var detail = /** @type {CustomEvent} */ (evt).detail;
+    if (!detail.shouldSwap || !isRefreshSwap(evt)) return;
+    if (detail.serverResponse === lastRefreshBody) {
+      detail.shouldSwap = false;
+      return;
+    }
+    lastRefreshBody = detail.serverResponse;
+    var roots = document.getElementById("roots");
+    if (!roots) return;
+    var active = document.activeElement;
+    if (active instanceof HTMLElement && roots.contains(active)) active.blur();
+    savedFolds = {};
+    var folds = roots.querySelectorAll("details");
+    for (var i = 0; i < folds.length; i++) {
+      savedFolds[foldKey(folds[i])] = /** @type {HTMLDetailsElement} */ (folds[i]).open;
+    }
+  });
+
+  document.body.addEventListener("htmx:afterSwap", function (evt) {
+    if (!savedFolds || !isRefreshSwap(evt)) return;
+    var roots = document.getElementById("roots");
+    if (roots) {
+      var folds = roots.querySelectorAll("details");
+      for (var i = 0; i < folds.length; i++) {
+        var open = savedFolds[foldKey(folds[i])];
+        if (typeof open === "boolean") /** @type {HTMLDetailsElement} */ (folds[i]).open = open;
+      }
+    }
+    savedFolds = null;
+  });
+
   // client-driven refresh: see ADR-0034
   //
   // On load, read the poll marker's data-poll-interval and data-view. When
