@@ -767,7 +767,7 @@ dependencies = [
  "clap",
  "criterion",
  "futures-util",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "globset",
  "http-body-util",
  "lexical-sort",
