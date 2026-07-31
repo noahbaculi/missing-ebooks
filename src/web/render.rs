@@ -1520,6 +1520,20 @@ mod tests {
     }
 
     #[test]
+    fn coverage_percentage_floors_on_a_199_of_200_fixture() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Gap", "Gap", &["01.mp3"])]),
+            200,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
+        // 199 covered of 200 floors to 99, never rounds to a false 100
+        assert!(html.contains(r#"id="coverage-pct">99<"#));
+        assert!(html.contains(r#"aria-valuenow="199""#));
+        assert!(html.contains(r#"aria-valuemax="200""#));
+    }
+
+    #[test]
     fn gap_summary_all_clear_with_audiobooks_shows_trailing_coverage_fragment() {
         // Two covered audiobooks, no gaps: the cached gaps-only view collapses
         // an empty forest to `Clean`, so the fixture mirrors that.
