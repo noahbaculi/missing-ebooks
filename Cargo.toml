@@ -41,7 +41,7 @@ test = true
 axum = "0.8.9"
 clap = { version = "4", features = ["derive", "env"] }
 futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
-getrandom = "0.3"
+getrandom = "0.4"
 globset = "0.4.18"
 lexical-sort = "0.3.1"
 maud = "0.27.0"
