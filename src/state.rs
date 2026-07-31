@@ -663,6 +663,16 @@ impl RawViewStore {
     }
 }
 
+/// Canonicalize a mark target, keeping the error kind honest: only a
+/// missing path is TargetMissing, anything else (EACCES and friends)
+/// surfaces as the write failure it is
+fn canonicalize_mark_target(path: &Path) -> Result<PathBuf, WriteError> {
+    std::fs::canonicalize(path).map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => WriteError::TargetMissing,
+        _ => WriteError::WriteFailed(e),
+    })
+}
+
 /// Guard the target and create the marker file, on a blocking task. The root
 /// base comes from config, so only `rel` is request-controlled. It is
 /// re-validated by canonicalizing the join and confirming it stays inside the
@@ -671,9 +681,9 @@ impl RawViewStore {
 /// lets undo delete only files it created.
 fn write_marker(root: &Path, rel: &str, marker: Marker) -> Result<(bool, PathBuf), WriteError> {
     let started = Instant::now();
-    let canonical_root = std::fs::canonicalize(root).map_err(|_| WriteError::TargetMissing)?;
+    let canonical_root = canonicalize_mark_target(root)?;
     let target = canonical_root.join(rel);
-    let canonical_target = std::fs::canonicalize(&target).map_err(|_| WriteError::TargetMissing)?;
+    let canonical_target = canonicalize_mark_target(&target)?;
     if !canonical_target.starts_with(&canonical_root) {
         return Err(WriteError::OutsideRoots);
     }
@@ -990,6 +1000,29 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let err = write_marker(dir.path(), "Nope", Marker::NoEbook).unwrap_err();
         assert!(matches!(err, WriteError::TargetMissing));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn write_marker_reports_a_permission_failure_not_a_missing_target() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("Sealed/Book")).unwrap();
+        let sealed = dir.path().join("Sealed");
+        std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Root traverses through the chmod; nothing to observe then
+        if std::fs::metadata(sealed.join("Book")).is_ok() {
+            std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
+        let err = write_marker(dir.path(), "Sealed/Book", Marker::NoEbook);
+        std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o755)).unwrap();
+        match err.unwrap_err() {
+            WriteError::WriteFailed(e) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::PermissionDenied);
+            }
+            other => panic!("an EACCES must not report as {other:?}"),
+        }
     }
 
     #[test]
