@@ -1387,6 +1387,18 @@ mod tests {
     }
 
     #[test]
+    fn a_file_root_fails_the_scan_as_not_a_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("root.txt");
+        std::fs::write(&file, b"").unwrap();
+        let scan = scan_root(&file, &default_settings(&[]), &DirIndex::new());
+        let RootScan::Failed { message, .. } = scan else {
+            panic!("expected Failed for a file root");
+        };
+        assert_eq!(message, "not a directory");
+    }
+
+    #[test]
     fn audiobook_count_counts_walked_folders_that_directly_hold_audio() {
         let walked = RootScan::Walked {
             canonical_path: PathBuf::from("/lib"),

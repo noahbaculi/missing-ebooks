@@ -1033,6 +1033,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_file_root_renders_the_error_banner() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("root.txt");
+        std::fs::write(&file, b"").unwrap();
+        let response = app_for(&file)
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_string(response).await;
+        assert!(body.contains("Could not scan this root:"));
+        assert!(body.contains("not a directory"));
+    }
+
+    #[tokio::test]
     #[cfg(unix)]
     async fn an_unreadable_subdirectory_renders_the_partial_scan_warning() {
         use std::os::unix::fs::PermissionsExt;
