@@ -5,7 +5,7 @@
 # version for anyone who clones the repo instead of leaning on a global install.
 
 [tools]
-"cargo:bacon" = "~3.0"
+"cargo:bacon" = "3"
 "aqua:EmbarkStudios/cargo-deny" = "0.19"
 node = "22"
 "npm:typescript" = "5"
