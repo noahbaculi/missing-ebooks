@@ -164,9 +164,13 @@ pub struct WalkStats {
     /// Zero for a cold walk. `dirs_visited - dirs_reused` is the number
     /// of directories actually read.
     pub dirs_reused: usize,
-    /// Directories the walk could not read, plus subtree roots skipped by
-    /// the depth cap. Nonzero renders the per-root partial-scan warning
+    /// Directories the walk could not read (permission or I/O error).
+    /// Nonzero renders the per-root "couldn't be read" warning.
     pub dirs_skipped: usize,
+    /// Subtree roots pruned by the depth cap (`ScanSettings::MAX_DEPTH`).
+    /// Nonzero renders the per-root "depth limit" warning, distinct from
+    /// `dirs_skipped` since the cause and remediation differ.
+    pub dirs_skipped_depth_capped: usize,
 }
 
 /// One directory's cached facts: its mtime and everything a walk would otherwise
@@ -302,8 +306,10 @@ pub enum RootScan {
         canonical_path: PathBuf,
         /// Every folder the walk produced. Empty when no entry qualified.
         folders: Vec<ScannedFolder>,
-        /// Directories the walk skipped: unreadable, or past the depth cap.
+        /// Directories the walk could not read (permission or I/O error).
         skipped_dirs: usize,
+        /// Subtree roots pruned by the depth cap.
+        depth_capped_dirs: usize,
     },
     /// The root could not be walked.
     Failed {
@@ -387,6 +393,7 @@ pub(crate) fn scan_root(root: &Path, settings: &ScanSettings, index: &DirIndex) 
         canonical_path: canonical,
         folders,
         skipped_dirs: stats.dirs_skipped,
+        depth_capped_dirs: stats.dirs_skipped_depth_capped,
     }
 }
 
@@ -426,6 +433,7 @@ pub fn scan_warm(
             stats.entries_seen += dir.stats.entries_seen;
             stats.dirs_reused += dir.stats.dirs_reused;
             stats.dirs_skipped += dir.stats.dirs_skipped;
+            stats.dirs_skipped_depth_capped += dir.stats.dirs_skipped_depth_capped;
             if let Some(cached) = dir.cache_update.take() {
                 index.insert(dir.path.clone(), cached);
             }
@@ -434,7 +442,7 @@ pub fn scan_warm(
             }
             if depth >= ScanSettings::MAX_DEPTH {
                 if !dir.children.is_empty() {
-                    stats.dirs_skipped += dir.children.len();
+                    stats.dirs_skipped_depth_capped += dir.children.len();
                     tracing::warn!(
                         dir = %dir.path.display(),
                         depth,
@@ -512,6 +520,7 @@ fn reuse_dir_all(root: &Path, dir: &Path, covered_from_above: bool, cached: &Cac
             entries_seen: 0,
             dirs_reused: 1,
             dirs_skipped: 0,
+            dirs_skipped_depth_capped: 0,
         },
         path: dir.to_path_buf(),
         cache_update: None,
@@ -549,6 +558,7 @@ fn list_dir_all(
         entries_seen: 0,
         dirs_reused: 0,
         dirs_skipped: 0,
+        dirs_skipped_depth_capped: 0,
     };
 
     let mut subdirs: Vec<PathBuf> = Vec::new();
@@ -1358,6 +1368,7 @@ mod tests {
             canonical_path: PathBuf::from("/lib/audio"),
             folders: vec![folder],
             skipped_dirs: 0,
+            depth_capped_dirs: 0,
         };
         assert_eq!(scan.display_path().to_string(), "/lib/audio");
         assert_eq!(scan.audiobook_count(), 1);
@@ -1381,6 +1392,7 @@ mod tests {
             canonical_path: PathBuf::from("/lib"),
             folders: Vec::new(),
             skipped_dirs: 0,
+            depth_capped_dirs: 0,
         };
         assert_eq!(scan.audiobook_count(), 0);
         assert!(scan.folders().is_empty());
@@ -1426,12 +1438,14 @@ mod tests {
                 },
             ],
             skipped_dirs: 0,
+            depth_capped_dirs: 0,
         };
         assert_eq!(walked.audiobook_count(), 2);
         let empty_walked = RootScan::Walked {
             canonical_path: PathBuf::from("/lib"),
             folders: Vec::new(),
             skipped_dirs: 0,
+            depth_capped_dirs: 0,
         };
         assert_eq!(empty_walked.audiobook_count(), 0);
         let failed = RootScan::Failed {
@@ -1481,6 +1495,7 @@ mod tests {
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         assert_eq!(stats.dirs_skipped, 1, "the unreadable directory is counted");
+        assert_eq!(stats.dirs_skipped_depth_capped, 0);
         assert!(
             folders.iter().any(|f| f.rel_path.as_os_str() == "Open"),
             "the readable sibling still scans"
@@ -1505,7 +1520,11 @@ mod tests {
         let settings = default_settings(&[]);
         let (folders, stats) = scan_warm(dir.path(), &settings, &DirIndex::new());
 
-        assert_eq!(stats.dirs_skipped, 1, "the capped subtree root is counted");
+        assert_eq!(stats.dirs_skipped, 0);
+        assert_eq!(
+            stats.dirs_skipped_depth_capped, 1,
+            "the capped subtree root is counted"
+        );
         assert!(
             folders
                 .iter()

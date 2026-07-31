@@ -78,6 +78,7 @@ pub fn synthetic_root_scan(total: usize, depth: usize, fanout: usize, gap_rate: 
         canonical_path: PathBuf::from("/Audiobooks"),
         folders: generate(total, depth, fanout, gap_rate),
         skipped_dirs: 0,
+        depth_capped_dirs: 0,
     }
 }
 

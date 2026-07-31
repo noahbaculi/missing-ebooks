@@ -30,9 +30,14 @@ struct RootSection {
     /// the summary strip and per-root chip read a number instead of walking
     /// the tree. `Clean` and `Error` are zero by construction.
     gaps_within: usize,
-    /// Directories the walk skipped for this root: unreadable, or past the
-    /// depth cap. Nonzero renders the partial-scan warning strip.
+    /// Directories the walk could not read for this root. Nonzero renders
+    /// the "couldn't be read" partial-scan warning strip.
     skipped_dirs: usize,
+    /// Subtree roots this root's walk pruned via the depth cap. Nonzero
+    /// renders a separate "depth limit" warning strip, since the cause
+    /// (a hardcoded ceiling, not a read failure) and remediation differ
+    /// from `skipped_dirs`.
+    depth_capped_dirs: usize,
 }
 
 /// Build the per-mode `FlaggedView` from the cached raw scan output. The gaps
@@ -63,6 +68,12 @@ fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
         gaps_within,
         skipped_dirs: match scan {
             RootScan::Walked { skipped_dirs, .. } => *skipped_dirs,
+            RootScan::Failed { .. } => 0,
+        },
+        depth_capped_dirs: match scan {
+            RootScan::Walked {
+                depth_capped_dirs, ..
+            } => *depth_capped_dirs,
             RootScan::Failed { .. } => 0,
         },
     }
@@ -370,6 +381,15 @@ fn render_section(
                         span {
                             (section.skipped_dirs) " " (folder_word(section.skipped_dirs))
                             " couldn't be read; results for this root may be incomplete."
+                        }
+                    }
+                }
+                @if section.depth_capped_dirs > 0 {
+                    div.alert.alert-warning {
+                        (PreEscaped(include_str!("../../assets/svg/warning.svg")))
+                        span {
+                            (section.depth_capped_dirs) " " (folder_word(section.depth_capped_dirs))
+                            " exceeded the scan depth limit and were skipped; results for this root may be incomplete."
                         }
                     }
                 }
@@ -750,6 +770,7 @@ mod tests {
             total_audiobooks: total,
             gaps_within,
             skipped_dirs: 0,
+            depth_capped_dirs: 0,
         }
     }
 
@@ -1062,6 +1083,28 @@ mod tests {
             html.contains("3 folders couldn't be read; results for this root may be incomplete.")
         );
         assert!(html.contains("Book"), "the readable rows still render");
+    }
+
+    #[test]
+    fn a_root_with_depth_capped_directories_renders_a_distinct_warning() {
+        let mut view = section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        );
+        view.depth_capped_dirs = 2;
+        let html = render_section(&view, 0, None, &[], ViewMode::GapsOnly).into_string();
+        assert!(html.contains("alert-warning"));
+        assert!(
+            html.contains(
+                "2 folders exceeded the scan depth limit and were skipped; results for this root may be incomplete."
+            ),
+            "the depth-cap warning names its own cause rather than reusing the unreadable-directory wording"
+        );
+        assert!(
+            !html.contains("couldn't be read"),
+            "a depth-capped root did not also fail to read anything"
+        );
     }
 
     #[test]

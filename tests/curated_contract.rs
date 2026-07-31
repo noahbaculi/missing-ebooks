@@ -104,6 +104,7 @@ fn tree_container_set_matches_the_contract() {
         canonical_path: PathBuf::from("/Audiobooks"),
         folders: flagged_paths,
         skipped_dirs: 0,
+        depth_capped_dirs: 0,
     };
     let forest = match build(&scan, ViewMode::All) {
         RootState::Forest(f) => f,
@@ -144,6 +145,7 @@ fn scan_and_build_match_the_contract() {
         canonical_path: PathBuf::from("/Audiobooks"),
         folders,
         skipped_dirs: 0,
+        depth_capped_dirs: 0,
     };
     let forest = match build(&scan, ViewMode::All) {
         RootState::Forest(f) => f,

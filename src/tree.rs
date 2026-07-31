@@ -288,6 +288,7 @@ mod tests {
             canonical_path: PathBuf::from("/lib").join(name),
             folders,
             skipped_dirs: 0,
+            depth_capped_dirs: 0,
         }
     }
 
