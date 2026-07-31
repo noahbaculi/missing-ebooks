@@ -47,8 +47,23 @@ pub(crate) struct MarkRequest {
     pub(crate) view: Option<String>,
 }
 
+/// Cap on concurrently served requests. Each page render buffers the whole
+/// library into one String (ADR-0032), so the cap bounds peak memory and
+/// walk pile-up. Excess requests queue rather than erroring (ADR-0037)
+pub(crate) const MAX_IN_FLIGHT_REQUESTS: usize = 16;
+
 /// Build the application router with the shared state attached.
 pub fn router(state: Arc<AppState>) -> Router {
+    router_with_limit(
+        state,
+        Arc::new(tokio::sync::Semaphore::new(MAX_IN_FLIGHT_REQUESTS)),
+    )
+}
+
+/// Router around an injected semaphore. One shared semaphore caps every
+/// route; Router::layer wraps each route individually, so the per-layer
+/// ConcurrencyLimitLayer would mint a semaphore per route instead
+fn router_with_limit(state: Arc<AppState>, semaphore: Arc<tokio::sync::Semaphore>) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/mark", post(mark))
@@ -58,6 +73,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/static/htmx.min.js", get(assets::htmx_script))
         .route("/static/app.css", get(assets::app_css))
         .route("/static/app.js", get(assets::app_js))
+        .layer(tower::limit::GlobalConcurrencyLimitLayer::with_semaphore(
+            semaphore,
+        ))
         .with_state(state)
 }
 
@@ -286,6 +304,80 @@ mod tests {
     async fn body_string(response: axum::response::Response) -> String {
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn the_concurrency_cap_queues_the_seventeenth_request() {
+        use crate::state::BuildGate;
+
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Book/01.mp3"));
+        let cfg = Config {
+            library_roots: vec![dir.path().to_path_buf()],
+            ttl_seconds: 60,
+            ..Default::default()
+        };
+        let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
+        let state = Arc::new(AppState::new(cfg, settings));
+        let gate = BuildGate::new();
+        state.store.set_build_gate(gate.clone());
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(MAX_IN_FLIGHT_REQUESTS));
+        let app = router_with_limit(Arc::clone(&state), Arc::clone(&semaphore));
+
+        // Fill the cap: every page request joins the one gated cold build
+        let mut parked = Vec::new();
+        for _ in 0..MAX_IN_FLIGHT_REQUESTS {
+            let app = app.clone();
+            parked.push(tokio::spawn(async move {
+                app.oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+                    .await
+                    .unwrap()
+            }));
+        }
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while semaphore.available_permits() > 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the parked requests never consumed every permit");
+
+        // With the cap full, even a cheap static asset queues
+        let queued = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            app.clone().oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            ),
+        )
+        .await;
+        assert!(
+            queued.is_err(),
+            "request 17 must wait behind the cap, not be served"
+        );
+
+        // Releasing the build drains the queue; nothing errored
+        gate.release.add_permits(1);
+        for handle in parked {
+            let response = handle.await.unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "queued requests complete, never error"
+            );
+        }
+        let after = app
+            .oneshot(
+                Request::builder()
+                    .uri("/static/app.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(after.status(), StatusCode::OK);
     }
 
     #[tokio::test]
