@@ -375,12 +375,8 @@ impl RawViewStore {
         let Some(index) = self.dir_indices.get(root) else {
             return;
         };
-        let target = if rel == "." {
-            canonical_root.to_path_buf()
-        } else {
-            canonical_root.join(rel)
-        };
-        index.invalidate(&target);
+        // Path equality and hashing normalize a trailing ".", so rel "." hits the root entry
+        index.invalidate(&canonical_root.join(rel));
     }
 
     /// Delete a marker file and refresh the cached view by rescanning the one
@@ -1093,6 +1089,30 @@ mod tests {
         assert!(
             store.dir_indices[0].get_cloned(&book).is_none(),
             "Book's index entry is invalidated by the marker write"
+        );
+    }
+
+    #[tokio::test]
+    async fn store_write_mark_at_the_root_invalidates_the_root_in_the_index() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        // Warm the index by scanning once.
+        store.current().await;
+        let canonical = std::fs::canonicalize(dir.path()).unwrap();
+        assert!(
+            store.dir_indices[0].get_cloned(&canonical).is_some(),
+            "the root is indexed after the scan"
+        );
+
+        // Marking the root flows rel "." into invalidate_index, whose join
+        // yields "root/.". Path equality and hashing normalize that back to
+        // the root's index key.
+        store.write_mark(0, ".", Marker::NoEbook).await.unwrap();
+        assert!(
+            store.dir_indices[0].get_cloned(&canonical).is_none(),
+            "the root's index entry is invalidated by the marker write"
         );
     }
 
