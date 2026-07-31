@@ -84,6 +84,7 @@ similar_names = "allow"              # `marker` vs `marked` is intentional vocab
 if_not_else = "allow"                # Hot-path-first branch order is deliberate; flipping it hides the common case.
 single_match_else = "allow"          # Match-with-block-arms is clearer than if-let when the None arm is multi-statement.
 map_unwrap_or = "allow"              # `.map(f).unwrap_or(x)` reads more linearly than `.map_or(x, f)` when f is long.
+undocumented_unsafe_blocks = "deny"  # Restriction-group pick: every unsafe block carries a SAFETY comment. The one existing block (shutdown test) already complies.
 
 [lints.rust]
 missing_docs = "deny"
