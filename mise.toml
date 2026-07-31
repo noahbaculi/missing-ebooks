@@ -47,7 +47,7 @@ description = "Run the container entrypoint shell test"
 run = "sh tests/docker/entrypoint.sh"
 
 [tasks."test:accent"]
-description = "Check the accent ink derivation clears AA and its two copies agree"
+description = "Check the accent ink derivation clears AA"
 run = "node tests/accent/derive.test.mjs"
 
 [hooks]
