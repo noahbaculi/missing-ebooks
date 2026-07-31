@@ -19,6 +19,11 @@ use crate::marker::Marker;
 use crate::raw_view::{RawView, apply_mark_raw, build_section, build_view};
 use crate::scanner::{DirIndex, ScanSettings};
 
+/// Minimum spacing between honored rescans. A second click or a request
+/// loop inside the window skips the index clear and joins the in-flight
+/// or fresh build instead (silent coalescing, no error UI; ADR-0037)
+pub(crate) const RESCAN_COOLDOWN: Duration = Duration::from_secs(5);
+
 /// Everything a request handler needs: the immutable config and settings, and
 /// the scan cache. Shared as `Arc<AppState>`.
 pub struct AppState {
@@ -118,6 +123,9 @@ struct StoreInner {
     /// exposed on `AppState.config` for handlers that read pure config data
     /// (search links, cookie name, library roots). See ADR-0027.
     config: Arc<Config>,
+    /// Instant of the last honored rescan, gating `RESCAN_COOLDOWN` (ADR-0037).
+    /// A std mutex: held for nanoseconds and never across an await.
+    last_rescan: std::sync::Mutex<Option<Instant>>,
 }
 
 impl RawViewStore {
@@ -143,6 +151,7 @@ impl RawViewStore {
                 settings,
                 dir_indices,
                 config,
+                last_rescan: std::sync::Mutex::new(None),
             }),
         }
     }
@@ -154,10 +163,29 @@ impl RawViewStore {
         StoreInner::current(&self.inner).await
     }
 
-    /// Force a cold scan: clear every per-root index, then rebuild. Ignores
-    /// the TTL. Spawned so an aborted request cannot strand cleared indices
-    /// with nothing to refill them
+    /// Force a cold scan, at most once per `RESCAN_COOLDOWN`: clear every
+    /// per-root index, then rebuild, ignoring the TTL. Spawned so an aborted
+    /// request cannot strand cleared indices with nothing to refill them. A
+    /// call landing inside the cooldown window skips the clear and coalesces
+    /// onto the in-flight or fresh build instead (ADR-0037).
     pub(crate) async fn rescan(&self) -> Arc<RawView> {
+        let honored = {
+            let mut last = self
+                .inner
+                .last_rescan
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let due = last.is_none_or(|at| at.elapsed() >= RESCAN_COOLDOWN);
+            if due {
+                *last = Some(Instant::now());
+            }
+            due
+        };
+        if !honored {
+            // Inside the window: keep the warm index, serve the fresh slot or
+            // join the build already running
+            return StoreInner::build_coalesced(&self.inner, true).await;
+        }
         let inner = Arc::clone(&self.inner);
         tokio::spawn(async move {
             for index in &inner.dir_indices {
@@ -824,6 +852,43 @@ mod tests {
         assert_eq!(
             after_rescan, after_warm,
             "rescan must clear and repopulate to the same count on an unchanged tree"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_rescan_inside_the_cooldown_keeps_the_index_and_the_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+        // The first rescan is honored and warms the slot
+        let _ = store.rescan().await;
+
+        // A synthetic entry no real walk could produce: it survives only if
+        // the second rescan skips the index clear
+        let synthetic_path = std::path::PathBuf::from("/nonexistent/synthetic/marker/path");
+        store.inner.dir_indices[0].insert(
+            synthetic_path.clone(),
+            scanner::CachedDir {
+                mtime: std::time::UNIX_EPOCH,
+                subdirs: std::sync::Arc::from(Vec::<std::path::PathBuf>::new()),
+                cover_files: std::sync::Arc::from(Vec::<String>::new()),
+                audio_files: std::sync::Arc::from(Vec::<String>::new()),
+            },
+        );
+        let before = store.rebuild_count();
+
+        let _ = store.rescan().await; // lands inside the 5-second window
+
+        assert!(
+            store.inner.dir_indices[0]
+                .get_cloned(&synthetic_path)
+                .is_some(),
+            "a cooled-down rescan must not clear the index"
+        );
+        assert_eq!(
+            store.rebuild_count(),
+            before,
+            "a cooled-down rescan joins the fresh slot instead of walking"
         );
     }
 
