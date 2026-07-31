@@ -1964,9 +1964,9 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn a_non_utf8_name_scans_lossily_and_its_mark_fails_as_missing() {
-        // Accepted v1 behavior: the walk flags the folder, the
-        // name renders with U+FFFD, and the lossy rel round-trips to a path
-        // that does not exist, so the mark fails with the missing-target arm
+        // Accepted v1 behavior: the walk flags the folder, the name renders
+        // with U+FFFD, and the lossy rel round-trips to a path that does not
+        // exist, so the mark fails with the missing-target arm
         use std::os::unix::ffi::OsStrExt;
         let dir = tempfile::tempdir().unwrap();
         let folder = dir.path().join(std::ffi::OsStr::from_bytes(b"Bo\xffok"));
