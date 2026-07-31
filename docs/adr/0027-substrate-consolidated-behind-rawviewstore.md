@@ -1,5 +1,7 @@
 # Substrate consolidated behind RawViewStore
 
+> Amended 2026-07-30 by ADR-0036: the store's internals moved behind `Arc<StoreInner>`, the coalesced build publishes its own result from a spawned task, and slot stores are generation-guarded.
+
 Date: 2026-06-24.
 
 ## Context

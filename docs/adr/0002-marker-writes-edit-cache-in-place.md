@@ -1,6 +1,7 @@
 # Marker writes edit the raw cache in place; config is immutable at runtime
 
 > Amended 2026-06-26 by ADR-0027 and ADR-0028: the `service::*` and `Cache::*` symbols cited below were inlined into `web::*` handlers and `RawViewStore`. Current locations live in `src/state.rs` and `src/web.rs`.
+> Amended 2026-07-30 by ADR-0036: the "one lock serializes every cache mutation" protocol below was replaced by a slot generation (newest write wins) and mutations that run to completion in spawned tasks.
 
 Date: 2026-06-22.
 

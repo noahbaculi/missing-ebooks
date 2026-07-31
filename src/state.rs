@@ -90,11 +90,12 @@ struct StoreInner {
     /// much as an atomic pointer load, and the in-place edit paths are
     /// atomic under the write lock.
     cache: std::sync::RwLock<Slot>,
-    /// Holds only the in-flight build handle (as a `Weak`, so it expires when
-    /// the last awaiter drops it). Held for microseconds to register or join
-    /// a build, never across the walk. Also serializes marker edits so a
-    /// concurrent `write_mark` / `remove_mark` cannot interleave its
-    /// load-edit-store with a cold build's store.
+    /// Holds only the in-flight build handle (as a `Weak`, so it expires
+    /// when the last awaiter drops it). Held for microseconds to register
+    /// or join a build, never across the walk. Also serializes the
+    /// load-edit-store of marker edits against each other. Ordering against
+    /// a concurrent build's store is the slot generation's job, not this
+    /// lock's (see ADR-0036)
     inflight: Mutex<Option<Weak<SharedBuild>>>,
     /// Test-only pause point armed by `set_build_gate`, checked by every cold
     /// build between its walk and its store.
