@@ -348,4 +348,12 @@ mod tests {
         // The view still rides the query string
         assert!(APP_JS_BYTES.contains("/refresh?view="));
     }
+
+    #[test]
+    fn app_script_caps_the_toast_stack_and_evicts_the_oldest() {
+        // CONTEXT.md:36: at most three toasts, the oldest evicted on overflow
+        assert!(APP_JS_BYTES.contains("var MAX_TOASTS = 3;"));
+        assert!(APP_JS_BYTES.contains("while (stack.children.length >= MAX_TOASTS)"));
+        assert!(APP_JS_BYTES.contains("hardRemove"));
+    }
 }
