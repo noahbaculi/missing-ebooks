@@ -700,9 +700,7 @@
   function formValues(form) {
     /** @type {Record<string, string>} */
     var v = {};
-    // .forEach because the ES2017 lib target has no downlevel iteration for
-    // FormData entries. File values cannot occur: the mark forms hold only
-    // hidden inputs.
+    // File values cannot occur: the mark forms hold only hidden inputs.
     new FormData(/** @type {HTMLFormElement} */ (form)).forEach(function (value, name) {
       if (typeof value === "string") v[name] = value;
     });
