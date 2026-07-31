@@ -30,6 +30,9 @@ struct RootSection {
     /// the summary strip and per-root chip read a number instead of walking
     /// the tree. `Clean` and `Error` are zero by construction.
     gaps_within: usize,
+    /// Directories the walk skipped for this root: unreadable, or past the
+    /// depth cap. Nonzero renders the partial-scan warning strip.
+    skipped_dirs: usize,
 }
 
 /// Build the per-mode `FlaggedView` from the cached raw scan output. The gaps
@@ -58,6 +61,10 @@ fn package_section(scan: &RootScan, mode: ViewMode) -> RootSection {
         state,
         total_audiobooks: scan.audiobook_count(),
         gaps_within,
+        skipped_dirs: match scan {
+            RootScan::Walked { skipped_dirs, .. } => *skipped_dirs,
+            RootScan::Failed { .. } => 0,
+        },
     }
 }
 
@@ -181,6 +188,11 @@ fn root_label(path: &str) -> &str {
 /// "gap" / "gaps".
 fn gap_word(n: usize) -> &'static str {
     if n == 1 { "gap" } else { "gaps" }
+}
+
+/// Pluralize "folder" for the partial-scan warning strip.
+fn folder_word(n: usize) -> &'static str {
+    if n == 1 { "folder" } else { "folders" }
 }
 
 /// The gap summary strip between the navbar and the roots. Holds the hero gap
@@ -351,6 +363,15 @@ fn render_section(
                 }
                 @if let Some(message) = error {
                     div.alert.alert-error { (PreEscaped(include_str!("../../assets/svg/error.svg"))) span { (message) } }
+                }
+                @if section.skipped_dirs > 0 {
+                    div.alert.alert-warning {
+                        (PreEscaped(include_str!("../../assets/svg/warning.svg")))
+                        span {
+                            (section.skipped_dirs) " " (folder_word(section.skipped_dirs))
+                            " couldn't be read; results for this root may be incomplete."
+                        }
+                    }
                 }
                 @match &section.state {
                     RootState::Forest(nodes) => {
@@ -728,6 +749,7 @@ mod tests {
             state,
             total_audiobooks: total,
             gaps_within,
+            skipped_dirs: 0,
         }
     }
 
@@ -1024,6 +1046,43 @@ mod tests {
         // Errored root still carries the attribute so the JS aggregator
         // never has to special-case missing attrs.
         assert!(html.contains(r#"data-total-audiobooks="0""#));
+    }
+
+    #[test]
+    fn a_root_with_skipped_directories_renders_the_partial_scan_warning() {
+        let mut view = section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        );
+        view.skipped_dirs = 3;
+        let html = render_section(&view, 0, None, &[], ViewMode::GapsOnly).into_string();
+        assert!(html.contains("alert-warning"));
+        assert!(
+            html.contains("3 folders couldn't be read; results for this root may be incomplete.")
+        );
+        assert!(html.contains("Book"), "the readable rows still render");
+    }
+
+    #[test]
+    fn a_fully_read_root_renders_no_partial_scan_warning() {
+        let view = section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        );
+        let html = render_section(&view, 0, None, &[], ViewMode::GapsOnly).into_string();
+        assert!(!html.contains("alert-warning"));
+    }
+
+    #[test]
+    fn one_skipped_directory_reads_in_the_singular() {
+        let mut view = section("/lib", RootState::Clean, 1);
+        view.skipped_dirs = 1;
+        let html = render_section(&view, 0, None, &[], ViewMode::GapsOnly).into_string();
+        assert!(
+            html.contains("1 folder couldn't be read; results for this root may be incomplete.")
+        );
     }
 
     /// Default search-link set, matching what `Config::default()` ships and

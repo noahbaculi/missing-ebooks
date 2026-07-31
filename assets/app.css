@@ -556,6 +556,14 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 .alert .icon {
   color: var(--color-error-text);
 }
+.alert-warning {
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--color-base-100));
+  border: var(--border) solid color-mix(in srgb, var(--color-warning) 35%, transparent);
+  color: var(--color-base-content);
+}
+.alert-warning .icon {
+  color: var(--color-warning-text);
+}
 
 .empty {
   display: flex;

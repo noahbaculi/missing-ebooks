@@ -1031,4 +1031,31 @@ mod tests {
             "the failed root must render its error banner",
         );
     }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn an_unreadable_subdirectory_renders_the_partial_scan_warning() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        touch(&dir.path().join("Locked/Book/01.mp3"));
+        touch(&dir.path().join("Open/01.mp3"));
+        let locked = dir.path().join("Locked");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read_dir(&locked).is_ok() {
+            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
+        let response = app_for(dir.path())
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = body_string(response).await;
+        assert!(body.contains("alert-warning"));
+        assert!(
+            body.contains("1 folder couldn't be read; results for this root may be incomplete.")
+        );
+        assert!(body.contains("Open"), "the readable sibling still renders");
+    }
 }
