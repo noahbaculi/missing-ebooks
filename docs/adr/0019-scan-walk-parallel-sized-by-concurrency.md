@@ -1,5 +1,7 @@
 # The scan walk is parallel, sized by `scan_concurrency` rather than the core count
 
+> Amended 2026-07-30: `walk_all` was folded into its only caller, `scan_warm`. The level-synchronous walk described below is unchanged and now lives inline there.
+
 Date: 2026-06-13.
 
 ## Context
