@@ -1831,4 +1831,49 @@ mod tests {
             "the follow-up read serves the stored slot without a second walk"
         );
     }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn a_non_utf8_name_scans_lossily_and_its_mark_fails_as_missing() {
+        // Accepted v1 behavior (F8 wontfix): the walk flags the folder, the
+        // name renders with U+FFFD, and the lossy rel round-trips to a path
+        // that does not exist, so the mark fails with the missing-target arm
+        use std::os::unix::ffi::OsStrExt;
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join(std::ffi::OsStr::from_bytes(b"Bo\xffok"));
+        // APFS and friends reject non-UTF-8 names; nothing to pin there
+        if std::fs::create_dir(&folder).is_err() {
+            return;
+        }
+        crate::scenarios::touch(&folder.join("01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+
+        let raw = store.current().await;
+        let scanner::RootScan::Walked { folders, .. } = &raw[0] else {
+            panic!("expected Walked");
+        };
+        let lossy = folders
+            .iter()
+            .find(|f| f.directly_holds_audio)
+            .expect("the non-UTF-8 folder is flagged")
+            .rel_path
+            .to_string_lossy()
+            .into_owned();
+        assert!(
+            lossy.contains('\u{FFFD}'),
+            "the name reaches the tree lossily"
+        );
+
+        let err = store
+            .write_mark(0, &lossy, Marker::NoEbook)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            WriteFailure::Failed {
+                error: WriteError::TargetMissing,
+                ..
+            }
+        ));
+    }
 }
