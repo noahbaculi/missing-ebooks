@@ -1065,6 +1065,42 @@ mod tests {
         delete_marker(dir.path(), "Gone", Marker::NoEbook).unwrap();
     }
 
+    #[test]
+    #[cfg(unix)]
+    fn write_marker_readonly_dir_reports_write_failed() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("Book")).unwrap();
+        let book = dir.path().join("Book");
+        std::fs::set_permissions(&book, std::fs::Permissions::from_mode(0o555)).unwrap();
+        // Root writes through the chmod; nothing to observe then
+        if std::fs::write(book.join("probe"), b"").is_ok() {
+            std::fs::set_permissions(&book, std::fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
+        let err = write_marker(dir.path(), "Book", Marker::NoEbook);
+        std::fs::set_permissions(&book, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(matches!(err.unwrap_err(), WriteError::WriteFailed(_)));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn delete_marker_readonly_dir_reports_write_failed() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("Book")).unwrap();
+        let book = dir.path().join("Book");
+        std::fs::write(book.join(".no_ebook"), b"").unwrap();
+        std::fs::set_permissions(&book, std::fs::Permissions::from_mode(0o555)).unwrap();
+        if std::fs::write(book.join("probe"), b"").is_ok() {
+            std::fs::set_permissions(&book, std::fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
+        let err = delete_marker(dir.path(), "Book", Marker::NoEbook);
+        std::fs::set_permissions(&book, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(matches!(err.unwrap_err(), WriteError::WriteFailed(_)));
+    }
+
     #[tokio::test]
     async fn store_remove_mark_re_flags_the_root() {
         let dir = tempfile::tempdir().unwrap();
@@ -1665,6 +1701,34 @@ mod tests {
             store.rebuild_count(),
             rebuilds_before,
             "warm failure path must not rebuild",
+        );
+        assert_eq!(raw.len(), 1, "raw carries one section per library root");
+    }
+
+    #[tokio::test]
+    async fn store_remove_mark_failure_returns_current_raw_view() {
+        // The undo mirror of store_write_mark_failure_returns_current_raw_view
+        let dir = tempfile::tempdir().unwrap();
+        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
+        let _warm = store.current().await;
+        let rebuilds_before = store.rebuild_count();
+
+        let err = store
+            .remove_mark(0, "..", Marker::NoEbook)
+            .await
+            .unwrap_err();
+        let raw = match err {
+            WriteFailure::Failed {
+                error: WriteError::OutsideRoots,
+                raw,
+            } => raw,
+            other => panic!("expected Failed with OutsideRoots, got {other:?}"),
+        };
+        assert_eq!(
+            store.rebuild_count(),
+            rebuilds_before,
+            "warm undo failure must not rebuild",
         );
         assert_eq!(raw.len(), 1, "raw carries one section per library root");
     }
