@@ -126,6 +126,7 @@ pub fn build(scan: &crate::scanner::RootScan, mode: ViewMode) -> RootState {
         RootScan::Walked {
             canonical_path,
             folders,
+            ..
         } => {
             if folders.is_empty() {
                 return RootState::Clean;
@@ -286,6 +287,7 @@ mod tests {
         RootScan::Walked {
             canonical_path: PathBuf::from("/lib").join(name),
             folders,
+            skipped_dirs: 0,
         }
     }
 

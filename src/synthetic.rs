@@ -77,6 +77,7 @@ pub fn synthetic_root_scan(total: usize, depth: usize, fanout: usize, gap_rate: 
     RootScan::Walked {
         canonical_path: PathBuf::from("/Audiobooks"),
         folders: generate(total, depth, fanout, gap_rate),
+        skipped_dirs: 0,
     }
 }
 
@@ -136,6 +137,7 @@ mod tests {
         let RootScan::Walked {
             canonical_path,
             folders,
+            ..
         } = scan
         else {
             panic!("synthetic_root_scan must produce a Walked variant");
