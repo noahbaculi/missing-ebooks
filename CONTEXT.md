@@ -69,5 +69,5 @@ The client-driven refresh path: every open tab hits `GET /refresh` on `poll_inte
 _Avoid_: autosync, autorefresh, live update.
 
 **Library coverage**:
-The fraction of audiobooks across all successfully-scanned library roots that are covered by an ebook or marker. Numerator and denominator are folder counts: folders that directly hold audio. Errored roots contribute to neither; their failure is already surfaced on the per-root section banner. The reported percentage is `Math.round(covered / total * 100)`.
+The fraction of audiobooks across all successfully-scanned library roots that are covered by an ebook or marker. Numerator and denominator are folder counts: folders that directly hold audio. Errored roots contribute to neither; their failure is already surfaced on the per-root section banner. The reported percentage is `Math.floor(covered / total * 100)`, floored so a single remaining gap never reads as 100%.
 _Avoid_: completion, progress, done.
