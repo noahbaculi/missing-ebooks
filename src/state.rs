@@ -168,8 +168,10 @@ impl RawViewStore {
     /// Force a cold scan, at most once per `RESCAN_COOLDOWN`: clear every
     /// per-root index, then rebuild, ignoring the TTL. Spawned so an aborted
     /// request cannot strand cleared indices with nothing to refill them. A
-    /// call landing inside the cooldown window skips the clear and coalesces
-    /// onto the in-flight or fresh build instead (ADR-0037).
+    /// call landing inside the cooldown window skips the clear but still
+    /// re-walks (or joins an in-flight walk) with the warm index, so it
+    /// keeps picking up on-disk changes without paying for a full re-index
+    /// (ADR-0037).
     pub(crate) async fn rescan(&self) -> Arc<RawView> {
         let honored = {
             let mut last = self
@@ -184,9 +186,11 @@ impl RawViewStore {
             due
         };
         if !honored {
-            // Inside the window: keep the warm index, serve the fresh slot or
-            // join the build already running
-            return StoreInner::build_coalesced(&self.inner, true, None).await;
+            // Inside the window: skip the index clear (that's the expensive
+            // part the cooldown defends against), but still re-walk with the
+            // warm index so an on-disk change made since the last rescan is
+            // picked up, instead of silently returning stale cached data.
+            return StoreInner::build_coalesced(&self.inner, false, None).await;
         }
         let inner = Arc::clone(&self.inner);
         tokio::spawn(async move {
@@ -912,12 +916,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_rescan_inside_the_cooldown_keeps_the_index_and_the_slot() {
+    async fn a_rescan_inside_the_cooldown_keeps_the_index_but_still_walks() {
         let dir = tempfile::tempdir().unwrap();
-        crate::scenarios::touch(&dir.path().join("Book/01.mp3"));
+        let book = dir.path().join("Book");
+        crate::scenarios::touch(&book.join("01.mp3"));
         let store = test_store(Some(Duration::from_secs(600)), dir.path().to_path_buf());
-        // The first rescan is honored and warms the slot
-        let _ = store.rescan().await;
+        // The first rescan is honored, clears the index, and warms the slot
+        let first = store.rescan().await;
+        assert!(book_missing(&first), "first rescan sees the gap");
 
         // A synthetic entry no real walk could produce: it survives only if
         // the second rescan skips the index clear
@@ -933,7 +939,16 @@ mod tests {
         );
         let before = store.rebuild_count();
 
-        let _ = store.rescan().await; // lands inside the 5-second window
+        // Fix the gap on disk, and push the folder mtime forward so the
+        // dir index (which keys off mtime equality) doesn't just reuse its
+        // cached listing from the first rescan.
+        crate::scenarios::touch(&book.join("Book.epub"));
+        std::fs::File::open(&book)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(4_000_000_000))
+            .unwrap();
+
+        let second = store.rescan().await; // lands inside the 5-second window
 
         assert!(
             store.inner.dir_indices[0]
@@ -941,10 +956,13 @@ mod tests {
                 .is_some(),
             "a cooled-down rescan must not clear the index"
         );
-        assert_eq!(
-            store.rebuild_count(),
-            before,
-            "a cooled-down rescan joins the fresh slot instead of walking"
+        assert!(
+            store.rebuild_count() > before,
+            "a cooled-down rescan still walks instead of serving the stale slot"
+        );
+        assert!(
+            !book_missing(&second),
+            "a cooled-down rescan must pick up an on-disk fix made since the last rescan"
         );
     }
 
