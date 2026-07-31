@@ -356,4 +356,15 @@ mod tests {
         assert!(APP_JS_BYTES.contains("while (stack.children.length >= MAX_TOASTS)"));
         assert!(APP_JS_BYTES.contains("hardRemove"));
     }
+
+    #[test]
+    fn app_script_gates_the_refresh_poll_on_tab_visibility() {
+        // ADR-0034: a hidden tab skips its poll and fires a catch-up on
+        // becoming visible. The last unpinned ADR clause from the sweep
+        assert!(APP_JS_BYTES.contains(r#"if (document.visibilityState !== "visible") return;"#));
+        assert!(APP_JS_BYTES.contains(r#"addEventListener("visibilitychange""#));
+        assert!(
+            APP_JS_BYTES.contains(r#"if (document.visibilityState === "visible") pollOnce();"#)
+        );
+    }
 }
