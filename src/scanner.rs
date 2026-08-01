@@ -102,10 +102,10 @@ impl ScanSettings {
     }
 
     /// Deepest level the walk descends, counted from the root at zero.
-    /// Subtrees below the cap are skipped into `dirs_skipped`, bounding the
+    /// Subtrees below the cap are skipped into `dirs_skipped_depth_capped`, bounding the
     /// per-level render recursion the tree otherwise feeds unchecked.
-    // ponytail: fixed ceiling. 64 dwarfs any real audiobook layout; lift it
-    // into config if a legitimate library ever trips the warning
+    // Fixed ceiling. 64 dwarfs any real audiobook layout.
+    // Lift into config if a legitimate library ever trips the warning.
     pub(crate) const MAX_DEPTH: usize = 64;
 }
 
@@ -1485,7 +1485,7 @@ mod tests {
         touch(&dir.path().join("Open/01.mp3"));
         let locked = dir.path().join("Locked");
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
-        // Root (or CAP_DAC_OVERRIDE) reads through the chmod; nothing to observe
+        // Root (or CAP_DAC_OVERRIDE) reads through the chmod. Nothing to observe.
         if std::fs::read_dir(&locked).is_ok() {
             std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
             return;

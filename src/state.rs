@@ -21,7 +21,7 @@ use crate::scanner::{DirIndex, ScanSettings};
 
 /// Minimum spacing between honored rescans. A second click or a request
 /// loop inside the window skips the index clear and joins the in-flight
-/// or fresh build instead (silent coalescing, no error UI; ADR-0037)
+/// or fresh build instead (silent coalescing, no error UI, ADR-0037)
 pub(crate) const RESCAN_COOLDOWN: Duration = Duration::from_secs(5);
 
 /// Everything a request handler needs: the immutable config and settings, and
@@ -88,7 +88,7 @@ pub struct RawViewStore {
 }
 
 /// The store's fields and lock protocol. `RawViewStore` methods delegate
-/// here; spawned tasks capture an `Arc<StoreInner>` clone
+/// here. Spawned tasks capture an `Arc<StoreInner>` clone
 struct StoreInner {
     /// The cache slot. Reads clone the `Arc<CacheEntry>` out under the read
     /// lock. At self-hosted request rates an uncontended read costs about as
@@ -487,7 +487,7 @@ impl StoreInner {
             // Cold or stale slot: the marker is already on disk, but edit_fresh
             // never bumped the generation, so bump it here and pass it as the
             // join floor. That way a build already in flight (registered
-            // before this write) cannot be joined; its result would predate
+            // before this write) cannot be joined. Its result would predate
             // the marker and get returned to this call's own caller
             None => {
                 let min_generation = this.bump_generation();
@@ -1074,7 +1074,7 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("Sealed/Book")).unwrap();
         let sealed = dir.path().join("Sealed");
         std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o000)).unwrap();
-        // Root traverses through the chmod; nothing to observe then
+        // Root traverses through the chmod. Nothing to observe then.
         if std::fs::metadata(sealed.join("Book")).is_ok() {
             std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o755)).unwrap();
             return;
@@ -1137,7 +1137,7 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("Book")).unwrap();
         let book = dir.path().join("Book");
         std::fs::set_permissions(&book, std::fs::Permissions::from_mode(0o555)).unwrap();
-        // Root writes through the chmod; nothing to observe then
+        // Root writes through the chmod. Nothing to observe then.
         if std::fs::write(book.join("probe"), b"").is_ok() {
             std::fs::set_permissions(&book, std::fs::Permissions::from_mode(0o755)).unwrap();
             return;
@@ -1441,7 +1441,7 @@ mod tests {
         }
     }
 
-    /// Helper: the `missing_ebook` value of `rel` under root 0 of `raw`. The
+    /// Return the `missing_ebook` value of `rel` under root 0 of `raw`. The
     /// raw-layer equivalent of asserting on the packaged `RootState`.
     fn folder_missing(raw: &RawView, rel: &str) -> bool {
         let RootScan::Walked { folders, .. } = &raw[0] else {
@@ -1454,9 +1454,8 @@ mod tests {
             .missing_ebook
     }
 
-    /// Helper: assert that `Book` under root 0 of `raw` has the expected
-    /// `missing_ebook` value. Used by ported tests that previously asserted on
-    /// the packaged `RootState`.
+    /// Return `Book`'s `missing_ebook` value under root 0 of `raw`. Used by
+    /// ported tests that previously asserted on the packaged `RootState`.
     fn book_missing(raw: &RawView) -> bool {
         folder_missing(raw, "Book")
     }
@@ -1988,7 +1987,7 @@ mod tests {
         use std::os::unix::ffi::OsStrExt;
         let dir = tempfile::tempdir().unwrap();
         let folder = dir.path().join(std::ffi::OsStr::from_bytes(b"Bo\xffok"));
-        // APFS and friends reject non-UTF-8 names; nothing to pin there
+        // APFS and friends reject non-UTF-8 names. Nothing to pin there.
         if std::fs::create_dir(&folder).is_err() {
             return;
         }

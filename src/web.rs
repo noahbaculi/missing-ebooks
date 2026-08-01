@@ -358,7 +358,7 @@ mod tests {
             "request 17 must wait behind the cap, not be served"
         );
 
-        // Releasing the build drains the queue; nothing errored
+        // Releasing the build drains the queue. Nothing errored.
         gate.release.add_permits(1);
         for handle in parked {
             let response = handle.await.unwrap();

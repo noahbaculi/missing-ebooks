@@ -2,9 +2,9 @@
 //! termination signal so `axum::serve` can drain in-flight requests before
 //! exit. Listens for SIGINT and SIGTERM on Unix, Ctrl-C on Windows.
 
-/// Await ctrl_c(), logging `received_msg` on receipt or `install_failed_msg`
+/// Awaits `ctrl_c()`, logging `received_msg` on receipt or `install_failed_msg`
 /// on an install failure. Returns whether the signal was actually received,
-/// so callers pick their own fallback instead of this deciding for them
+/// letting callers pick their own fallback.
 async fn await_ctrl_c(received_msg: &str, install_failed_msg: &str) -> bool {
     match tokio::signal::ctrl_c().await {
         Ok(()) => {
