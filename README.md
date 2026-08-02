@@ -25,7 +25,10 @@ services:
     environment:
       PUID: 1000
       PGID: 1000
-      MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks # Must be mounted as a volume so the container can access it
+
+      # Must be mounted as a volume so the container can access it
+      MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks
+
     volumes:
       - /path/to/audiobooks:/audiobooks
       # - ./config.toml:/config/config.toml:ro
