@@ -1,19 +1,40 @@
 # Keep the Docker build context to just the sources the image needs.
 # Everything here is excluded from `docker build`.
+# Build artifacts and VCS
 target
 .git
+.gitignore
+.gitattributes
 .github
+.githooks
+
+# Docs and tests: not needed inside the image
 docs
 tests
+examples
+*.md
+LICENSE
+
+# Demo compose stack lives here; the prod image doesn't need it
+demo
+
+# Agent scratch trees
 .playwright-mcp
 .superpowers
-.githooks
 .serena
 .claude
 .scratch
 .worktrees
-*.md
+
+# Local tooling configs
 bacon.toml
 deny.toml
 mise.toml
 rust-toolchain.toml
+rustfmt.toml
+_typos.toml
+taplo.toml
+
+# Secrets, defense in depth
+.env
+.env.*
