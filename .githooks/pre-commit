@@ -7,7 +7,7 @@
 # The checks read the working tree, not a staged-only snapshot. Building a
 # staged-only view means stashing unstaged changes, which is risky for little
 # gain when commits stage everything they touch. Bypass in a pinch with
-# `git commit --no-verify`; agents must not, per CLAUDE.md.
+# `git commit --no-verify`; agents must not, per AGENTS.md.
 set -eu
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR)

@@ -13,14 +13,15 @@ services:
       # land with the right ownership.
       PUID: 1000
       PGID: 1000
-      MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks
+      MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks_1:/audiobooks_2
       # MISSING_EBOOKS_TTL_SECONDS: 60
       # Log verbosity: error, warn, info (default), debug, or trace. debug shows
       # per-operation timings; trace adds a line per directory.
       # MISSING_EBOOKS_LOG: debug
     volumes:
       # Mount your library read-write (the app writes marker files into it).
-      - /mnt/nas/Audiobooks:/audiobooks
+      - /path/to/audiobooks_1:/audiobooks_1
+      - /path/to/audiobooks_2:/audiobooks_2
       # Optional: mount a config.toml for file-only settings (search links,
       # exclude globs, extension lists). Auto-detected at this path.
       # - ./config.toml:/config/config.toml:ro

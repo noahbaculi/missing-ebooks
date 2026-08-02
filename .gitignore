@@ -39,3 +39,5 @@ benchmarks/scan-context-*.json
 
 .scratch/
 .claude/
+
+.DS_Store
