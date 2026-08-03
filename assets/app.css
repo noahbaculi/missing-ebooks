@@ -853,10 +853,10 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   color: currentColor;
 }
 
-/* tablet-width concessions, ahead of the phone treatment at 600px: the "needs
+/* tablet-width concessions, ahead of the phone treatment at 650px: the "needs
    ebook" label stops earning its horizontal room, and the navbar's single row
    stops fitting without squeezing the wordmark. the kebab sheet, the control
-   reflow and the cover-file drop still wait for 600px. keep these rules here
+   reflow and the cover-file drop still wait for 650px. keep these rules here
    rather than folding them back. */
 @media (max-width: 800px) {
   /* the "needs ebook" pill collapses to an amber dot. text-indent and overflow
@@ -881,8 +881,9 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   /* the single row needs 708px and the wordmark stops fitting on one line at
      about 825px, so the filter box, the widest control at 194px, drops to a
      full-width row of its own first. the rest of the navbar keeps its desktop
-     layout down to 600px. order 5 sorts it last against the default order 0 on
-     every other control, so it works here without the 600px block's order rules. */
+     layout down to 650px, where the remaining row stops fitting and the phone
+     treatment takes over. order 5 sorts it last against the default order 0 on
+     every other control, so it works here without the 650px block's order rules. */
   .navbar {
     flex-wrap: wrap;
   }
@@ -894,7 +895,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 
 /* mobile: first-class phone layout */
 /* See docs/superpowers/specs/2026-06-07-mobile-ui-improvements-design.md */
-@media (max-width: 600px) {
+@media (max-width: 650px) {
   body {
     padding: 1rem 0.75rem;
   }
@@ -1636,7 +1637,7 @@ li.entering {
     animation: none;
   }
 }
-@media (max-width: 600px) {
+@media (max-width: 650px) {
   .toast-stack {
     left: 0.75rem;
     right: 0.75rem;
@@ -1693,7 +1694,7 @@ li.entering {
    an empty band above the chips. Reset it to its natural height. Placed after the
    base rule, not in the main mobile @media block: the section is defined past that
    block, so a same-specificity override there loses the cascade. */
-@media (max-width: 600px) {
+@media (max-width: 650px) {
   .gap-coverage {
     flex: 0 1 auto;
   }
