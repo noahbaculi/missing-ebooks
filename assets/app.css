@@ -853,11 +853,11 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   color: currentColor;
 }
 
-/* the "needs ebook" pill collapses to a dot earlier than the rest of the mobile
-   treatment: at tablet widths the label is the first thing that stops earning its
-   horizontal room, while the kebab sheet, navbar reflow and cover-file drop below
-   still have space to work. keep these two rules here rather than folding them
-   back into the 600px block. */
+/* tablet-width concessions, ahead of the phone treatment at 600px: the "needs
+   ebook" label stops earning its horizontal room, and the navbar's single row
+   stops fitting without squeezing the wordmark. the kebab sheet, the control
+   reflow and the cover-file drop still wait for 600px. keep these rules here
+   rather than folding them back. */
 @media (max-width: 800px) {
   /* the "needs ebook" pill collapses to an amber dot. text-indent and overflow
      hide the label visually while keeping it in the DOM and a11y tree, so screen
@@ -878,6 +878,18 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   .badge-warning {
     background: var(--color-warning-text);
   }
+  /* the single row needs 708px and the wordmark stops fitting on one line at
+     about 825px, so the filter box, the widest control at 194px, drops to a
+     full-width row of its own first. the rest of the navbar keeps its desktop
+     layout down to 600px. order 5 sorts it last against the default order 0 on
+     every other control, so it works here without the 600px block's order rules. */
+  .navbar {
+    flex-wrap: wrap;
+  }
+  .navbar .search {
+    order: 5;
+    flex-basis: 100%;
+  }
 }
 
 /* mobile: first-class phone layout */
@@ -886,11 +898,9 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   body {
     padding: 1rem 0.75rem;
   }
-  .navbar {
-    flex-wrap: wrap;
-  }
-  /* phone navbar lays out in two rows: the title with the help, settings cog
-     and rescan on top, the view toggle as a full-width segmented control below.
+  /* phone navbar lays out in three rows: the title with the help, settings cog
+     and rescan on top, the view toggle as a full-width segmented control below,
+     and the filter box last, from the 800px block above.
      flex `order` moves the controls without reordering the markup. each control
      is matched by class (.spacer, .intro-help, .settings-cog, form, > .segmented)
      so a later navbar addition can't silently inherit a row's order. .intro-help
@@ -921,10 +931,6 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   .navbar > .segmented .segment {
     flex: 1;
     text-align: center;
-  }
-  .navbar .search {
-    order: 5;
-    flex-basis: 100%;
   }
   /* no keyboard on a touch device, so the shortcuts reference is hidden; the
      theme and confirm controls still reach the small screen. */
