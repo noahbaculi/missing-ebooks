@@ -1822,7 +1822,9 @@ li.entering {
 }
 .search-input {
   /* an explicit width, since a search input's intrinsic size (~20 chars) is wider
-     than the navbar wants. min-width 0 lets it give way on a cramped row. */
+     than the navbar wants. WARN: min-width 0 does not make the box give way on a
+     cramped row. the definite width floors the flex container's min-content size,
+     so the navbar wraps the box to its own row instead (see the 800px block). */
   width: 8rem;
   min-width: 0;
   font: inherit;

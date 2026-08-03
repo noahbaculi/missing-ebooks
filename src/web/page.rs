@@ -364,8 +364,9 @@ pub(crate) fn page(mode: ViewMode, poll_interval_seconds: u64, body: &Markup) ->
                     // the conventional reset for a wordmark.
                     h1 { a href="/" { (PreEscaped(include_str!("../../assets/svg/brand.svg"))) "Missing Ebooks" } }
                     // The spacer sits right after the title so the title alone pins
-                    // left and everything else groups on the right. Mobile reorders
-                    // every control by flex `order`, so this DOM move is desktop-only.
+                    // left and everything else groups on the right. The narrow
+                    // layouts reorder the controls by flex `order`, so this DOM move
+                    // is desktop-only.
                     span.spacer {}
                     (search_box())
                     (view_toggle(mode))
