@@ -947,6 +947,16 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     padding: 1rem 0.85rem;
   }
 
+  /* the tree's per-level indent costs a large slice of a phone viewport, so trim
+     it to the gutter between the guide and the child row. margin-left is not the
+     knob: 0.85rem is the row's own 0.5rem padding plus half a chevron, which is
+     what lands the guide on the center of the parent's caret. moving it floats
+     the line off the caret. padding-left is free, it only sets breathing room
+     right of the line. */
+  .menu ul {
+    padding-left: 0.15rem;
+  }
+
   /* rows may wrap so the action menu and cover files can drop to a new line */
   .row {
     flex-wrap: wrap;
