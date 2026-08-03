@@ -1,0 +1,23 @@
+# Advanced compose sample. Covers every current knob:
+#   - PUID/PGID for host-owned marker writes on NAS setups
+#   - multiple library roots joined with the OS path separator
+#   - MISSING_EBOOKS_LOG for verbosity
+#   - a mounted config.toml for file-only settings (search links,
+#     exclude globs, extension lists)
+services:
+  missing-ebooks:
+    image: ghcr.io/noahbaculi/missing-ebooks:latest
+    container_name: missing-ebooks
+    ports:
+      # host:container. Loopback-only by default; use "13379:13379" for LAN.
+      - "127.0.0.1:13379:13379"
+    environment:
+      PUID: 1000
+      PGID: 1000
+      MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks_1:/audiobooks_2
+      MISSING_EBOOKS_LOG: debug
+    volumes:
+      - /path/to/audiobooks_1:/audiobooks_1
+      - /path/to/audiobooks_2:/audiobooks_2
+      - ./config.toml:/config/config.toml:ro
+    restart: unless-stopped

@@ -1,28 +1,14 @@
-# Pull and run the published image. Adjust the volume, PUID/PGID, and library
-# root to your setup. The app has no authentication, so the host port is bound
-# to loopback by default (see the README for exposing it to the network).
+# Minimal compose sample. Boots missing-ebooks against one library root.
+# For PUID/PGID, multiple roots, log verbosity, or a mounted config.toml,
+# see docker-compose.advanced.yml and the README's "Advanced configuration".
 services:
   missing-ebooks:
     image: ghcr.io/noahbaculi/missing-ebooks:latest
     container_name: missing-ebooks
     ports:
-      # host:container. Loopback-only by default; use "13379:13379" for LAN.
       - "127.0.0.1:13379:13379"
     environment:
-      # Match these to whoever owns your library on the host so marker writes
-      # land with the right ownership.
-      PUID: 1000
-      PGID: 1000
-      MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks_1:/audiobooks_2
-      # MISSING_EBOOKS_TTL_SECONDS: 60
-      # Log verbosity: error, warn, info (default), debug, or trace. debug shows
-      # per-operation timings; trace adds a line per directory.
-      # MISSING_EBOOKS_LOG: debug
+      MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks
     volumes:
-      # Mount your library read-write (the app writes marker files into it).
-      - /path/to/audiobooks_1:/audiobooks_1
-      - /path/to/audiobooks_2:/audiobooks_2
-      # Optional: mount a config.toml for file-only settings (search links,
-      # exclude globs, extension lists). Auto-detected at this path.
-      # - ./config.toml:/config/config.toml:ro
+      - /path/to/audiobooks:/audiobooks
     restart: unless-stopped

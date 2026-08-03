@@ -11,9 +11,7 @@ Each visit opens a private, throwaway sandbox seeded with sample audiobooks. Cha
 
 ## Getting started
 
-Docker is the supported distribution path. A multi-arch image (amd64 and arm64) is published to GitHub Container Registry. With [Docker Compose](https://docs.docker.com/compose/), drop this `docker-compose.yml` beside your other stacks, edit the volume and IDs, and run `docker compose up -d`:
-
-Minimal example `docker-compose.yml`. See [docker-compose.yml](../docker-compose.yml) for more detail:
+Docker is the supported distribution path. A multi-arch image (amd64 and arm64) is published to GitHub Container Registry. With [Docker Compose](https://docs.docker.com/compose/), drop this `docker-compose.yml` beside your other stacks, edit the volume path, and run `docker compose up -d`:
 
 ```yaml
 services:
@@ -23,23 +21,15 @@ services:
     ports:
       - "127.0.0.1:13379:13379"
     environment:
-      PUID: 1000
-      PGID: 1000
-
-      # Must be mounted as a volume so the container can access it
       MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks
-
     volumes:
       - /path/to/audiobooks:/audiobooks
-      # - ./config.toml:/config/config.toml:ro
     restart: unless-stopped
 ```
 
 Then open http://127.0.0.1:13379.
 
-- `PUID`/`PGID` set the user the server runs as. The app writes marker files into your library, so set these to match whoever owns it on the host (run `id` to find yours). They default to `1000`.
-- The library is mounted read-write at `/audiobooks` and named by `MISSING_EBOOKS_LIBRARY_ROOTS`. For multiple roots, add a mount per root and list the container paths separated by `:`.
-- File-only settings (search links, exclude globs, extension lists) come from a mounted `config.toml`. Uncomment the second volume. The entrypoint auto-detects `/config/config.toml`.
+Point the volume at your library on the host. The container reads it and writes marker files back into it. If those markers need to land under a specific user or group on the host (common on NAS mounts), set `PUID` and `PGID`; see [Advanced configuration](#advanced-configuration).
 
 > [!WARNING]
 > The server has no authentication. It binds to loopback by default, and binding to a non-loopback address logs a warning at startup. To reach it from the LAN, put a reverse proxy with authentication in front of it before exposing it beyond your machine.
@@ -61,48 +51,125 @@ Two fixed marker files mark a folder as covered without actual ebook files:
 
 A marker covers the folder it sits in and everything below it, the same as an ebook. Writing one into a container (an author or series folder) covers every folder under it.
 
-## Configuration
+## Advanced configuration
 
-Configuration resolves in three layers: built-in defaults, an optional `config.toml`, then environment variables on top (env over file over default).
+The defaults handle a working install. Reach for `config.toml` only to override search links, add exclusion patterns, or change extension lists. Everything else is an environment variable.
 
-Print the annotated template:
+A fuller compose sample lives at [`docker-compose.advanced.yml`](docker-compose.advanced.yml). It carries `PUID` / `PGID`, multiple library roots, log verbosity, and a mounted `config.toml`:
 
-```shell
-cargo run -- --print-config > config.toml
+```yaml
+services:
+  missing-ebooks:
+    image: ghcr.io/noahbaculi/missing-ebooks:latest
+    container_name: missing-ebooks
+    ports:
+      - "127.0.0.1:13379:13379"
+    environment:
+      PUID: 1000
+      PGID: 1000
+      MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks_1:/audiobooks_2
+      MISSING_EBOOKS_LOG: debug
+    volumes:
+      - /path/to/audiobooks_1:/audiobooks_1
+      - /path/to/audiobooks_2:/audiobooks_2
+      - ./config.toml:/config/config.toml:ro
+    restart: unless-stopped
 ```
 
-Run with a specific file:
+- `PUID` / `PGID` set the user the container runs as. Match them to whoever owns the library on the host (run `id` to find yours). They default to `1000`. These are Docker-only and are not in `config.toml`.
+- `MISSING_EBOOKS_LIBRARY_ROOTS` takes an OS-path-separated list (`:` on Unix, `;` on Windows), so multiple roots need one mount per root and one entry per container path.
+- Mount `config.toml` at `/config/config.toml`; the entrypoint auto-detects that path.
 
-```shell
-cargo run -- --config config.toml
-```
+### The `config.toml` file
 
-A minimal `config.toml`:
+Optional. The Docker image auto-detects `/config/config.toml` and the CLI accepts `--config <path>`. Every field, its default, the environment variable that overrides it, and its rationale live in the annotated template below. Env vars win over the file, and the file wins over the built-in defaults.
+
+<!-- A local build regenerates the same content with `cargo run -- --print-config`. -->
+
+<!-- CONFIG_TEMPLATE:BEGIN -->
 
 ```toml
-library_roots = ["/mnt/nas/Audiobooks"]
-exclude_globs = ["**/*(abridged)*"]
+# One or more library roots. Each is scanned and rendered as its own tree.
+# Required: the server exits if this is unset in every layer. Also settable as
+# MISSING_EBOOKS_LIBRARY_ROOTS.
+library_roots = []
+# Example: library_roots = ["/path/to/audiobooks_1", "path/to/audiobooks_2"]
+
+# Logging is set with the MISSING_EBOOKS_LOG environment variable only.
+# Can be set to: error, warn, info (default), debug, or trace.
+# - debug adds per-operation timings (scans, cache, marker writes, requests).
+# - trace adds a line per directory.
+# RUST_LOG, if set, overrides it with full tracing filter syntax.
+
+# Address the HTTP server binds. Loopback by default (see ADR-0003). Set
+# "0.0.0.0" to listen on all interfaces. The server logs a warning at startup
+# when bound to a non-loopback address. Also settable as MISSING_EBOOKS_BIND.
+bind = "127.0.0.1"
+
+# HTTP listen port. An uncommon high port, away from 8080 (see ADR-0011). Also
+# settable as MISSING_EBOOKS_PORT.
+port = 13379
+
+# Scan-cache staleness ceiling in seconds. Warm reads (page loads, /refresh
+# polls) serve from cache while it is younger than this and force a rebuild
+# otherwise. Together with poll_interval_seconds it caps how often the
+# underlying scan runs regardless of open-tab count. 0 disables the cache and
+# rescans on every request. /rescan is the primary freshness control for a
+# user who wants to know now. Also settable as MISSING_EBOOKS_TTL_SECONDS.
+ttl_seconds = 10
+
+# Directories the library scan reads at once. The scan is bound by per-directory
+# latency on a network mount (SMB/NFS), where each folder is a round trip, so
+# reading several at once overlaps the waits. Size this by the speed of the
+# mount, not the CPU count: the threads mostly wait on the network. One pool
+# serves the whole process, so concurrent scans share it. 1 disables the
+# parallelism. Also settable as MISSING_EBOOKS_SCAN_CONCURRENCY.
+scan_concurrency = 16
+
+# Client-side poll cadence. When > 0, open tabs pull /refresh every N seconds
+# while the tab is visible, and ttl_seconds caps how often the underlying scan
+# actually runs regardless of open-tab count. 0 keeps the poll marker in the
+# page but suppresses the interval so the client stays quiet. Also settable as
+# MISSING_EBOOKS_POLL_INTERVAL_SECONDS.
+poll_interval_seconds = 10
+
+# File extensions, compared case-insensitively. Leading dot required. The
+# defaults mirror Audiobookshelf's full supported sets (see ADR-0006).
+audio_exts = [".m4b", ".mp3", ".m4a", ".flac", ".opus", ".ogg", ".oga", ".mp4", ".aac", ".wma", ".aiff", ".aif", ".wav", ".webm", ".webma", ".mka", ".awb", ".caf", ".mpg", ".mpeg"]
+ebook_exts = [".epub", ".pdf", ".mobi", ".azw3", ".cbr", ".cbz"]
+
+# Marker files are not configurable. The two fixed names .no_ebook and
+# .ebook_elsewhere mark a folder as covered. Both are used for detection and the
+# write buttons, so they can never drift apart.
+
+# Exact directory names to exclude (case-insensitive), applied anywhere in the
+# tree. A match drops the folder and its whole subtree. Dot-prefixed entries such
+# as .DS_Store and .@__thumb need no entry: any file or directory whose name
+# starts with a dot is skipped automatically, matching Audiobookshelf.
+excluded_dirs = []
+# Example: excluded_dirs = ["@eaDir", "#recycle"]
+
+# Glob patterns matched against the folder path relative to its library root. A
+# match drops the folder and its whole subtree (see ADR-0001).
+exclude_globs = []
+# Example: exclude_globs = ["**/*(abridged)*", "**/*(Dramatized Adaptation)*"]
+
+# Search-link templates. {query} is replaced with the cleaned, URL-encoded
+# folder name.
+[[search_links]]
+label = "Goodreads"
+url = "https://www.goodreads.com/search?q={query}"
+
+[[search_links]]
+label = "OceanofPDF"
+url = "https://oceanofpdf.com/?s={query}"
 ```
 
-These environment variables override the file when set:
-
-| Variable                               | Sets                                     |
-| -------------------------------------- | ---------------------------------------- |
-| `MISSING_EBOOKS_LIBRARY_ROOTS`         | `library_roots` (OS path-separated list) |
-| `MISSING_EBOOKS_BIND`                  | `bind`                                   |
-| `MISSING_EBOOKS_PORT`                  | `port`                                   |
-| `MISSING_EBOOKS_TTL_SECONDS`           | `ttl_seconds`                            |
-| `MISSING_EBOOKS_SCAN_CONCURRENCY`      | `scan_concurrency`                       |
-| `MISSING_EBOOKS_POLL_INTERVAL_SECONDS` | `poll_interval_seconds`                  |
-| `MISSING_EBOOKS_LOG`                   | Log verbosity (see Logging below)        |
-| `PUID`                                 | Container run-as user ID (Docker only)   |
-| `PGID`                                 | Container run-as group ID (Docker only)  |
-
-Extension lists, exclude rules, and search links are file-only. The printed template documents every key.
+<!-- CONFIG_TEMPLATE:END -->
 
 ### Logging
 
-`MISSING_EBOOKS_LOG` sets verbosity to one of `error`, `warn`, `info` (the default), `debug`, or `trace`. See [`docs/logging.md`](docs/logging.md) for the per-operation timing detail and the `RUST_LOG` override.
+`MISSING_EBOOKS_LOG` sets verbosity to one of `error`, `warn`, `info` (the default), `debug`, or `trace`. See [`docs/logging.md`](docs/logging.md) for per-operation timing detail and the `RUST_LOG` override.
 
 ## Network shares
 

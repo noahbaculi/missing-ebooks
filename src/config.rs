@@ -246,12 +246,13 @@ pub const CONFIG_TEMPLATE: &str = r##"# One or more library roots. Each is scann
 # Required: the server exits if this is unset in every layer. Also settable as
 # MISSING_EBOOKS_LIBRARY_ROOTS.
 library_roots = []
-# Example: library_roots = ["/mnt/jane-nas/Entertainment/Audiobooks"]
+# Example: library_roots = ["/path/to/audiobooks_1", "path/to/audiobooks_2"]
 
-# Logging is set with the MISSING_EBOOKS_LOG environment variable, not in this
-# file: error, warn, info (default), debug, or trace. debug adds per-operation
-# timings (scans, cache, marker writes, requests). trace adds a line per
-# directory. RUST_LOG, if set, overrides it with full tracing filter syntax.
+# Logging is set with the MISSING_EBOOKS_LOG environment variable only.
+# Can be set to: error, warn, info (default), debug, or trace.
+# - debug adds per-operation timings (scans, cache, marker writes, requests).
+# - trace adds a line per directory.
+# RUST_LOG, if set, overrides it with full tracing filter syntax.
 
 # Address the HTTP server binds. Loopback by default (see ADR-0003). Set
 # "0.0.0.0" to listen on all interfaces. The server logs a warning at startup
@@ -315,16 +316,6 @@ url = "https://www.goodreads.com/search?q={query}"
 [[search_links]]
 label = "OceanofPDF"
 url = "https://oceanofpdf.com/?s={query}"
-
-# Shadow-library mirrors rotate their domains. Update these to a live mirror
-# before uncommenting.
-# [[search_links]]
-# label = "Anna's Archive"
-# url = "https://annas-archive.gl/search?q={query}"
-#
-# [[search_links]]
-# label = "Library Genesis"
-# url = "https://libgen.is/search.php?req={query}"
 "##;
 
 #[cfg(test)]
@@ -525,5 +516,37 @@ mod tests {
             .collect();
         assert_eq!(labels, vec!["Goodreads", "OceanofPDF"]);
         assert_eq!(parsed.scan_concurrency, 16);
+    }
+
+    #[test]
+    fn readme_config_template_matches_source() {
+        let readme = include_str!("../README.md");
+        let begin = "<!-- CONFIG_TEMPLATE:BEGIN -->";
+        let end = "<!-- CONFIG_TEMPLATE:END -->";
+        let start = readme
+            .find(begin)
+            .expect("README missing CONFIG_TEMPLATE:BEGIN marker")
+            + begin.len();
+        let stop = readme[start..]
+            .find(end)
+            .expect("README missing CONFIG_TEMPLATE:END marker")
+            + start;
+        let section = &readme[start..stop];
+        let fence_open = "```toml\n";
+        let fence_close = "\n```";
+        let body_start = section
+            .find(fence_open)
+            .expect("README config section missing ```toml fence")
+            + fence_open.len();
+        let body_end = section[body_start..]
+            .find(fence_close)
+            .expect("README config section missing closing fence")
+            + body_start;
+        let readme_block = &section[body_start..body_end];
+        let expected = CONFIG_TEMPLATE.trim_end_matches('\n');
+        assert_eq!(
+            readme_block, expected,
+            "README config template is out of sync with CONFIG_TEMPLATE. Regenerate the fenced block between the CONFIG_TEMPLATE markers in README.md from src/config.rs (cargo run -- --print-config)."
+        );
     }
 }
