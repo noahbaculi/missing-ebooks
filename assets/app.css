@@ -853,6 +853,33 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   color: currentColor;
 }
 
+/* the "needs ebook" pill collapses to a dot earlier than the rest of the mobile
+   treatment: at tablet widths the label is the first thing that stops earning its
+   horizontal room, while the kebab sheet, navbar reflow and cover-file drop below
+   still have space to work. keep these two rules here rather than folding them
+   back into the 600px block. */
+@media (max-width: 800px) {
+  /* the "needs ebook" pill collapses to an amber dot. text-indent and overflow
+     hide the label visually while keeping it in the DOM and a11y tree, so screen
+     readers still announce it and the HTML tests still match. the solid dot fill
+     is reasserted just below. */
+  .badge {
+    width: 0.5rem;
+    height: 0.5rem;
+    min-width: 0.5rem;
+    padding: 0;
+    border-radius: 999px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-indent: 100%;
+  }
+  /* the collapsed dot needs a solid fill to read at 0.5rem; the desktop tint would
+     wash out, so .badge-warning reasserts the solid amber here. */
+  .badge-warning {
+    background: var(--color-warning-text);
+  }
+}
+
 /* mobile: first-class phone layout */
 /* See docs/superpowers/specs/2026-06-07-mobile-ui-improvements-design.md */
 @media (max-width: 600px) {
@@ -920,25 +947,6 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   }
   .name {
     min-width: 0;
-  }
-  /* the "needs ebook" pill collapses to an amber dot. text-indent and overflow
-     hide the label visually while keeping it in the DOM and a11y tree, so screen
-     readers still announce it and the HTML tests still match. the solid dot fill
-     is reasserted just below. */
-  .badge {
-    width: 0.5rem;
-    height: 0.5rem;
-    min-width: 0.5rem;
-    padding: 0;
-    border-radius: 999px;
-    overflow: hidden;
-    white-space: nowrap;
-    text-indent: 100%;
-  }
-  /* the collapsed dot needs a solid fill to read at 0.5rem; the desktop tint would
-     wash out, so .badge-warning reasserts the solid amber here. */
-  .badge-warning {
-    background: var(--color-warning-text);
   }
   /* flagged and container rows stay on one line: a long name wraps inside its own
      box instead of bumping the dot and kebab down to a second line. covered rows
