@@ -343,6 +343,16 @@ details[open] > summary .chev {
 .spring {
   flex: 1;
 }
+/* the row's mark slot: whichever of the "needs ebook" pill or the covered check
+   the row carries. its own flex item rather than trailing text, so the mark holds
+   one column at the row's right edge however long the name beside it runs. the
+   slot sizes to its content: every flagged row carries the same pill, so they
+   line up without a declared width. */
+.row-mark {
+  display: inline-flex;
+  align-items: flex-start;
+  flex: none;
+}
 
 .actions {
   display: inline-flex;
@@ -1021,28 +1031,19 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     flex: 1 1 0;
     min-width: 0;
     overflow-wrap: anywhere;
-    /* reserve the status mark's column at the right edge, and anchor it */
-    position: relative;
-    padding-right: 1rem;
   }
   /* the run already fills the row, so the spring has nothing left to push */
   .spring {
     display: none;
   }
-  /* the status mark leaves the text run and pins to the top right of the label,
-     so it reads on the first line whatever the name does below it and the marks
-     form one scannable column down the list. absolute rather than a float: a
-     float declared after the name lands on the name's last line, which is the
-     behavior this replaces. */
-  .row-label .badge,
-  .row-label .status {
-    position: absolute;
-    top: 0.35rem;
-    right: 0;
-    margin: 0;
+  /* the mark sits on the first line's optical center rather than the top of a
+     label box that may run to several lines. the dot is 0.5rem and the check is
+     a full 1.05rem glyph, so they need different nudges to land on one baseline. */
+  .row-mark {
+    margin-top: 0.35rem;
   }
-  .row-label .status {
-    top: 0.1rem;
+  .row-mark-done {
+    margin-top: 0.1rem;
   }
 
   /* show the kebab trigger; it opens the per-row action sheet via the popover API */

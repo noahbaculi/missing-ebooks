@@ -436,20 +436,27 @@ pub(crate) fn error_section(root: usize, message: &str) -> Markup {
     }
 }
 
-/// The show-all status marker for a row: a success check on a covered folder. Gaps
-/// are already flagged by the amber icon and the badge, and plain containers need
-/// no marker, so neither gets one. Rendered only in show-all mode.
-fn status_icon(node: &Node) -> Markup {
+/// The row's mark slot: the amber "needs ebook" pill on a gap, the success check
+/// on a covered folder, nothing on a plain container. Its own flex item rather
+/// than the tail of the text run, so the mark holds one column down the list
+/// however long the names beside it run. Checks are show-all only: gaps-only
+/// renders no covered rows, and a gap is already flagged by the amber icon and
+/// the pill.
+fn row_mark(node: &Node, mode: ViewMode) -> Markup {
     html! {
-        @if !node.missing_ebook {
-            span.status title="covered" { (PreEscaped(include_str!("../../assets/svg/check.svg"))) }
+        @if node.needs_ebook() {
+            span.row-mark { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
+        } @else if mode == ViewMode::All && !node.missing_ebook {
+            span.row-mark.row-mark-done {
+                span.status title="covered" { (PreEscaped(include_str!("../../assets/svg/check.svg"))) }
+            }
         }
     }
 }
 
-/// The covering ebook and marker filenames for a covered row, in muted text just
-/// after the status check. Show-all only, and empty for gaps and folders covered
-/// from above, so nothing renders there.
+/// The covering ebook and marker filenames for a covered row, in muted text at
+/// the end of the name's run. Show-all only, and empty for gaps and folders
+/// covered from above, so nothing renders there.
 fn cover_files_span(node: &Node, mode: ViewMode) -> Markup {
     html! {
         @if mode == ViewMode::All && !node.cover_files.is_empty() {
@@ -488,19 +495,17 @@ fn file_count(node: &Node) -> Markup {
     }
 }
 
-/// The row's text run: the folder name plus the marks that read as part of it,
-/// ending with the covering filenames. Wrapped so a phone-width row flows them
-/// inline after the name rather than beside its box, which lets a short filename
-/// share the name's line and a long one drop below it. Every mark keeps the gate
-/// it carries on its own, so the three row branches share one call.
+/// The row's text run: the folder name plus the muted notes that read as part of
+/// it, ending with the covering filenames. One box at both widths, so a phone-width
+/// row flows them inline after the name rather than beside its box, which lets a
+/// short filename share the name's line and a long one drop below it. Every note
+/// keeps the gate it carries on its own, so the three row branches share one call.
 fn row_label(node: &Node, mode: ViewMode, depth: usize) -> Markup {
     html! {
         span.row-label {
             span.name { (node.name) }
-            @if node.needs_ebook() { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
             (smell_label(node, depth))
             (file_count(node))
-            @if mode == ViewMode::All { (status_icon(node)) }
             (cover_files_span(node, mode))
         }
     }
@@ -547,6 +552,7 @@ fn render_node(
                             (folder_icon())
                             (row_label(node, mode, depth))
                             span.spring {}
+                            (row_mark(node, mode))
                             @if act {
                                 (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
                             }
@@ -563,6 +569,7 @@ fn render_node(
                         (folder_icon())
                         (row_label(node, mode, depth))
                         span.spring {}
+                        (row_mark(node, mode))
                     }
                 }
             }
@@ -578,6 +585,7 @@ fn render_node(
                         (folder_icon())
                         (row_label(node, mode, depth))
                         span.spring {}
+                        (row_mark(node, mode))
                         @if act {
                             (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
                         }
@@ -1999,12 +2007,12 @@ mod tests {
             1,
         )];
         let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
-        // The name, the badge and the muted marks render as one inline run, so a
-        // wrapped name at phone width has nothing sitting beside its box.
+        // The name and the muted notes render as one inline run, so a wrapped name
+        // at phone width has nothing sitting beside its box. The badge is not in
+        // it: it holds the mark column at the row's right edge instead.
         assert!(html.contains(concat!(
             r#"<span class="row-label">"#,
             r#"<span class="name">Book</span>"#,
-            r#"<span class="badge badge-warning" title="needs ebook">needs ebook</span>"#,
             r#"<span class="smell smell-loose">loose at top</span>"#,
             r#"<span class="file-count">1 file</span>"#,
             r#"</span>"#,
@@ -2019,16 +2027,47 @@ mod tests {
             1,
         )];
         let html = render_view(&view, &[], ViewMode::All, 0).into_string();
-        // The status check joins the run, and so do the covering filenames: they
-        // share the name's line when it has room for them.
+        // The covering filenames stay in the run and share the name's line when it
+        // has room for them. The check has left the run for the mark slot.
         assert!(html.contains(concat!(
             r#"<span class="row-label">"#,
             r#"<span class="name">Book</span>"#,
-            r#"<span class="status" title="covered">"#,
-        )));
-        assert!(html.contains(concat!(
             r#"<span class="cover-files" title="covering files">Book.epub</span>"#,
             r#"</span>"#,
         )));
+    }
+
+    #[test]
+    fn index_gives_each_mark_its_own_slot() {
+        let flagged = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&flagged, &[], ViewMode::GapsOnly, 0).into_string();
+        // A gap's pill sits in the mark slot, after the spring that pushes it right.
+        assert!(html.contains(concat!(
+            r#"<span class="spring"></span>"#,
+            r#"<span class="row-mark">"#,
+            r#"<span class="badge badge-warning" title="needs ebook">needs ebook</span>"#,
+            r#"</span>"#,
+        )));
+
+        let covered = vec![section(
+            "/lib",
+            forest(vec![covered_leaf("Book", "Book", &["Book.epub"])]),
+            1,
+        )];
+        let html = render_view(&covered, &[], ViewMode::All, 0).into_string();
+        // A covered row's check takes the same slot, tagged so the desktop rule can
+        // retire it past the action slot.
+        assert!(html.contains(concat!(
+            r#"<span class="row-mark row-mark-done">"#,
+            r#"<span class="status" title="covered">"#,
+        )));
+
+        // Gaps-only renders no checks at all, so the slot only ever holds the pill.
+        let html = render_view(&flagged, &[], ViewMode::GapsOnly, 0).into_string();
+        assert!(!html.contains("row-mark-done"));
     }
 }
