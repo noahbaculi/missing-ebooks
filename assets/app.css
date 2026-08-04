@@ -333,12 +333,15 @@ details[open] > summary .chev {
 .name {
   font-weight: 500;
 }
-/* the row's text run (name plus the marks that read as part of it). desktop
-   dissolves the wrapper, so its children stay direct flex items of .row and the
-   layout is the one they had before it existed. the phone block at 650px gives it
-   a box, where it is the whole point: see the .row-label rule there. */
+/* the row's text run (the name plus the muted notes that read as part of it) as
+   one box at both widths. only the basis differs: auto here so the box hugs its
+   text and the mark slot sits right after it, 0 in the phone block so the run
+   fills the row and wraps. */
 .row-label {
-  display: contents;
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .spring {
   flex: 1;
@@ -492,6 +495,7 @@ details[open] > summary .chev {
 .smell,
 .file-count {
   flex: none;
+  margin-left: 0.5rem;
   font-size: 0.74rem;
   color: var(--color-muted);
 }
@@ -553,15 +557,14 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 }
 
 /* covering ebook/marker filenames on a covered row (show-all only): muted, set off
-   from the covered check by extra left margin, truncated with an ellipsis so a long
-   list never wraps the row */
+   from the name and wrapping whole. inline-block keeps the list atomic, so it moves
+   to the next line entire rather than breaking mid-filename under the label's
+   overflow-wrap. no ellipsis: truncating them hides exactly what a covered row
+   exists to show. */
 .cover-files {
-  flex: none;
-  margin-left: 0.75rem;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: inline-block;
+  max-width: 100%;
+  margin-left: 0.5rem;
   color: var(--color-muted);
   font-size: 0.72rem;
 }
@@ -1026,11 +1029,13 @@ html:not([data-italic-nested="off"]) .container-nested .name {
      flex line on a covered one. flex-basis 0 is what keeps the run off a line of
      its own. .cover-files still sets flex-basis 100% below, so the covering
      filenames keep their own line under the name. */
+  /* the name and its notes fill the row and wrap. a flex item's box is sized
+     before its text reflows and nothing re-measures it after, so a wrapped name
+     used to strand the leftover width inside its own box: a gap before the mark
+     on a flagged row, a whole claimed flex line on a covered one. flex-basis 0 is
+     what keeps the run off a line of its own. */
   .row-label {
-    display: block;
     flex: 1 1 0;
-    min-width: 0;
-    overflow-wrap: anywhere;
   }
   /* the run already fills the row, so the spring has nothing left to push */
   .spring {
@@ -1211,21 +1216,6 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   }
   .actions-group .links-menu a:hover {
     background: var(--color-base-200);
-  }
-
-  /* covering filenames (show-all) join the name's inline run, so a short pair
-     like "Dune / Dune.epub" shares one line. inline-block keeps the list atomic:
-     it moves to the next line whole rather than breaking mid-filename under the
-     label's overflow-wrap. they cannot instead be a wrapping flex item, since a
-     flex item takes every later item with it when it wraps, which would drag the
-     kebab down too. */
-  .cover-files {
-    display: inline-block;
-    max-width: 100%;
-    margin-left: 0.5rem;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
   }
 
   /* the confirm buttons grow to fill the dialog footer on narrow screens */
