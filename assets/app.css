@@ -32,6 +32,10 @@
   --radius-box: 1rem;
   --radius-field: 0.5rem;
   --border: 1px;
+  /* the caret column and the row's inline padding. the tree guide is positioned
+     off both, so they are tokens rather than literals: see .menu ul */
+  --chev-size: 0.7rem;
+  --row-pad-x: 0.5rem;
 }
 
 [data-theme="dark"] {
@@ -271,9 +275,14 @@ details > summary::-webkit-details-marker {
   padding: 0;
   font-size: 0.9rem;
 }
+/* the nesting guide. margin-left places the border on the center of the parent
+   row's caret, so it is derived rather than picked: the row's inline padding to
+   reach the caret box, plus half a caret to reach its middle. padding-left is
+   independent, it only sets the gap between the border and the child row, which
+   is what the phone block trims. */
 .menu ul {
   list-style: none;
-  margin: 0 0 0 0.85rem;
+  margin: 0 0 0 calc(var(--row-pad-x) + var(--chev-size) / 2);
   padding-left: 0.8rem;
   border-left: var(--border) solid var(--guide);
 }
@@ -285,7 +294,7 @@ details > summary::-webkit-details-marker {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.3rem 0.5rem;
+  padding: 0.3rem var(--row-pad-x);
   border-radius: var(--radius-field);
   /* reserve the action-button row height so a covered row, which drops the buttons,
      stays as tall as a flagged one and marking never shifts the rows below */
@@ -302,7 +311,7 @@ details > summary.row {
 }
 
 .chev {
-  width: 0.7rem;
+  width: var(--chev-size);
   flex: none;
   color: var(--color-muted);
   transition: transform 0.15s;
@@ -316,8 +325,9 @@ details[open] > summary .chev {
   flex: none;
   color: var(--color-muted);
 }
+/* stands in for the caret on a leaf row, so leaf and folder icons share a column */
 .leaf-pad {
-  width: 0.7rem;
+  width: var(--chev-size);
   flex: none;
 }
 .name {
