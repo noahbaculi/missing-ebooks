@@ -333,6 +333,13 @@ details[open] > summary .chev {
 .name {
   font-weight: 500;
 }
+/* the row's text run (name plus the marks that read as part of it). desktop
+   dissolves the wrapper, so its children stay direct flex items of .row and the
+   layout is the one they had before it existed. the phone block at 650px gives it
+   a box, where it is the whole point: see the .row-label rule there. */
+.row-label {
+  display: contents;
+}
 .spring {
   flex: 1;
 }
@@ -872,8 +879,12 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   /* the "needs ebook" pill collapses to an amber dot. text-indent and overflow
      hide the label visually while keeping it in the DOM and a11y tree, so screen
      readers still announce it and the HTML tests still match. the solid dot fill
-     is reasserted just below. */
+     is reasserted just below. inline-block is load-bearing: width and height do
+     not apply to an inline box, and below 650px the badge flows as inline text
+     inside .row-label, where without it the dot re-expands to the width of the
+     label it is hiding. */
   .badge {
+    display: inline-block;
     width: 0.5rem;
     height: 0.5rem;
     min-width: 0.5rem;
@@ -967,23 +978,71 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     padding-left: 0.15rem;
   }
 
-  /* rows may wrap so the action menu and cover files can drop to a new line */
+  /* rows may wrap so the action menu and cover files can drop to a new line.
+     the caret, the folder icon and the kebab align to the first text line rather
+     than to the middle of a label that may run to several lines, so they stay in
+     a straight column down the tree however tall the rows get. */
   .row {
     flex-wrap: wrap;
     row-gap: 0.4rem;
+    align-items: flex-start;
   }
-  .name {
+  /* the caret and the icon are shorter than a line of text, so nudge them onto
+     its optical center instead of its box top */
+  .row > .chev,
+  .row > .icon {
+    margin-top: 0.15rem;
+  }
+  /* a phone row carries the name, its status mark and the covering filenames.
+     the smell label and the file count are detail: at 390px they crowd out the
+     name, and both are still on the desktop row and in the expanded file list.
+     hidden visually rather than with display:none, so a screen reader still
+     announces them here and the row reads the same on a phone as on a desktop. */
+  .row-label .smell,
+  .row-label .file-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* the name and its trailing marks become one flex item that flows as inline
+     text. a flex item's box is sized before its text reflows and nothing
+     re-measures it after, so a wrapped name used to strand the leftover width
+     inside its own box: a gap before the badge on a flagged row, a whole claimed
+     flex line on a covered one. flex-basis 0 is what keeps the run off a line of
+     its own. .cover-files still sets flex-basis 100% below, so the covering
+     filenames keep their own line under the name. */
+  .row-label {
+    display: block;
+    flex: 1 1 0;
     min-width: 0;
-  }
-  /* flagged and container rows stay on one line: a long name wraps inside its own
-     box instead of bumping the dot and kebab down to a second line. covered rows
-     keep the wrap from the .row rule above so the covering filename can still drop
-     below the name. */
-  .row:not(.covered) {
-    flex-wrap: nowrap;
-  }
-  .row:not(.covered) .name {
     overflow-wrap: anywhere;
+    /* reserve the status mark's column at the right edge, and anchor it */
+    position: relative;
+    padding-right: 1rem;
+  }
+  /* the run already fills the row, so the spring has nothing left to push */
+  .spring {
+    display: none;
+  }
+  /* the status mark leaves the text run and pins to the top right of the label,
+     so it reads on the first line whatever the name does below it and the marks
+     form one scannable column down the list. absolute rather than a float: a
+     float declared after the name lands on the name's last line, which is the
+     behavior this replaces. */
+  .row-label .badge,
+  .row-label .status {
+    position: absolute;
+    top: 0.35rem;
+    right: 0;
+    margin: 0;
+  }
+  .row-label .status {
+    top: 0.1rem;
   }
 
   /* show the kebab trigger; it opens the per-row action sheet via the popover API */
@@ -1153,15 +1212,16 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     background: var(--color-base-200);
   }
 
-  /* covering filenames (show-all) drop below the folder name, fully readable.
-     indented to 3.5rem, a little past where the folder name starts (~2.75rem),
-     so it reads as subordinate to the name above it rather than lining up flush
-     with it. */
+  /* covering filenames (show-all) join the name's inline run, so a short pair
+     like "Dune / Dune.epub" shares one line. inline-block keeps the list atomic:
+     it moves to the next line whole rather than breaking mid-filename under the
+     label's overflow-wrap. they cannot instead be a wrapping flex item, since a
+     flex item takes every later item with it when it wraps, which would drag the
+     kebab down too. */
   .cover-files {
-    flex-basis: 100%;
+    display: inline-block;
     max-width: 100%;
-    margin-left: 0;
-    padding-left: 3.5rem;
+    margin-left: 0.5rem;
     white-space: normal;
     overflow: visible;
     text-overflow: clip;

@@ -488,6 +488,24 @@ fn file_count(node: &Node) -> Markup {
     }
 }
 
+/// The row's text run: the folder name plus the marks that read as part of it,
+/// ending with the covering filenames. Wrapped so a phone-width row flows them
+/// inline after the name rather than beside its box, which lets a short filename
+/// share the name's line and a long one drop below it. Every mark keeps the gate
+/// it carries on its own, so the three row branches share one call.
+fn row_label(node: &Node, mode: ViewMode, depth: usize) -> Markup {
+    html! {
+        span.row-label {
+            span.name { (node.name) }
+            @if node.needs_ebook() { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
+            (smell_label(node, depth))
+            (file_count(node))
+            @if mode == ViewMode::All { (status_icon(node)) }
+            (cover_files_span(node, mode))
+        }
+    }
+}
+
 /// The audio-file rows for a flagged folder, each a muted, non-actionable line with a
 /// music glyph. Emits nothing on a container or covered row, so it is safe to call
 /// unconditionally inside the container branch where only a mixed node has files.
@@ -527,12 +545,7 @@ fn render_node(
                         summary.row.flagged {
                             (chevron())
                             (folder_icon())
-                            span.name { (node.name) }
-                            span.badge.badge-warning title="needs ebook" { "needs ebook" }
-                            (smell_label(node, depth))
-                            (file_count(node))
-                            @if mode == ViewMode::All { (status_icon(node)) }
-                            (cover_files_span(node, mode))
+                            (row_label(node, mode, depth))
                             span.spring {}
                             @if act {
                                 (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
@@ -548,9 +561,7 @@ fn render_node(
                     div.row.covered[covered] {
                         span.leaf-pad {}
                         (folder_icon())
-                        span.name { (node.name) }
-                        @if mode == ViewMode::All { (status_icon(node)) }
-                        (cover_files_span(node, mode))
+                        (row_label(node, mode, depth))
                         span.spring {}
                     }
                 }
@@ -565,12 +576,7 @@ fn render_node(
                         .container-nested[!node.needs_ebook() && depth > 0] {
                         (chevron())
                         (folder_icon())
-                        span.name { (node.name) }
-                        @if node.needs_ebook() { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
-                        (smell_label(node, depth))
-                        (file_count(node))
-                        @if mode == ViewMode::All { (status_icon(node)) }
-                        (cover_files_span(node, mode))
+                        (row_label(node, mode, depth))
                         span.spring {}
                         @if act {
                             (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
@@ -1983,5 +1989,46 @@ mod tests {
                 mode.as_query(),
             );
         }
+    }
+
+    #[test]
+    fn index_wraps_the_flagged_row_label() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
+        // The name, the badge and the muted marks render as one inline run, so a
+        // wrapped name at phone width has nothing sitting beside its box.
+        assert!(html.contains(concat!(
+            r#"<span class="row-label">"#,
+            r#"<span class="name">Book</span>"#,
+            r#"<span class="badge badge-warning" title="needs ebook">needs ebook</span>"#,
+            r#"<span class="smell smell-loose">loose at top</span>"#,
+            r#"<span class="file-count">1 file</span>"#,
+            r#"</span>"#,
+        )));
+    }
+
+    #[test]
+    fn index_wraps_the_covered_row_label() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![covered_leaf("Book", "Book", &["Book.epub"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::All, 0).into_string();
+        // The status check joins the run, and so do the covering filenames: they
+        // share the name's line when it has room for them.
+        assert!(html.contains(concat!(
+            r#"<span class="row-label">"#,
+            r#"<span class="name">Book</span>"#,
+            r#"<span class="status" title="covered">"#,
+        )));
+        assert!(html.contains(concat!(
+            r#"<span class="cover-files" title="covering files">Book.epub</span>"#,
+            r#"</span>"#,
+        )));
     }
 }
