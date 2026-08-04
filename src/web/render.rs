@@ -653,7 +653,7 @@ fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup 
             input type="hidden" name="root" value=(root);
             input type="hidden" name="rel" value=(rel);
             input type="hidden" name="view" value=(mode.as_query());
-            button.btn.btn-outline.btn-xs type="button"
+            button.btn.btn-outline.btn-xs.btn-square type="button"
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"no_ebook"}"#)
@@ -666,7 +666,7 @@ fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup 
                     span.label-long { "No ebook" }
                     span.label-short { "No ebook" }
                 }
-            button.btn.btn-outline.btn-xs type="button"
+            button.btn.btn-outline.btn-xs.btn-square type="button"
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"ebook_elsewhere"}"#)
@@ -705,7 +705,7 @@ fn search_links(
             @let id = next_id("links", root, counter);
             span.links {
                 span.sheet-divider { "Search" }
-                button.btn.btn-outline.btn-xs.links-toggle type="button"
+                button.btn.btn-outline.btn-xs.btn-square.links-toggle type="button"
                     popovertarget=(id)
                     aria-label="Search for this book"
                     title="Search links"
@@ -2098,5 +2098,25 @@ mod tests {
         );
         // Only the flagged row fills it.
         assert_eq!(html.matches(r#"class="actions-group""#).count(), 1);
+    }
+
+    #[test]
+    fn marker_buttons_keep_their_labels_in_the_dom() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
+        // The buttons render icon-only, but the label is still in the markup: the
+        // stylesheet clips it, so each button keeps an accessible name.
+        assert!(html.contains(r#"<span class="label-short">No ebook</span>"#));
+        assert!(html.contains(r#"<span class="label-short">Elsewhere</span>"#));
+        // Square sizing, so the three row buttons read as one set of icons.
+        assert_eq!(
+            html.matches("btn-outline btn-xs btn-square").count(),
+            2,
+            "both marker buttons",
+        );
     }
 }

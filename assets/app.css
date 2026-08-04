@@ -418,16 +418,44 @@ details[open] > summary .chev {
 .actions-group {
   display: contents;
 }
-/* sheet-only chrome: grab handle, title, per-row icons, verbose marker labels,
-   the "Search" divider. hidden by default so the desktop cluster stays compact.
-   the mobile sheet reveals each. */
+/* sheet-only chrome: grab handle, title, verbose marker labels, the "Search"
+   divider. hidden by default so the desktop cluster stays compact. the mobile
+   sheet reveals each. */
 .sheet-header,
 .sheet-grip,
 .sheet-title,
-.sheet-icon,
 .sheet-divider,
 .label-long {
   display: none;
+}
+/* the marker buttons carry their glyph at every width: that glyph is the whole
+   button once the label is clipped. the search-links rows keep theirs for the
+   sheet only, where the menu is a list of full-width rows. */
+.mark .sheet-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.mark .sheet-icon .icon {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+.links-menu .sheet-icon {
+  display: none;
+}
+/* the marker labels leave the row visually but stay in the DOM and the a11y tree,
+   so the buttons keep an accessible name and a screen reader still reads them.
+   the same clip pattern the phone block uses on the row's muted notes. an
+   absolutely positioned child is not a flex item, so the button's gap does not
+   reserve a space beside the icon for it. */
+.label-short {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .links {
   display: inline-flex;
