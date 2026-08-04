@@ -36,6 +36,9 @@
      off both, so they are tokens rather than literals: see .menu ul */
   --chev-size: 0.7rem;
   --row-pad-x: 0.5rem;
+  /* the kebab column on phones. one token so the trigger and the empty slot a
+     covered row reserves cannot drift apart */
+  --kebab-col: 1.6rem;
 }
 
 [data-theme="dark"] {
@@ -354,6 +357,17 @@ details[open] > summary .chev {
 .row-mark {
   display: inline-flex;
   align-items: flex-start;
+  flex: none;
+}
+
+/* the row's trailing slot. the cluster inside it is display:contents on desktop,
+   so this is what carries the gap the row used to provide between the marker form
+   and the search links. */
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
   flex: none;
 }
 
@@ -1051,9 +1065,17 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     margin-top: 0.1rem;
   }
 
-  /* show the kebab trigger; it opens the per-row action sheet via the popover API */
+  /* show the kebab trigger; it opens the per-row action sheet via the popover API.
+     the trigger and the empty slot on a row without one are both one --kebab-col
+     wide, so the mark column to their left holds whether a row has actions or not. */
   .actions-trigger {
     display: inline-flex;
+    justify-content: center;
+    width: var(--kebab-col);
+  }
+  .row-actions {
+    min-width: var(--kebab-col);
+    margin-top: 0.15rem;
   }
 
   /* the closed sheet is hidden. the author rule `.actions-group { display: contents }`

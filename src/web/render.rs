@@ -553,9 +553,7 @@ fn render_node(
                             (row_label(node, mode, depth))
                             span.spring {}
                             (row_mark(node, mode))
-                            @if act {
-                                (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
-                            }
+                            (row_actions(root, &node.rel_path, &node.name, links, mode, counter, act))
                         }
                         ul.files { (file_rows(node)) }
                     }
@@ -570,6 +568,7 @@ fn render_node(
                         (row_label(node, mode, depth))
                         span.spring {}
                         (row_mark(node, mode))
+                        (row_actions(root, &node.rel_path, &node.name, links, mode, counter, act))
                     }
                 }
             }
@@ -586,9 +585,7 @@ fn render_node(
                         (row_label(node, mode, depth))
                         span.spring {}
                         (row_mark(node, mode))
-                        @if act {
-                            (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
-                        }
+                        (row_actions(root, &node.rel_path, &node.name, links, mode, counter, act))
                     }
                     ul {
                         (file_rows(node))
@@ -600,12 +597,17 @@ fn render_node(
     }
 }
 
-/// The per-row action cluster: a kebab trigger plus the marker buttons and search
+/// The per-row action slot: a kebab trigger plus the marker buttons and search
 /// links, wrapped in a group that doubles as a native popover. On desktop the
 /// trigger is hidden and the group is `display: contents`, so its children flow
-/// inline in the row. On mobile the kebab opens the group as a bottom action sheet
-/// over a dimmed backdrop. The browser provides the toggle, one-open-at-a-time,
-/// light-dismiss, and Esc.
+/// inline in the slot. On mobile the kebab opens the group as a bottom action
+/// sheet over a dimmed backdrop. The browser provides the toggle,
+/// one-open-at-a-time, light-dismiss, and Esc.
+///
+/// The slot renders on every row and `act` gates only its contents, so a row with
+/// nothing to act on still reserves the column. That is the horizontal twin of the
+/// row's reserved `min-height`: without it the mark beside it would shift on
+/// exactly the rows that carry no buttons.
 fn row_actions(
     root: usize,
     rel: &str,
@@ -613,21 +615,26 @@ fn row_actions(
     links: &[SearchLink],
     mode: ViewMode,
     counter: &std::cell::Cell<usize>,
+    act: bool,
 ) -> Markup {
-    let group_id = next_id("acts", root, counter);
     html! {
-        button.actions-trigger type="button"
-            aria-label="Actions"
-            aria-haspopup="menu"
-            popovertarget=(group_id)
-            onclick="event.stopPropagation()" { (PreEscaped(include_str!("../../assets/svg/kebab.svg"))) }
-        div.actions-group id=(group_id) popover="auto" aria-label=(name) {
-            div.sheet-header {
-                span.sheet-grip aria-hidden="true" {}
-                span.sheet-title { (name) }
+        span.row-actions {
+            @if act {
+                @let group_id = next_id("acts", root, counter);
+                button.actions-trigger type="button"
+                    aria-label="Actions"
+                    aria-haspopup="menu"
+                    popovertarget=(group_id)
+                    onclick="event.stopPropagation()" { (PreEscaped(include_str!("../../assets/svg/kebab.svg"))) }
+                div.actions-group id=(group_id) popover="auto" aria-label=(name) {
+                    div.sheet-header {
+                        span.sheet-grip aria-hidden="true" {}
+                        span.sheet-title { (name) }
+                    }
+                    (marker_buttons(root, rel, name, mode))
+                    (search_links(links, name, root, counter))
+                }
             }
-            (marker_buttons(root, rel, name, mode))
-            (search_links(links, name, root, counter))
         }
     }
 }
@@ -2069,5 +2076,27 @@ mod tests {
         // Gaps-only renders no checks at all, so the slot only ever holds the pill.
         let html = render_view(&flagged, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(!html.contains("row-mark-done"));
+    }
+
+    #[test]
+    fn every_row_reserves_an_action_slot() {
+        // A covered leaf carries no buttons, but it still gets the slot, so the
+        // mark column above it cannot slide sideways from row to row.
+        let view = vec![section(
+            "/lib",
+            forest(vec![
+                covered_leaf("Done", "Done", &["Done.epub"]),
+                flagged_leaf("Gap", "Gap", &["01.mp3"]),
+            ]),
+            1,
+        )];
+        let html = render_view(&view, &default_links(), ViewMode::All, 0).into_string();
+        assert_eq!(
+            html.matches(r#"class="row-actions""#).count(),
+            2,
+            "the covered row and the flagged row each carry an action slot",
+        );
+        // Only the flagged row fills it.
+        assert_eq!(html.matches(r#"class="actions-group""#).count(), 1);
     }
 }
