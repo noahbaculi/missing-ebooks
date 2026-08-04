@@ -457,6 +457,40 @@ details[open] > summary .chev {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+/* hover tooltips for the icon-only row buttons. drawn here rather than left to
+   native `title`, whose delay is browser and OS controlled somewhere around half
+   a second with no hook to shorten it. hover-capable pointers only: a touch device
+   has no hover state to read one from, and the action sheet names both markers in
+   full there. focus-visible mirrors it for the keyboard. */
+@media (hover: hover) {
+  [data-tip] {
+    position: relative;
+  }
+  [data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 0.35rem);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-field);
+    background: var(--color-base-content);
+    color: var(--color-base-100);
+    font-size: 0.7rem;
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s;
+  }
+  [data-tip]:hover::after,
+  [data-tip]:focus-visible::after {
+    opacity: 1;
+    transition-delay: 150ms;
+  }
+}
 .links {
   display: inline-flex;
   align-items: center;

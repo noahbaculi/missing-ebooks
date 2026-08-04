@@ -660,7 +660,7 @@ fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup 
                 data-confirm-action="No ebook"
                 data-confirm-file=".no_ebook"
                 data-confirm-folder=(name)
-                title="No ebook exists or can be sourced. Covers this folder and everything beneath it."
+                data-tip="No ebook"
                 onclick="event.stopPropagation()" {
                     span.sheet-icon { (PreEscaped(include_str!("../../assets/svg/no-entry.svg"))) }
                     span.label-long { "No ebook" }
@@ -673,7 +673,7 @@ fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup 
                 data-confirm-action="Ebook elsewhere"
                 data-confirm-file=".ebook_elsewhere"
                 data-confirm-folder=(name)
-                title="The ebook is in another folder. Covers this folder and everything beneath it."
+                data-tip="Ebook elsewhere"
                 onclick="event.stopPropagation()" {
                     span.sheet-icon { (PreEscaped(include_str!("../../assets/svg/ebook-elsewhere.svg"))) }
                     span.label-long { "Ebook elsewhere" }
@@ -708,7 +708,7 @@ fn search_links(
                 button.btn.btn-outline.btn-xs.btn-square.links-toggle type="button"
                     popovertarget=(id)
                     aria-label="Search for this book"
-                    title="Search links"
+                    data-tip="Search links"
                     onclick="event.stopPropagation()" { (PreEscaped(include_str!("../../assets/svg/search.svg"))) }
                 div.links-menu popover="auto" id=(id) onclick="event.stopPropagation()" {
                     @for link in links {
@@ -1224,13 +1224,13 @@ mod tests {
         assert!(html.contains(r#"data-confirm-action="Ebook elsewhere""#));
         assert!(html.contains(r#"data-confirm-file=".ebook_elsewhere""#));
         assert!(html.contains(r#"data-confirm-folder="Book""#));
-        // Each button carries a hover tooltip spelling out what the marker means.
-        assert!(html.contains(
-            r#"title="No ebook exists or can be sourced. Covers this folder and everything beneath it.""#
-        ));
-        assert!(html.contains(
-            r#"title="The ebook is in another folder. Covers this folder and everything beneath it.""#
-        ));
+        // Each button names itself in a CSS tooltip. Native `title` is off: its
+        // delay is browser and OS controlled, and leaving it stacks two tooltips.
+        // The full sentence lives in the confirm dialog, which is read before
+        // anything is written.
+        assert!(html.contains(r#"data-tip="No ebook""#));
+        assert!(html.contains(r#"data-tip="Ebook elsewhere""#));
+        assert!(!html.contains("Covers this folder and everything beneath it"));
     }
 
     #[test]
