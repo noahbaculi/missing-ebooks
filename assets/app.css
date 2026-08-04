@@ -438,6 +438,12 @@ details[open] > summary .chev {
 .mark .sheet-icon .icon {
   width: 1.05rem;
   height: 1.05rem;
+  color: var(--color-muted);
+}
+/* the marker glyphs stay grey inside a flagged row, where .flagged .icon
+   would otherwise tint them amber along with the folder icon */
+.flagged .mark .sheet-icon .icon {
+  color: var(--color-muted);
 }
 .links-menu .sheet-icon {
   display: none;
