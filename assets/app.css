@@ -359,6 +359,15 @@ details[open] > summary .chev {
   align-items: flex-start;
   flex: none;
 }
+/* a covered folder is finished, so its check leaves the working mark column and
+   right-aligns in the row's trailing slot, in line with the last icon button. the
+   right edge then reads as one column of glyphs: pill or nothing in the mark slot,
+   buttons or a check at the edge. order does it without a second element in the
+   markup; the phone block puts the check back, where there is no action slot to
+   retire into. */
+.row-mark-done {
+  order: 1;
+}
 
 /* the row's trailing slot. the cluster inside it is display:contents on desktop,
    so this is what carries the gap the row used to provide between the marker form
@@ -1063,6 +1072,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   }
   .row-mark-done {
     margin-top: 0.1rem;
+    order: 0;
   }
 
   /* show the kebab trigger; it opens the per-row action sheet via the popover API.
