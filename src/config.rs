@@ -388,6 +388,16 @@ mod tests {
     }
 
     #[test]
+    fn load_with_an_explicit_missing_path_is_a_read_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("absent.toml");
+        assert!(matches!(
+            Config::load(Some(&missing)),
+            Err(ConfigError::Read { .. })
+        ));
+    }
+
+    #[test]
     fn env_overrides_scalar_fields() {
         let mut cfg = Config::default();
         let env = fake_env(&[

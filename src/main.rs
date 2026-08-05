@@ -1,6 +1,7 @@
 //! Server entry point: load config, build shared state, serve the web UI.
 //! `--print-config` emits the config template and exits.
 
+use std::ffi::OsString;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -24,7 +25,7 @@ use missing_ebooks::web;
         MISSING_EBOOKS_LIBRARY_ROOTS  Colon-separated paths to scan.\n  \
         MISSING_EBOOKS_BIND           IP to bind, e.g. 127.0.0.1.\n  \
         MISSING_EBOOKS_PORT           TCP port, e.g. 8080.\n  \
-        MISSING_EBOOKS_CONFIG         Optional config file path (same as --config).\n  \
+        MISSING_EBOOKS_CONFIG         Config file path; ignored if no file exists there.\n  \
         MISSING_EBOOKS_LOG            Tracing filter, e.g. info,missing_ebooks=debug.\n\
         \nSee README for the full env-var list."
 )]
@@ -34,8 +35,13 @@ struct Cli {
     print_config: bool,
 
     /// Path to a configuration file. Defaults to MISSING_EBOOKS_CONFIG or none.
-    #[arg(long, value_name = "PATH", env = "MISSING_EBOOKS_CONFIG")]
+    #[arg(long, value_name = "PATH")]
     config: Option<PathBuf>,
+}
+
+/// Resolve the config path: an explicit flag wins, an env-provided path only counts if it exists
+fn resolve_config_path(flag: Option<PathBuf>, env: Option<OsString>) -> Option<PathBuf> {
+    flag.or_else(|| env.map(PathBuf::from).filter(|path| path.is_file()))
 }
 
 #[tokio::main]
@@ -49,7 +55,8 @@ async fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let config = match Config::load(cli.config.as_deref()) {
+    let config_path = resolve_config_path(cli.config, std::env::var_os("MISSING_EBOOKS_CONFIG"));
+    let config = match Config::load(config_path.as_deref()) {
         Ok(cfg) => cfg,
         Err(err @ ConfigError::MissingLibraryRoots) => {
             eprintln!("{err}");
@@ -136,6 +143,7 @@ async fn main() -> ExitCode {
 mod tests {
     use super::*;
     use clap::CommandFactory;
+    use std::ffi::OsString;
 
     #[test]
     fn help_flag_displays_help() {
@@ -184,5 +192,33 @@ mod tests {
         ] {
             assert!(help.contains(var), "{var} missing from --help");
         }
+    }
+
+    #[test]
+    fn env_config_path_that_does_not_exist_resolves_to_none() {
+        let resolved = resolve_config_path(None, Some(OsString::from("/definitely/not/here.toml")));
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn env_config_path_that_exists_resolves_to_some() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "").unwrap();
+
+        let resolved = resolve_config_path(None, Some(path.clone().into_os_string()));
+        assert_eq!(resolved, Some(path));
+    }
+
+    #[test]
+    fn explicit_flag_wins_over_env_even_when_the_file_is_absent() {
+        // A typed path is a promise: it survives to Config::load, which errors
+        // on it. Only the env hint is allowed to disappear.
+        let flag = PathBuf::from("/typed/but/missing.toml");
+        let resolved = resolve_config_path(
+            Some(flag.clone()),
+            Some(OsString::from("/definitely/not/here.toml")),
+        );
+        assert_eq!(resolved, Some(flag));
     }
 }
