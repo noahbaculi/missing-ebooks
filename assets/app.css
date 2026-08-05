@@ -356,7 +356,6 @@ details[open] > summary .chev {
    line up without a declared width. */
 .row-mark {
   display: inline-flex;
-  align-items: flex-start;
   flex: none;
 }
 /* a covered folder is finished, so its check leaves the working mark column and
@@ -586,7 +585,7 @@ details[open] > summary .chev {
 .smell,
 .file-count {
   flex: none;
-  margin-left: 0.5rem;
+  margin-inline-start: 0.5rem;
   font-size: 0.74rem;
   color: var(--color-muted);
 }
@@ -655,7 +654,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 .cover-files {
   display: inline-block;
   max-width: 100%;
-  margin-left: 0.5rem;
+  margin-inline-start: 0.5rem;
   color: var(--color-muted);
   font-size: 0.72rem;
 }
@@ -984,9 +983,8 @@ html:not([data-italic-nested="off"]) .container-nested .name {
      hide the label visually while keeping it in the DOM and a11y tree, so screen
      readers still announce it and the HTML tests still match. the solid dot fill
      is reasserted just below. inline-block is load-bearing: width and height do
-     not apply to an inline box, and below 650px the badge flows as inline text
-     inside .row-label, where without it the dot re-expands to the width of the
-     label it is hiding. */
+     not apply to an inline box, and .row-mark is inline-flex, so without it the
+     dot re-expands to the width of the label it is hiding. */
   .badge {
     display: inline-block;
     width: 0.5rem;
@@ -1113,13 +1111,6 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  /* the name and its trailing marks become one flex item that flows as inline
-     text. a flex item's box is sized before its text reflows and nothing
-     re-measures it after, so a wrapped name used to strand the leftover width
-     inside its own box: a gap before the badge on a flagged row, a whole claimed
-     flex line on a covered one. flex-basis 0 is what keeps the run off a line of
-     its own. .cover-files still sets flex-basis 100% below, so the covering
-     filenames keep their own line under the name. */
   /* the name and its notes fill the row and wrap. a flex item's box is sized
      before its text reflows and nothing re-measures it after, so a wrapped name
      used to strand the leftover width inside its own box: a gap before the mark
