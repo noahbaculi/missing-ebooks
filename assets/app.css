@@ -36,6 +36,9 @@
      off both, so they are tokens rather than literals: see .menu ul */
   --chev-size: 0.7rem;
   --row-pad-x: 0.5rem;
+  /* the kebab column on phones. one token so the trigger and the empty slot a
+     covered row reserves cannot drift apart */
+  --kebab-col: 1.6rem;
 }
 
 [data-theme="dark"] {
@@ -333,8 +336,47 @@ details[open] > summary .chev {
 .name {
   font-weight: 500;
 }
+/* the row's text run (the name plus the muted notes that read as part of it) as
+   one box at both widths. only the basis differs: auto here so the box hugs its
+   text and the mark slot sits right after it, 0 in the phone block so the run
+   fills the row and wraps. */
+.row-label {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .spring {
   flex: 1;
+}
+/* the row's mark slot: whichever of the "needs ebook" pill or the covered check
+   the row carries. its own flex item rather than trailing text, so the mark holds
+   one column at the row's right edge however long the name beside it runs. the
+   slot sizes to its content: every flagged row carries the same pill, so they
+   line up without a declared width. */
+.row-mark {
+  display: inline-flex;
+  flex: none;
+}
+/* a covered folder is finished, so its check leaves the working mark column and
+   right-aligns in the row's trailing slot, in line with the last icon button. the
+   right edge then reads as one column of glyphs: pill or nothing in the mark slot,
+   buttons or a check at the edge. order does it without a second element in the
+   markup; the phone block puts the check back, where there is no action slot to
+   retire into. */
+.row-mark-done {
+  order: 1;
+}
+
+/* the row's trailing slot. the cluster inside it is display:contents on desktop,
+   so this is what carries the gap the row used to provide between the marker form
+   and the search links. */
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex: none;
 }
 
 .actions {
@@ -375,16 +417,84 @@ details[open] > summary .chev {
 .actions-group {
   display: contents;
 }
-/* sheet-only chrome: grab handle, title, per-row icons, verbose marker labels,
-   the "Search" divider. hidden by default so the desktop cluster stays compact.
-   the mobile sheet reveals each. */
+/* sheet-only chrome: grab handle, title, verbose marker labels, the "Search"
+   divider. hidden by default so the desktop cluster stays compact. the mobile
+   sheet reveals each. */
 .sheet-header,
 .sheet-grip,
 .sheet-title,
-.sheet-icon,
 .sheet-divider,
 .label-long {
   display: none;
+}
+/* the marker buttons carry their glyph at every width: that glyph is the whole
+   button once the label is clipped. the search-links rows keep theirs for the
+   sheet only, where the menu is a list of full-width rows. */
+.mark .sheet-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.mark .sheet-icon .icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  color: var(--color-muted);
+}
+/* the marker glyphs stay grey inside a flagged row, where .flagged .icon
+   would otherwise tint them amber along with the folder icon */
+.flagged .mark .sheet-icon .icon {
+  color: var(--color-muted);
+}
+.links-menu .sheet-icon {
+  display: none;
+}
+/* the marker labels leave the row visually but stay in the DOM and the a11y tree,
+   so the buttons keep an accessible name and a screen reader still reads them.
+   the same clip pattern the phone block uses on the row's muted notes. an
+   absolutely positioned child is not a flex item, so the button's gap does not
+   reserve a space beside the icon for it. */
+.label-short {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* hover tooltips for the icon-only row buttons. drawn here rather than left to
+   native `title`, whose delay is browser and OS controlled somewhere around half
+   a second with no hook to shorten it. hover-capable pointers only: a touch device
+   has no hover state to read one from, and the action sheet names both markers in
+   full there. focus-visible mirrors it for the keyboard. */
+@media (hover: hover) {
+  [data-tip] {
+    position: relative;
+  }
+  [data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 0.35rem);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-field);
+    background: var(--color-base-content);
+    color: var(--color-base-100);
+    font-size: 0.7rem;
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s;
+  }
+  [data-tip]:hover::after,
+  [data-tip]:focus-visible::after {
+    opacity: 1;
+    transition-delay: 150ms;
+  }
 }
 .links {
   display: inline-flex;
@@ -475,6 +585,7 @@ details[open] > summary .chev {
 .smell,
 .file-count {
   flex: none;
+  margin-inline-start: 0.5rem;
   font-size: 0.74rem;
   color: var(--color-muted);
 }
@@ -536,15 +647,14 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 }
 
 /* covering ebook/marker filenames on a covered row (show-all only): muted, set off
-   from the covered check by extra left margin, truncated with an ellipsis so a long
-   list never wraps the row */
+   from the name and wrapping whole. inline-block keeps the list atomic, so it moves
+   to the next line entire rather than breaking mid-filename under the label's
+   overflow-wrap. no ellipsis: truncating them hides exactly what a covered row
+   exists to show. */
 .cover-files {
-  flex: none;
-  margin-left: 0.75rem;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: inline-block;
+  max-width: 100%;
+  margin-inline-start: 0.5rem;
   color: var(--color-muted);
   font-size: 0.72rem;
 }
@@ -872,8 +982,11 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   /* the "needs ebook" pill collapses to an amber dot. text-indent and overflow
      hide the label visually while keeping it in the DOM and a11y tree, so screen
      readers still announce it and the HTML tests still match. the solid dot fill
-     is reasserted just below. */
+     is reasserted just below. inline-block is load-bearing: width and height do
+     not apply to an inline box, and .row-mark is inline-flex, so without it the
+     dot re-expands to the width of the label it is hiding. */
   .badge {
+    display: inline-block;
     width: 0.5rem;
     height: 0.5rem;
     min-width: 0.5rem;
@@ -967,28 +1080,71 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     padding-left: 0.15rem;
   }
 
-  /* rows may wrap so the action menu and cover files can drop to a new line */
+  /* rows may wrap so the action menu and cover files can drop to a new line.
+     the caret, the folder icon and the kebab align to the first text line rather
+     than to the middle of a label that may run to several lines, so they stay in
+     a straight column down the tree however tall the rows get. */
   .row {
     flex-wrap: wrap;
     row-gap: 0.4rem;
+    align-items: flex-start;
   }
-  .name {
-    min-width: 0;
+  /* the caret and the icon are shorter than a line of text, so nudge them onto
+     its optical center instead of its box top */
+  .row > .chev,
+  .row > .icon {
+    margin-top: 0.15rem;
   }
-  /* flagged and container rows stay on one line: a long name wraps inside its own
-     box instead of bumping the dot and kebab down to a second line. covered rows
-     keep the wrap from the .row rule above so the covering filename can still drop
-     below the name. */
-  .row:not(.covered) {
-    flex-wrap: nowrap;
+  /* a phone row carries the name, its status mark and the covering filenames.
+     the smell label and the file count are detail: at 390px they crowd out the
+     name, and both are still on the desktop row and in the expanded file list.
+     hidden visually rather than with display:none, so a screen reader still
+     announces them here and the row reads the same on a phone as on a desktop. */
+  .row-label .smell,
+  .row-label .file-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
-  .row:not(.covered) .name {
-    overflow-wrap: anywhere;
+  /* the name and its notes fill the row and wrap. a flex item's box is sized
+     before its text reflows and nothing re-measures it after, so a wrapped name
+     used to strand the leftover width inside its own box: a gap before the mark
+     on a flagged row, a whole claimed flex line on a covered one. flex-basis 0 is
+     what keeps the run off a line of its own. */
+  .row-label {
+    flex: 1 1 0;
+  }
+  /* the run already fills the row, so the spring has nothing left to push */
+  .spring {
+    display: none;
+  }
+  /* the mark sits on the first line's optical center rather than the top of a
+     label box that may run to several lines. the dot is 0.5rem and the check is
+     a full 1.05rem glyph, so they need different nudges to land on one baseline. */
+  .row-mark {
+    margin-top: 0.35rem;
+  }
+  .row-mark-done {
+    margin-top: 0.1rem;
+    order: 0;
   }
 
-  /* show the kebab trigger; it opens the per-row action sheet via the popover API */
+  /* show the kebab trigger; it opens the per-row action sheet via the popover API.
+     the trigger and the empty slot on a row without one are both one --kebab-col
+     wide, so the mark column to their left holds whether a row has actions or not. */
   .actions-trigger {
     display: inline-flex;
+    justify-content: center;
+    width: var(--kebab-col);
+  }
+  .row-actions {
+    min-width: var(--kebab-col);
+    margin-top: 0.15rem;
   }
 
   /* the closed sheet is hidden. the author rule `.actions-group { display: contents }`
@@ -1151,20 +1307,6 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   }
   .actions-group .links-menu a:hover {
     background: var(--color-base-200);
-  }
-
-  /* covering filenames (show-all) drop below the folder name, fully readable.
-     indented to 3.5rem, a little past where the folder name starts (~2.75rem),
-     so it reads as subordinate to the name above it rather than lining up flush
-     with it. */
-  .cover-files {
-    flex-basis: 100%;
-    max-width: 100%;
-    margin-left: 0;
-    padding-left: 3.5rem;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
   }
 
   /* the confirm buttons grow to fill the dialog footer on narrow screens */

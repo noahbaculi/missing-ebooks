@@ -436,20 +436,27 @@ pub(crate) fn error_section(root: usize, message: &str) -> Markup {
     }
 }
 
-/// The show-all status marker for a row: a success check on a covered folder. Gaps
-/// are already flagged by the amber icon and the badge, and plain containers need
-/// no marker, so neither gets one. Rendered only in show-all mode.
-fn status_icon(node: &Node) -> Markup {
+/// The row's mark slot: the amber "needs ebook" pill on a gap, the success check
+/// on a covered folder, nothing on a plain container. Its own flex item rather
+/// than the tail of the text run, so the mark holds one column down the list
+/// however long the names beside it run. Checks are show-all only: gaps-only
+/// renders no covered rows, and a gap is already flagged by the amber icon and
+/// the pill.
+fn row_mark(node: &Node, mode: ViewMode) -> Markup {
     html! {
-        @if !node.missing_ebook {
-            span.status title="covered" { (PreEscaped(include_str!("../../assets/svg/check.svg"))) }
+        @if node.needs_ebook() {
+            span.row-mark { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
+        } @else if mode == ViewMode::All && !node.missing_ebook {
+            span.row-mark.row-mark-done {
+                span.status title="covered" { (PreEscaped(include_str!("../../assets/svg/check.svg"))) }
+            }
         }
     }
 }
 
-/// The covering ebook and marker filenames for a covered row, in muted text just
-/// after the status check. Show-all only, and empty for gaps and folders covered
-/// from above, so nothing renders there.
+/// The covering ebook and marker filenames for a covered row, in muted text at
+/// the end of the name's run. Show-all only, and empty for gaps and folders
+/// covered from above, so nothing renders there.
 fn cover_files_span(node: &Node, mode: ViewMode) -> Markup {
     html! {
         @if mode == ViewMode::All && !node.cover_files.is_empty() {
@@ -484,6 +491,22 @@ fn file_count(node: &Node) -> Markup {
             span.file-count {
                 @if n == 1 { "1 file" } @else { (n) " files" }
             }
+        }
+    }
+}
+
+/// The row's text run: the folder name plus the muted notes that read as part of
+/// it, ending with the covering filenames. One box at both widths, so a phone-width
+/// row flows them inline after the name rather than beside its box, which lets a
+/// short filename share the name's line and a long one drop below it. Every note
+/// keeps the gate it carries on its own, so the three row branches share one call.
+fn row_label(node: &Node, mode: ViewMode, depth: usize) -> Markup {
+    html! {
+        span.row-label {
+            span.name { (node.name) }
+            (smell_label(node, depth))
+            (file_count(node))
+            (cover_files_span(node, mode))
         }
     }
 }
@@ -527,16 +550,10 @@ fn render_node(
                         summary.row.flagged {
                             (chevron())
                             (folder_icon())
-                            span.name { (node.name) }
-                            span.badge.badge-warning title="needs ebook" { "needs ebook" }
-                            (smell_label(node, depth))
-                            (file_count(node))
-                            @if mode == ViewMode::All { (status_icon(node)) }
-                            (cover_files_span(node, mode))
+                            (row_label(node, mode, depth))
                             span.spring {}
-                            @if act {
-                                (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
-                            }
+                            (row_mark(node, mode))
+                            (row_actions(root, &node.rel_path, &node.name, links, mode, counter, act))
                         }
                         ul.files { (file_rows(node)) }
                     }
@@ -548,10 +565,10 @@ fn render_node(
                     div.row.covered[covered] {
                         span.leaf-pad {}
                         (folder_icon())
-                        span.name { (node.name) }
-                        @if mode == ViewMode::All { (status_icon(node)) }
-                        (cover_files_span(node, mode))
+                        (row_label(node, mode, depth))
                         span.spring {}
+                        (row_mark(node, mode))
+                        (row_actions(root, &node.rel_path, &node.name, links, mode, counter, act))
                     }
                 }
             }
@@ -565,16 +582,10 @@ fn render_node(
                         .container-nested[!node.needs_ebook() && depth > 0] {
                         (chevron())
                         (folder_icon())
-                        span.name { (node.name) }
-                        @if node.needs_ebook() { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
-                        (smell_label(node, depth))
-                        (file_count(node))
-                        @if mode == ViewMode::All { (status_icon(node)) }
-                        (cover_files_span(node, mode))
+                        (row_label(node, mode, depth))
                         span.spring {}
-                        @if act {
-                            (row_actions(root, &node.rel_path, &node.name, links, mode, counter))
-                        }
+                        (row_mark(node, mode))
+                        (row_actions(root, &node.rel_path, &node.name, links, mode, counter, act))
                     }
                     ul {
                         (file_rows(node))
@@ -586,12 +597,17 @@ fn render_node(
     }
 }
 
-/// The per-row action cluster: a kebab trigger plus the marker buttons and search
+/// The per-row action slot: a kebab trigger plus the marker buttons and search
 /// links, wrapped in a group that doubles as a native popover. On desktop the
 /// trigger is hidden and the group is `display: contents`, so its children flow
-/// inline in the row. On mobile the kebab opens the group as a bottom action sheet
-/// over a dimmed backdrop. The browser provides the toggle, one-open-at-a-time,
-/// light-dismiss, and Esc.
+/// inline in the slot. On mobile the kebab opens the group as a bottom action
+/// sheet over a dimmed backdrop. The browser provides the toggle,
+/// one-open-at-a-time, light-dismiss, and Esc.
+///
+/// The slot renders on every row and `act` gates only its contents, so a row with
+/// nothing to act on still reserves the column. That is the horizontal twin of the
+/// row's reserved `min-height`: without it the mark beside it would shift on
+/// exactly the rows that carry no buttons.
 fn row_actions(
     root: usize,
     rel: &str,
@@ -599,21 +615,26 @@ fn row_actions(
     links: &[SearchLink],
     mode: ViewMode,
     counter: &std::cell::Cell<usize>,
+    act: bool,
 ) -> Markup {
-    let group_id = next_id("acts", root, counter);
     html! {
-        button.actions-trigger type="button"
-            aria-label="Actions"
-            aria-haspopup="menu"
-            popovertarget=(group_id)
-            onclick="event.stopPropagation()" { (PreEscaped(include_str!("../../assets/svg/kebab.svg"))) }
-        div.actions-group id=(group_id) popover="auto" aria-label=(name) {
-            div.sheet-header {
-                span.sheet-grip aria-hidden="true" {}
-                span.sheet-title { (name) }
+        span.row-actions {
+            @if act {
+                @let group_id = next_id("acts", root, counter);
+                button.actions-trigger type="button"
+                    aria-label="Actions"
+                    aria-haspopup="menu"
+                    popovertarget=(group_id)
+                    onclick="event.stopPropagation()" { (PreEscaped(include_str!("../../assets/svg/kebab.svg"))) }
+                div.actions-group id=(group_id) popover="auto" aria-label=(name) {
+                    div.sheet-header {
+                        span.sheet-grip aria-hidden="true" {}
+                        span.sheet-title { (name) }
+                    }
+                    (marker_buttons(root, rel, name, mode))
+                    (search_links(links, name, root, counter))
+                }
             }
-            (marker_buttons(root, rel, name, mode))
-            (search_links(links, name, root, counter))
         }
     }
 }
@@ -632,27 +653,27 @@ fn marker_buttons(root: usize, rel: &str, name: &str, mode: ViewMode) -> Markup 
             input type="hidden" name="root" value=(root);
             input type="hidden" name="rel" value=(rel);
             input type="hidden" name="view" value=(mode.as_query());
-            button.btn.btn-outline.btn-xs type="button"
+            button.btn.btn-outline.btn-xs.btn-square type="button"
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"no_ebook"}"#)
                 data-confirm-action="No ebook"
                 data-confirm-file=".no_ebook"
                 data-confirm-folder=(name)
-                title="No ebook exists or can be sourced. Covers this folder and everything beneath it."
+                data-tip="No ebook"
                 onclick="event.stopPropagation()" {
                     span.sheet-icon { (PreEscaped(include_str!("../../assets/svg/no-entry.svg"))) }
                     span.label-long { "No ebook" }
                     span.label-short { "No ebook" }
                 }
-            button.btn.btn-outline.btn-xs type="button"
+            button.btn.btn-outline.btn-xs.btn-square type="button"
                 hx-post="/mark"
                 hx-include="closest form"
                 hx-vals=(r#"{"kind":"ebook_elsewhere"}"#)
                 data-confirm-action="Ebook elsewhere"
                 data-confirm-file=".ebook_elsewhere"
                 data-confirm-folder=(name)
-                title="The ebook is in another folder. Covers this folder and everything beneath it."
+                data-tip="Ebook elsewhere"
                 onclick="event.stopPropagation()" {
                     span.sheet-icon { (PreEscaped(include_str!("../../assets/svg/ebook-elsewhere.svg"))) }
                     span.label-long { "Ebook elsewhere" }
@@ -684,10 +705,10 @@ fn search_links(
             @let id = next_id("links", root, counter);
             span.links {
                 span.sheet-divider { "Search" }
-                button.btn.btn-outline.btn-xs.links-toggle type="button"
+                button.btn.btn-outline.btn-xs.btn-square.links-toggle type="button"
                     popovertarget=(id)
                     aria-label="Search for this book"
-                    title="Search links"
+                    data-tip="Search links"
                     onclick="event.stopPropagation()" { (PreEscaped(include_str!("../../assets/svg/search.svg"))) }
                 div.links-menu popover="auto" id=(id) onclick="event.stopPropagation()" {
                     @for link in links {
@@ -1203,13 +1224,13 @@ mod tests {
         assert!(html.contains(r#"data-confirm-action="Ebook elsewhere""#));
         assert!(html.contains(r#"data-confirm-file=".ebook_elsewhere""#));
         assert!(html.contains(r#"data-confirm-folder="Book""#));
-        // Each button carries a hover tooltip spelling out what the marker means.
-        assert!(html.contains(
-            r#"title="No ebook exists or can be sourced. Covers this folder and everything beneath it.""#
-        ));
-        assert!(html.contains(
-            r#"title="The ebook is in another folder. Covers this folder and everything beneath it.""#
-        ));
+        // Each button names itself in a CSS tooltip. Native `title` is off: its
+        // delay is browser and OS controlled, and leaving it stacks two tooltips.
+        // The full sentence lives in the confirm dialog, which is read before
+        // anything is written.
+        assert!(html.contains(r#"data-tip="No ebook""#));
+        assert!(html.contains(r#"data-tip="Ebook elsewhere""#));
+        assert!(!html.contains("Covers this folder and everything beneath it"));
     }
 
     #[test]
@@ -1983,5 +2004,119 @@ mod tests {
                 mode.as_query(),
             );
         }
+    }
+
+    #[test]
+    fn index_wraps_the_flagged_row_label() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
+        // The name and the muted notes render as one inline run, so a wrapped name
+        // at phone width has nothing sitting beside its box. The badge is not in
+        // it: it holds the mark column at the row's right edge instead.
+        assert!(html.contains(concat!(
+            r#"<span class="row-label">"#,
+            r#"<span class="name">Book</span>"#,
+            r#"<span class="smell smell-loose">loose at top</span>"#,
+            r#"<span class="file-count">1 file</span>"#,
+            r#"</span>"#,
+        )));
+    }
+
+    #[test]
+    fn index_wraps_the_covered_row_label() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![covered_leaf("Book", "Book", &["Book.epub"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::All, 0).into_string();
+        // The covering filenames stay in the run and share the name's line when it
+        // has room for them. The check has left the run for the mark slot.
+        assert!(html.contains(concat!(
+            r#"<span class="row-label">"#,
+            r#"<span class="name">Book</span>"#,
+            r#"<span class="cover-files" title="covering files">Book.epub</span>"#,
+            r#"</span>"#,
+        )));
+    }
+
+    #[test]
+    fn index_gives_each_mark_its_own_slot() {
+        let flagged = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&flagged, &[], ViewMode::GapsOnly, 0).into_string();
+        // A gap's pill sits in the mark slot, after the spring that pushes it right.
+        assert!(html.contains(concat!(
+            r#"<span class="spring"></span>"#,
+            r#"<span class="row-mark">"#,
+            r#"<span class="badge badge-warning" title="needs ebook">needs ebook</span>"#,
+            r#"</span>"#,
+        )));
+
+        let covered = vec![section(
+            "/lib",
+            forest(vec![covered_leaf("Book", "Book", &["Book.epub"])]),
+            1,
+        )];
+        let html = render_view(&covered, &[], ViewMode::All, 0).into_string();
+        // A covered row's check takes the same slot, tagged so the desktop rule can
+        // retire it past the action slot.
+        assert!(html.contains(concat!(
+            r#"<span class="row-mark row-mark-done">"#,
+            r#"<span class="status" title="covered">"#,
+        )));
+
+        // Gaps-only renders no checks at all, so the slot only ever holds the pill.
+        let html = render_view(&flagged, &[], ViewMode::GapsOnly, 0).into_string();
+        assert!(!html.contains("row-mark-done"));
+    }
+
+    #[test]
+    fn every_row_reserves_an_action_slot() {
+        // A covered leaf carries no buttons, but it still gets the slot, so the
+        // mark column above it cannot slide sideways from row to row.
+        let view = vec![section(
+            "/lib",
+            forest(vec![
+                covered_leaf("Done", "Done", &["Done.epub"]),
+                flagged_leaf("Gap", "Gap", &["01.mp3"]),
+            ]),
+            1,
+        )];
+        let html = render_view(&view, &default_links(), ViewMode::All, 0).into_string();
+        assert_eq!(
+            html.matches(r#"class="row-actions""#).count(),
+            2,
+            "the covered row and the flagged row each carry an action slot",
+        );
+        // Only the flagged row fills it.
+        assert_eq!(html.matches(r#"class="actions-group""#).count(), 1);
+    }
+
+    #[test]
+    fn marker_buttons_keep_their_labels_in_the_dom() {
+        let view = vec![section(
+            "/lib",
+            forest(vec![flagged_leaf("Book", "Book", &["01.mp3"])]),
+            1,
+        )];
+        let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
+        // The buttons render icon-only, but the label is still in the markup: the
+        // stylesheet clips it, so each button keeps an accessible name.
+        assert!(html.contains(r#"<span class="label-short">No ebook</span>"#));
+        assert!(html.contains(r#"<span class="label-short">Elsewhere</span>"#));
+        // Square sizing, so the three row buttons read as one set of icons.
+        assert_eq!(
+            html.matches("btn-outline btn-xs btn-square").count(),
+            2,
+            "both marker buttons",
+        );
     }
 }
