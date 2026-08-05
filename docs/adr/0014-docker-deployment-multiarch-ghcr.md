@@ -1,5 +1,7 @@
 # Docker image is multi-arch on GHCR with a PUID/PGID entrypoint
 
+> Amended 2026-08-04 by ADR-0038: the PUID/PGID entrypoint described below is removed. The image runs the binary directly as `USER 1000:1000`, overridable with `user:` or `--user`, and picks up `/config/config.toml` via `MISSING_EBOOKS_CONFIG` set in the Dockerfile.
+
 Date: 2026-06-08.
 
 ## Context

@@ -65,12 +65,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo +1.96.0 build --locked
 
-  docker-entrypoint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: sh tests/docker/entrypoint.sh
-
   docs:
     runs-on: ubuntu-latest
     env:

@@ -212,8 +212,7 @@ mod tests {
 
     #[test]
     fn explicit_flag_wins_over_env_even_when_the_file_is_absent() {
-        // A typed path is a promise: it survives to Config::load, which errors
-        // on it. Only the env hint is allowed to disappear.
+        // A typed path is a promise: only the env hint may vanish
         let flag = PathBuf::from("/typed/but/missing.toml");
         let resolved = resolve_config_path(
             Some(flag.clone()),

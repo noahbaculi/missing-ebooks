@@ -29,7 +29,7 @@ services:
 
 Then open http://127.0.0.1:13379.
 
-Point the volume at your library on the host. The container reads it and writes marker files back into it. If those markers need to land under a specific user or group on the host (common on NAS mounts), set `PUID` and `PGID`; see [Advanced configuration](#advanced-configuration).
+Point the volume at your library on the host. The container reads it and writes marker files back into it. The container runs as uid 1000 by default; if the markers need to land under a different user or group on the host (common on NAS mounts), set `user:`; see [Advanced configuration](#advanced-configuration).
 
 > [!WARNING]
 > The server has no authentication. It binds to loopback by default, and binding to a non-loopback address logs a warning at startup. To reach it from the LAN, put a reverse proxy with authentication in front of it before exposing it beyond your machine.
@@ -55,18 +55,17 @@ A marker covers the folder it sits in and everything below it, the same as an eb
 
 The defaults handle a working install. Reach for `config.toml` only to override search links, add exclusion patterns, or change extension lists. Everything else is an environment variable.
 
-A fuller compose sample lives at [`docker-compose.advanced.yml`](docker-compose.advanced.yml). It carries `PUID` / `PGID`, multiple library roots, log verbosity, and a mounted `config.toml`:
+A fuller compose sample lives at [`docker-compose.advanced.yml`](docker-compose.advanced.yml). It carries a `user:` override, multiple library roots, log verbosity, and a mounted `config.toml`:
 
 ```yaml
 services:
   missing-ebooks:
     image: ghcr.io/noahbaculi/missing-ebooks:latest
     container_name: missing-ebooks
+    user: "1000:1000"
     ports:
       - "127.0.0.1:13379:13379"
     environment:
-      PUID: 1000
-      PGID: 1000
       MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks_1:/audiobooks_2
       MISSING_EBOOKS_LOG: debug
     volumes:
@@ -76,9 +75,9 @@ services:
     restart: unless-stopped
 ```
 
-- `PUID` / `PGID` set the user the container runs as. Match them to whoever owns the library on the host (run `id` to find yours). They default to `1000`. These are Docker-only and are not in `config.toml`.
+- `user:` sets the user the container runs as. The image defaults to `1000:1000`; match it to whoever owns the library on the host (run `id` to find yours). This is Docker's own directive, not an app setting, so it is not in `config.toml`.
 - `MISSING_EBOOKS_LIBRARY_ROOTS` takes an OS-path-separated list (`:` on Unix, `;` on Windows), so multiple roots need one mount per root and one entry per container path.
-- Mount `config.toml` at `/config/config.toml`; the entrypoint auto-detects that path.
+- Mount `config.toml` at `/config/config.toml`; the image auto-detects that path.
 
 ### The `config.toml` file
 

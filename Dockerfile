@@ -21,42 +21,38 @@ COPY assets ./assets
 
 RUN cargo build --release --locked --bin "${BIN}"
 
-# Demo runtime: the single demo binary plus a non-root user. /tmp is writable
+# Demo runtime: the single demo binary, run as an ordinary uid. /tmp is writable
 # for the seeded scenario directory. Built only with `--target demo` and
-# BIN=missing-ebooks-demo; a plain `docker build .` never reaches this stage.
+# BIN=missing-ebooks-demo. A plain `docker build .` never reaches this stage.
 FROM alpine:3.24 AS demo
-RUN adduser -D -u 1000 demo
 COPY --from=builder /build/target/release/missing-ebooks-demo /usr/local/bin/missing-ebooks-demo
-USER demo
+USER 1000:1000
 
-ENV DEMO_BIND=0.0.0.0:8080 \
-    DEMO_SCENARIO=mixed-forest
+ENV DEMO_BIND=0.0.0.0:8080
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/missing-ebooks-demo"]
 
 # Production runtime, deliberately the last stage so an untargeted build (CI
 # publish, `docker build .`) produces it: a small Alpine image with just the
-# binary and a privilege-drop shim.
+# binary. busybox wget (already in the base) backs the healthcheck.
 FROM alpine:3.24 AS runtime
 
-# su-exec drops root to the configured PUID/PGID in the entrypoint. busybox
-# wget (already in the base) backs the healthcheck.
-RUN apk add --no-cache su-exec
-
 COPY --from=builder /build/target/release/missing-ebooks /usr/local/bin/missing-ebooks
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+
+# Run as an ordinary uid so marker files land host-owned. Compose `user:` or
+# `--user` on docker run overrides it (see ADR-0038).
+USER 1000:1000
 
 # Bind all interfaces inside the container (loopback would be unreachable from
-# the host). Exposure is controlled at the port-publish layer (see ADR 0003).
+# the host). Exposure is controlled at the port-publish layer (see ADR-0003).
+# The config path is a hint: absent the mount, the binary ignores it.
 ENV MISSING_EBOOKS_BIND=0.0.0.0 \
-    PUID=1000 \
-    PGID=1000
+    MISSING_EBOOKS_CONFIG=/config/config.toml
 
 EXPOSE 13379
 
 # Honor a custom port if MISSING_EBOOKS_PORT is set; default to 13379.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -q -O /dev/null "http://127.0.0.1:${MISSING_EBOOKS_PORT:-13379}/" || exit 1
+  CMD wget -q -O /dev/null "http://127.0.0.1:${MISSING_EBOOKS_PORT:-13379}/"
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/missing-ebooks"]

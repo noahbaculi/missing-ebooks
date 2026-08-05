@@ -1,5 +1,5 @@
 # Minimal compose sample. Boots missing-ebooks against one library root.
-# For PUID/PGID, multiple roots, log verbosity, or a mounted config.toml,
+# For a run-as user, multiple roots, log verbosity, or a mounted config.toml,
 # see docker-compose.advanced.yml and the README's "Advanced configuration".
 services:
   missing-ebooks:

@@ -38,7 +38,7 @@ jobs:
           touch "/tmp/lib/Author/Book/chapter.mp3"
           docker run -d --name smoke \
             -e MISSING_EBOOKS_LIBRARY_ROOTS=/audiobooks \
-            -e PUID="$(id -u)" -e PGID="$(id -g)" \
+            --user "$(id -u):$(id -g)" \
             -v /tmp/lib:/audiobooks \
             -p 13379:13379 \
             missing-ebooks:smoke
