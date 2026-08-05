@@ -295,13 +295,27 @@ details > summary::-webkit-details-marker {
 
 .row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   padding: 0.3rem var(--row-pad-x);
   border-radius: var(--radius-field);
   /* reserve the action-button row height so a covered row, which drops the buttons,
      stays as tall as a flagged one and marking never shifts the rows below */
   min-height: 2rem;
+}
+/* row is flex-start so a wrapping label grows downward from the first line.
+   each non-label child gets a box the height of that reserved row (2rem) and
+   centres its content, so every glyph sits at the vertical middle of that box.
+   the label then pads its top by the same offset that centres a single line
+   inside 2rem: first-line centre and glyph centre land on the same y, and any
+   extra lines flow below. */
+.row > *:not(.row-label):not(.spring) {
+  min-height: 2rem;
+  display: inline-flex;
+  align-items: center;
+}
+.row-label {
+  padding-block-start: calc((2rem - 1lh) / 2);
 }
 .row:hover {
   background: var(--color-base-200);
@@ -1089,12 +1103,9 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     row-gap: 0.4rem;
     align-items: flex-start;
   }
-  /* the caret and the icon are shorter than a line of text, so nudge them onto
-     its optical center instead of its box top */
-  .row > .chev,
-  .row > .icon {
-    margin-top: 0.15rem;
-  }
+  /* the caret, folder icon, mark and kebab all inherit the desktop rule that
+     gives each row child a 2rem box centred on its content, so they land on the
+     same y as the label's first line without per-glyph nudges. */
   /* a phone row carries the name, its status mark and the covering filenames.
      the smell label and the file count are detail: at 390px they crowd out the
      name, and both are still on the desktop row and in the expanded file list.
@@ -1123,14 +1134,9 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   .spring {
     display: none;
   }
-  /* the mark sits on the first line's optical center rather than the top of a
-     label box that may run to several lines. the dot is 0.5rem and the check is
-     a full 1.05rem glyph, so they need different nudges to land on one baseline. */
-  .row-mark {
-    margin-top: 0.35rem;
-  }
+  /* the mark and the covered check both sit inside the shared 2rem child box, so
+     the desktop centring puts them on the label's first-line optical middle. */
   .row-mark-done {
-    margin-top: 0.1rem;
     order: 0;
   }
 
@@ -1144,7 +1150,6 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   }
   .row-actions {
     min-width: var(--kebab-col);
-    margin-top: 0.15rem;
   }
 
   /* the closed sheet is hidden. the author rule `.actions-group { display: contents }`
