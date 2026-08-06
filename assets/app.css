@@ -90,12 +90,23 @@ details > summary::-webkit-details-marker {
 
 /* components */
 
+/* Shared content-column cap: navbar, cards, scan-bar, gap-summary, search-empty,
+   intro-card, and site-footer all track the same 52rem column. */
+.navbar,
+.card,
+.scan-bar,
+.gap-summary,
+.search-empty,
+.intro-card,
+.site-footer {
+  max-width: 52rem;
+}
+
 /* navbar */
 .navbar {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  max-width: 52rem;
   margin: 0 auto 1.25rem;
   padding: 0.75rem 1rem;
   background: var(--color-base-100);
@@ -231,7 +242,6 @@ details > summary::-webkit-details-marker {
 
 /* card / root section */
 .card {
-  max-width: 52rem;
   margin: 0 auto 1rem;
   padding: 1rem 1.1rem;
   background: var(--color-base-100);
@@ -868,10 +878,6 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 .switch input:checked + .switch-track::after {
   left: 1.05rem;
 }
-.switch input:focus-visible + .switch-track {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
 /* off-track in dark: base-300 is darker than the panel and effectively vanishes,
    so an off toggle reads as empty space. Lift the fill above the surface and
    outline it so the control's shape is defined whether it is on or off. The
@@ -1177,18 +1183,17 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   /* the sheet box, shared by the open and the animating-closed states: a
      full-width panel pinned to the bottom of the viewport. the default transform
      sits one full height below the fold, so the open state slides it up and the
-     closing state slides it back down. */
-  .actions-group[popover] {
+     closing state slides it back down. Shared chrome for both bottom-sheet
+     popovers (actions and settings) lives in the grouped rule below; per-panel
+     content styling stays here. */
+  .actions-group[popover],
+  .settings-panel[popover] {
     position: fixed;
     inset: auto 0 0 0;
+    margin: 0;
     width: 100%;
     max-height: 80vh;
-    margin: 0;
     overflow-y: auto;
-    flex-direction: column;
-    gap: 0.1rem;
-    padding: 0.5rem 0.75rem calc(0.85rem + env(safe-area-inset-bottom));
-    background: var(--color-surface-raised);
     border: none;
     border-radius: var(--radius-box) var(--radius-box) 0 0;
     box-shadow: 0 -8px 24px rgb(0 0 0 / 18%);
@@ -1197,6 +1202,12 @@ html:not([data-italic-nested="off"]) .container-nested .name {
       transform 0.25s ease,
       overlay 0.25s ease allow-discrete,
       display 0.25s ease allow-discrete;
+  }
+  .actions-group[popover] {
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.5rem 0.75rem calc(0.85rem + env(safe-area-inset-bottom));
+    background: var(--color-surface-raised);
   }
 
   /* the open sheet: shown and slid into place */
@@ -1209,13 +1220,15 @@ html:not([data-italic-nested="off"]) .container-nested .name {
      enhancement; without @starting-style and allow-discrete the sheet simply
      appears and disappears without sliding, and still works. */
   @starting-style {
-    .actions-group:popover-open {
+    .actions-group:popover-open,
+    .settings-panel:popover-open {
       transform: translateY(100%);
     }
   }
 
   /* dim the page behind the open sheet */
-  .actions-group::backdrop {
+  .actions-group::backdrop,
+  .settings-panel::backdrop {
     background: rgb(0 0 0 / 45%);
   }
 
@@ -1338,34 +1351,13 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   }
 
   /* the settings panel drops its centered overlay and becomes a bottom sheet,
-     matching the action sheet: pinned full-width to the bottom and slid up. */
+     matching the action sheet: pinned full-width to the bottom and slid up.
+     Shared chrome lives with .actions-group above; only the padding differs. */
   .settings-panel[popover] {
-    position: fixed;
-    inset: auto 0 0 0;
-    margin: 0;
-    width: 100%;
-    max-height: 80vh;
-    overflow-y: auto;
     padding: 0.6rem 0.75rem calc(0.85rem + env(safe-area-inset-bottom));
-    border: none;
-    border-radius: var(--radius-box) var(--radius-box) 0 0;
-    box-shadow: 0 -8px 24px rgb(0 0 0 / 18%);
-    transform: translateY(100%);
-    transition:
-      transform 0.25s ease,
-      overlay 0.25s ease allow-discrete,
-      display 0.25s ease allow-discrete;
   }
   .settings-panel:popover-open {
     transform: translateY(0);
-  }
-  @starting-style {
-    .settings-panel:popover-open {
-      transform: translateY(100%);
-    }
-  }
-  .settings-panel::backdrop {
-    background: rgb(0 0 0 / 45%);
   }
 }
 
@@ -1437,7 +1429,6 @@ li.entering {
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
-  max-width: 52rem;
   height: 3px;
   border-radius: 2px;
   overflow: hidden;
@@ -1461,7 +1452,7 @@ li.entering {
   opacity: 1;
   transition: opacity 0.15s ease 0.2s;
 }
-.scan-bar.htmx-request::before {
+.scan-bar:is(.htmx-request, .is-retrying)::before {
   animation: scan-indeterminate 1.05s ease-in-out infinite;
 }
 /* The tree dims in place behind the same show-delay, so dim and bar arrive together
@@ -1578,9 +1569,6 @@ li.entering {
 .scan-bar.is-retrying {
   opacity: 1;
   transition: none;
-}
-.scan-bar.is-retrying::before {
-  animation: scan-indeterminate 1.05s ease-in-out infinite;
 }
 .roots-wrap:has(.scan-bar.is-retrying) #roots {
   opacity: 0.4;
@@ -1838,7 +1826,6 @@ li.entering {
    by app.js as marks land. The session bar is a client-side meter of this sitting,
    not a stored statistic. */
 .gap-summary {
-  max-width: 52rem;
   margin: 0 auto 1.25rem;
   padding: 0.9rem 1.1rem;
   background: var(--color-base-100);
@@ -1992,10 +1979,6 @@ li.entering {
 }
 /* The input clears its own outline, so ring the whole pill on focus-within,
    the same pattern as the navbar title link and the switches. */
-.search:focus-within {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
 .search .icon {
   width: 1rem;
   height: 1rem;
@@ -2062,7 +2045,6 @@ li.entering {
   display: none;
 }
 .search-empty {
-  max-width: 52rem;
   margin: 0 auto 1rem;
   padding: 0.85rem 1.1rem;
   color: var(--color-muted);
@@ -2090,7 +2072,6 @@ li.entering {
    [data-intro="dismissed"] rule when the per-device flag is set. */
 .intro-card {
   position: relative;
-  max-width: 52rem;
   margin: 0 auto 1rem;
   padding: 1rem 1.25rem;
   background: color-mix(in srgb, var(--color-primary) 7%, var(--color-base-100));
@@ -2154,6 +2135,9 @@ li.entering {
   background: var(--color-base-200);
   color: var(--color-base-content);
 }
+/* Shared focus ring for controls that only need the outline pair. */
+.switch input:focus-visible + .switch-track,
+.search:focus-within,
 .intro-dismiss:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
@@ -2164,7 +2148,6 @@ li.entering {
    navbar and summary use, sits muted below the content, and reads as one quiet
    row: brand on the left, links on the right, wrapping to stacked on a phone. */
 .site-footer {
-  max-width: 52rem;
   margin: 2rem auto 0.5rem;
   padding: 1rem;
   display: flex;
