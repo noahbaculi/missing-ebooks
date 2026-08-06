@@ -22,6 +22,6 @@ One ADR per architectural decision, numbered sequentially. New ADRs use this sha
 
     Optional. Inbound and outbound ADR links.
 
-See [ADR-0024](0024-autosync-section-level-oob-swap.md) as a worked example.
+See [ADR-0022](0022-cache-holds-raw-scan-output.md) as a worked example.
 
 An amended ADR carries a one-line blockquote between the title and the `Date:` line, naming the amending ADR and summarizing what changed.

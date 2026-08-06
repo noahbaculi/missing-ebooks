@@ -1529,8 +1529,8 @@ mod tests {
     #[tokio::test]
     async fn store_ttl_zero_keeps_the_dir_index_warm() {
         // ttl 0 rescans on every read, but the dir index survives across
-        // reads (ADR-0023). Two reads in a row should both see the gap and
-        // leave the index populated.
+        // reads: warm reuse skips unchanged directories via mtime. Two reads
+        // in a row should both see the gap and leave the index populated.
         let dir = tempfile::tempdir().unwrap();
         crate::scenarios::touch(&dir.path().join("Author/Book/01.mp3"));
         let store = test_store(None, dir.path().to_path_buf());

@@ -36,7 +36,7 @@ Point the bench at a real filesystem or a rehydrated snapshot via env vars. All 
 - `CONCURRENCY=1,4,8,16,32` sweeps the rayon pool size for `scan_full`/`scan_gaps`/`scan_warm`. For `scan_concurrent`, the values are caller counts instead. Defaults are 16 threads for the first three and 5 callers for the last.
 - `LABEL=smb` tags the companion JSON. Defaults to `unlabeled`.
 
-A sample SMB run mirroring the ADR-0023 warm-reuse gate:
+A sample SMB run for the warm-reuse gate:
 
 ```bash
 sudo -v
@@ -69,7 +69,7 @@ Each run writes `benchmarks/scan-context-<label>-<host>-<unix>.json`. It records
 
 ## 2026-06 sweep
 
-Eighteen `scan-bench-*.json` files (schema v1 through v5) and three `cifs-*` text artifacts under this directory are the evidence base for ADR-0019, ADR-0020, ADR-0022, and ADR-0023. They no longer round-trip through the bench binary; the per-run findings, fstab and `smb.conf` levers, and the result narratives live in [`EXPERIMENTS-2026-06.md`](EXPERIMENTS-2026-06.md).
+Eighteen `scan-bench-*.json` files (schema v1 through v5) and three `cifs-*` text artifacts under this directory are the evidence base for ADR-0019, ADR-0020, and ADR-0022. They no longer round-trip through the bench binary; the per-run findings, fstab and `smb.conf` levers, and the result narratives live in [`EXPERIMENTS-2026-06.md`](EXPERIMENTS-2026-06.md).
 
 ## Render regression bench
 
