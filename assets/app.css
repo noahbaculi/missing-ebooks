@@ -48,6 +48,9 @@
   --shadow-popover: 0 8px 24px rgb(0 0 0 / 18%);
   --radius-pill: 999px;
   --motion-fast: 0.15s;
+  --fs-xs: 0.7rem;
+  --fs-sm: 0.8rem;
+  --fs-base: 0.85rem;
 }
 
 [data-theme="dark"] {
@@ -164,7 +167,7 @@ details > summary::-webkit-details-marker {
 .btn {
   font: inherit;
   font-weight: 600;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -199,7 +202,7 @@ details > summary::-webkit-details-marker {
   background: var(--color-base-200);
 }
 .btn-xs {
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   padding: 0.2rem 0.5rem;
 }
 .btn-square {
@@ -218,7 +221,7 @@ details > summary::-webkit-details-marker {
 .segment {
   font: inherit;
   font-weight: 600;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   padding: 0.3rem 0.7rem;
   border-radius: calc(var(--radius-field) - 0.15rem);
   color: var(--color-muted);
@@ -270,7 +273,7 @@ details > summary::-webkit-details-marker {
 }
 .root-badge {
   flex: none;
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   line-height: 1.4;
   padding: 0.12rem 0.5rem;
@@ -515,7 +518,7 @@ details[open] > summary .chev {
     border-radius: var(--radius-field);
     background: var(--color-base-content);
     color: var(--color-base-100);
-    font-size: 0.7rem;
+    font-size: var(--fs-xs);
     font-weight: 500;
     line-height: 1.4;
     white-space: nowrap;
@@ -641,7 +644,7 @@ details[open] > summary .chev {
   gap: 0.45rem;
   padding: 0.14rem 0.5rem;
   color: var(--color-muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 .file-row .file-glyph {
   width: 0.85rem;
@@ -704,7 +707,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   gap: 0.5rem;
   padding: 0.55rem 0.8rem;
   border-radius: var(--radius-field);
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
 }
 .alert-error {
   background: color-mix(in srgb, var(--color-error) 14%, var(--color-base-100));
@@ -729,7 +732,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   gap: 0.5rem;
   padding: 0.3rem 0.2rem;
   color: var(--color-muted);
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
 }
 .empty .icon {
   color: var(--color-success-text);
@@ -769,7 +772,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 }
 .settings-head {
   padding: 0.3rem 0.5rem 0.4rem;
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -800,13 +803,13 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   text-align: center;
 }
 .settings-label {
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   font-weight: 500;
   color: var(--color-base-content);
 }
 .settings-sub {
   display: block;
-  font-size: 0.7rem;
+  font-size: var(--fs-xs);
   font-weight: 400;
   color: var(--color-muted);
   margin-top: 0.1rem;
@@ -986,7 +989,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   align-items: center;
   gap: 0.45rem;
   margin-bottom: 0.95rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   color: var(--color-muted);
 }
 .confirm-again-label input {
@@ -1304,7 +1307,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   .actions-group .sheet-divider {
     display: block;
     padding: 0.5rem 0.6rem 0.2rem;
-    font-size: 0.7rem;
+    font-size: var(--fs-xs);
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1502,7 +1505,7 @@ li.entering {
   gap: 0.55rem;
   margin: -1.5rem -1.5rem 1.25rem;
   padding: 0.6rem 1rem;
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   font-weight: 500;
   border-bottom: var(--border) solid transparent;
 }
@@ -1720,7 +1723,7 @@ li.entering {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   line-height: 1.45;
 }
 /* folder name: the primary line in the app's UI font at semibold so it reads as
@@ -1756,7 +1759,7 @@ li.entering {
   background: none;
   border: none;
   padding: 0.1rem 0.25rem;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 700;
   color: var(--color-primary);
   cursor: pointer;
@@ -1921,7 +1924,7 @@ li.entering {
   background: var(--color-base-200);
   border: var(--border) solid var(--color-border);
   border-radius: var(--radius-pill);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 .gap-chip-name {
   font-weight: 600;
@@ -1997,7 +2000,7 @@ li.entering {
   width: 8rem;
   min-width: 0;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--fs-base);
   color: var(--color-base-content);
   background: transparent;
   border: none;
@@ -2161,7 +2164,7 @@ li.entering {
   flex-wrap: wrap;
   border-top: var(--border) solid var(--color-border);
   color: var(--color-muted);
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
 }
 .footer-brand {
   display: inline-flex;
