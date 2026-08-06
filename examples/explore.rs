@@ -8,7 +8,7 @@
 //! docs/adr/0007-folder-granular-not-book-granular.md).
 
 use std::fmt::Write as _;
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -45,6 +45,10 @@ struct Cli {
     /// Keep the seeded files on exit and print where they landed.
     #[arg(long)]
     keep: bool,
+    /// Bind a specific local IP. Defaults to 127.0.0.1. Non-loopback binds skip
+    /// the preferred-port fallback and warn on stderr.
+    #[arg(long, default_value_t = IpAddr::V4(Ipv4Addr::LOCALHOST))]
+    bind: IpAddr,
 }
 
 /// Every scenario name and its description. Printed to stderr when a missing or
@@ -58,23 +62,27 @@ fn catalog_listing() -> String {
     out
 }
 
-/// Bind the harness's loopback listener. With no explicit `--port`, prefer
-/// `default_port` (the application's own default) so the printed URL matches a
-/// real deployment, and fall back to an OS-assigned port only when that port is
-/// already taken. An explicit port is bound exactly, so a conflict there is a
-/// real error the caller surfaces rather than papering over.
+/// Bind the harness listener. On loopback, keep the ADR-0011 preferred-port
+/// fallback: with no explicit --port, prefer `default_port` and fall back to an
+/// OS-assigned port only if it is taken. On any non-loopback bind (tailnet IP,
+/// 0.0.0.0), stay exact-or-error even without --port: a random high port on an
+/// exposed interface is a worse default than a clear failure. An explicit --port
+/// is always exact, regardless of bind.
 async fn bind_harness_listener(
+    bind: IpAddr,
     explicit: Option<u16>,
     default_port: u16,
 ) -> std::io::Result<TcpListener> {
     let preferred = explicit.unwrap_or(default_port);
-    match TcpListener::bind((Ipv4Addr::LOCALHOST, preferred)).await {
+    match TcpListener::bind((bind, preferred)).await {
         Ok(listener) => Ok(listener),
-        // Only the defaulting path falls back. An explicit --port stays exact,
-        // so its conflict propagates to the caller.
-        Err(err) if explicit.is_none() && err.kind() == std::io::ErrorKind::AddrInUse => {
+        Err(err)
+            if explicit.is_none()
+                && bind.is_loopback()
+                && err.kind() == std::io::ErrorKind::AddrInUse =>
+        {
             eprintln!("port {preferred} is in use; serving on an OS-assigned port instead");
-            TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await
+            TcpListener::bind((bind, 0)).await
         }
         Err(err) => Err(err),
     }
@@ -141,19 +149,19 @@ async fn main() -> ExitCode {
     // its real cache policy (see src/web/assets.rs).
     let app = web::router(state).layer(axum::middleware::map_response(no_store));
 
-    // Bind 127.0.0.1. With no --port, prefer the app's default so the printed
-    // URL matches a real deployment, falling back to an OS-assigned port only if
-    // the default is already taken. --port pins an exact port for a stable URL.
-    let listener = match bind_harness_listener(cli.port, Config::default().port).await {
+    let listener = match bind_harness_listener(cli.bind, cli.port, Config::default().port).await {
         Ok(listener) => listener,
         Err(err) => {
-            eprintln!("could not bind 127.0.0.1: {err}");
+            eprintln!("could not bind {}: {err}", cli.bind);
             return ExitCode::FAILURE;
         }
     };
     let addr = listener
         .local_addr()
         .expect("a bound listener has a local address");
+    if !cli.bind.is_loopback() {
+        eprintln!("warning: binding {addr} exposes the harness beyond localhost");
+    }
     println!("scenario: {}", scenario.name);
     println!("listening on http://{addr}");
     println!("Press Ctrl-C to stop.");
@@ -237,7 +245,9 @@ mod tests {
         let free = probe.local_addr().unwrap().port();
         drop(probe);
 
-        let listener = bind_harness_listener(None, free).await.unwrap();
+        let listener = bind_harness_listener(Ipv4Addr::LOCALHOST.into(), None, free)
+            .await
+            .unwrap();
         assert_eq!(listener.local_addr().unwrap().port(), free);
     }
 
@@ -249,7 +259,9 @@ mod tests {
         let held = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         let taken = held.local_addr().unwrap().port();
 
-        let listener = bind_harness_listener(None, taken).await.unwrap();
+        let listener = bind_harness_listener(Ipv4Addr::LOCALHOST.into(), None, taken)
+            .await
+            .unwrap();
         assert_ne!(listener.local_addr().unwrap().port(), taken);
     }
 
@@ -260,6 +272,49 @@ mod tests {
         let held = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         let taken = held.local_addr().unwrap().port();
 
-        assert!(bind_harness_listener(Some(taken), 0).await.is_err());
+        assert!(
+            bind_harness_listener(Ipv4Addr::LOCALHOST.into(), Some(taken), 0)
+                .await
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn cli_defaults_bind_to_loopback() {
+        let cli = Cli::try_parse_from(["explore", "mixed-forest"]).unwrap();
+        assert_eq!(cli.bind, std::net::IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+
+    #[test]
+    fn cli_parses_bind_flag() {
+        let cli = Cli::try_parse_from(["explore", "mixed-forest", "--bind", "0.0.0.0"]).unwrap();
+        assert_eq!(cli.bind, std::net::IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+    }
+
+    #[tokio::test]
+    async fn loopback_fallback_still_works_when_bind_is_explicit_loopback() {
+        // Regression guard: passing --bind 127.0.0.1 explicitly must not disable
+        // the ADR-0011 preferred-port fallback.
+        let held = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let taken = held.local_addr().unwrap().port();
+
+        let listener = bind_harness_listener(Ipv4Addr::LOCALHOST.into(), None, taken)
+            .await
+            .unwrap();
+        assert_ne!(listener.local_addr().unwrap().port(), taken);
+    }
+
+    #[tokio::test]
+    async fn non_loopback_bind_errors_on_port_conflict() {
+        // Non-loopback binds are exact-or-error even with no --port, so a random
+        // high port on an exposed interface never surprises a user.
+        let held = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0)).await.unwrap();
+        let taken = held.local_addr().unwrap().port();
+
+        assert!(
+            bind_harness_listener(Ipv4Addr::UNSPECIFIED.into(), None, taken)
+                .await
+                .is_err()
+        );
     }
 }
