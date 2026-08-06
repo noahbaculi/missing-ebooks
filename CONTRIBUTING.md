@@ -60,17 +60,38 @@ Scenarios:
 
 Flags:
 
-| Flag         | Effect                                                     |
-| ------------ | ---------------------------------------------------------- |
-| `--port N`   | Bind an exact port instead of the default 13379            |
-| `--ttl SECS` | Set the scan-cache staleness window (default 0, cache off) |
-| `--keep`     | Keep the seeded files on exit and print where they landed  |
+| Flag          | Effect                                                                                                                  |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `--port N`    | Bind an exact port instead of the default 13379                                                                         |
+| `--ttl SECS`  | Set the scan-cache staleness window (default 0, cache off)                                                              |
+| `--keep`      | Keep the seeded files on exit and print where they landed                                                               |
 | `--bind <IP>` | Bind a specific address instead of `127.0.0.1`. Non-loopback binds skip the preferred-port fallback and warn on stderr. |
 
 > [!NOTE]
 > Marker buttons write real `.no_ebook` / `.ebook_elsewhere` files into the seeded tree. Pass `--keep` to inspect them after exit. Otherwise the temp directory is removed on shutdown.
 
 For a live-reload loop while iterating on the UI, run `bacon explore` instead. It rebuilds and reruns the harness on a fixed port whenever `src/` or `assets/` change.
+
+## Running against a real library (Docker)
+
+`docker-compose.dev.yml` builds the local `missing-ebooks:dev` image, mounts a host path as `/audiobooks`, and layers `config.dev.toml` at `/config/config.toml`. The image auto-detects that path (`Dockerfile` sets `MISSING_EBOOKS_CONFIG=/config/config.toml`), so no extra env is needed.
+
+Build and start:
+
+```shell
+docker build -t missing-ebooks:dev . && docker compose -f docker-compose.dev.yml up -d --force-recreate
+```
+
+Then open http://localhost:13379/.
+
+Stop and remove:
+
+```shell
+docker compose -f docker-compose.dev.yml down
+docker image rm missing-ebooks:dev
+```
+
+Point the `/audiobooks` mount at your library by editing `docker-compose.dev.yml`. `config.dev.toml` is only read by this compose file and stays out of the release images.
 
 ## Commit style
 

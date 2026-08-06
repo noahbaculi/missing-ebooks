@@ -1,0 +1,35 @@
+# Dev config for docker-compose.dev.yml. Mounted read-only at
+# /config/config.toml. library_roots and log level come from env in the
+# compose file (env wins over file, see ADR-0004), so this file exercises the
+# file-only and less-obvious knobs.
+
+# Rescan on every request so edits to marker files show up immediately
+# during dev, at the cost of a scan per page load.
+ttl_seconds = 0
+
+# Poll every 2s while a tab is visible so tree changes appear fast.
+poll_interval_seconds = 2
+
+# One reader: makes scan ordering deterministic across runs, useful when
+# eyeballing the tree.
+scan_concurrency = 1
+
+# Drop a couple of common junk dirs so a NAS root reads cleanly.
+excluded_dirs = ["@eaDir", "#recycle", "lost+found"]
+
+# Exercise the glob path with two shapes seen in real libraries.
+exclude_globs = ["**/*(abridged)*", "**/*(Dramatized Adaptation)*"]
+
+# Extra search link on top of the built-in Goodreads + OceanofPDF, so the
+# per-row link menu renders three entries in dev.
+[[search_links]]
+label = "Goodreads"
+url = "https://www.goodreads.com/search?q={query}"
+
+[[search_links]]
+label = "OceanofPDF"
+url = "https://oceanofpdf.com/?s={query}"
+
+[[search_links]]
+label = "eBooks.com"
+url = "https://www.ebooks.com/en-us/searchapp/searchresults.net?term={query}"

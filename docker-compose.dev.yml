@@ -9,4 +9,5 @@ services:
       MISSING_EBOOKS_LOG: debug
     volumes:
       - /path/to/audiobooks:/audiobooks
+      - ./config.dev.toml:/config/config.toml:ro
     restart: "no"
