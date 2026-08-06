@@ -40,7 +40,7 @@ A sample SMB run for the warm-reuse gate:
 
 ```bash
 sudo -v
-MISSING_EBOOKS_SCAN_BENCH_ROOT=/mnt/jane-nas/Audiobooks \
+MISSING_EBOOKS_SCAN_BENCH_ROOT=/path/to/audiobooks \
 MISSING_EBOOKS_SCAN_BENCH_DROP_CACHES=1 \
 MISSING_EBOOKS_SCAN_BENCH_LABEL=smb \
 cargo bench --bench scan_bench --release -- scan_warm

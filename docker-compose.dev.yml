@@ -1,12 +1,12 @@
 services:
   missing-ebooks:
-    image: missing-ebooks:test
-    container_name: missing-ebooks-test
+    image: missing-ebooks:dev
+    container_name: missing-ebooks-dev
     ports:
       - "127.0.0.1:13379:13379"
     environment:
       MISSING_EBOOKS_LIBRARY_ROOTS: /audiobooks
       MISSING_EBOOKS_LOG: debug
     volumes:
-      - /mnt/jane-nas/Entertainment/Audiobooks:/audiobooks
+      - /path/to/audiobooks:/audiobooks
     restart: "no"
