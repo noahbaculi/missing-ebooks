@@ -71,3 +71,6 @@ _Avoid_: autosync, autorefresh, live update.
 **Library coverage**:
 The fraction of audiobooks across all successfully-scanned library roots that are covered by an ebook or marker. Numerator and denominator are folder counts: folders that directly hold audio. Errored roots contribute to neither; their failure is already surfaced on the per-root section banner. The reported percentage is `Math.floor(covered / total * 100)`, floored so a single remaining gap never reads as 100%.
 _Avoid_: completion, progress, done.
+**Relative path**:
+A folder's path relative to its library root, as a `/`-joined string. The library root itself is the sentinel `.`. The scanner emits a `PathBuf`, the tree builder joins its components with `/`, and the request carries the string through to the marker write. Not a newtype: the only cross-module use is the `.`-is-root check, and the marker-write target is independently guarded (see ADR-0008).
+_Avoid_: rel string, path key.

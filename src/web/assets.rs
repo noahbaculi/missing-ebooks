@@ -306,7 +306,7 @@ mod tests {
         // The coverage DOM ids are emitted by `coverage_bar` in render.rs.
         // `totalAudiobooks` is the camel-case form of the
         // `data-total-audiobooks` attribute the section markup carries
-        // (ADR-0025).
+        // (data-attribute sum, see the comment in `assets/app.js`).
         for id in ["coverage-bar-fill", "coverage-covered", "coverage-pct"] {
             assert!(APP_JS_BYTES.contains(id), "app.js missing {id}");
         }

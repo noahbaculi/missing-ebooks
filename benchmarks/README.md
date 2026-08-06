@@ -1,6 +1,14 @@
 # Benchmarks
 
-`benches/scan_bench.rs` is a criterion bench that times the scanner across four groups: `scan_full` (full listing walk), `scan_gaps` (listing walk plus the reduce to flagged folders), `scan_warm` (reuse walk against a primed `DirIndex`), and `scan_concurrent` (five concurrent `RawViewStore::current()` callers against a fresh store). Default input is a synthetic tempdir at `total = 1000`, `depth = 3`, `fanout = 10`, `gap_rate = 0.5`, seeded per bench setup. The design decision is recorded in [ADR-0035](../docs/adr/0035-scan-bench-is-a-criterion-bench.md).
+`benches/scan_bench.rs` is a criterion bench that times the scanner across four groups: `scan_full` (full listing walk), `scan_gaps` (listing walk plus the reduce to flagged folders), `scan_warm` (reuse walk against a primed `DirIndex`), and `scan_concurrent` (five concurrent `RawViewStore::current()` callers against a fresh store). Default input is a synthetic tempdir at `total = 1000`, `depth = 3`, `fanout = 10`, `gap_rate = 0.5`, seeded per bench setup.
+
+## Design
+
+Four criterion groups mirror the four historical questions the bench answered: `scan_full` (full listing walk), `scan_gaps` (listing walk plus reduce to flagged folders), `scan_warm` (reuse walk against a primed `DirIndex`), and `scan_concurrent` (five concurrent `RawViewStore::current()` callers against a fresh store). Default input is a synthetic tempdir seeded via `missing_ebooks::synthetic::generate`; env vars point at a real filesystem or rehydrate the `example-nas` snapshot for backend probes. Criterion's `--baseline main` covers regression detection.
+
+A small companion JSON per run records host, kernel, build profile, fstype, and mount options, since criterion's own output does not carry environmental context.
+
+The 2026-06 schema-versioned JSON reports stay under `benchmarks/` as historical evidence for ADR-0019, ADR-0020, and ADR-0022; they no longer round-trip through the current bench binary. `cargo bench --bench scan_bench -- --baseline main` is the routine regression check; env-var overrides steer the same tool at real backends when a new question comes up.
 
 ## Regression check
 

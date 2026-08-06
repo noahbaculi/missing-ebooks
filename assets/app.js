@@ -1434,11 +1434,13 @@
   }
 
   /**
-   * Library coverage: total audiobooks across every root sums per-section
-   * `data-total-audiobooks` attrs from the rendered tree, covered is the
-   * remainder after subtracting the still-flagged rows. Errored roots carry
-   * `0` so they fold out of the sum naturally. A section that vanishes from
-   * the DOM stops counting.
+   * Recompute the library-coverage readout from `data-total-audiobooks` on
+   * each `<section class="root">`, with covered as `total - totalGaps`.
+   * Errored sections carry `0` so they fold out of the sum. A section that
+   * leaves the DOM stops counting. Percentage is `Math.floor`ed so 199 of
+   * 200 reads "99%", never a false "100%". The two numeric spans in the
+   * all-clear tail get rewritten in place, so the wording stays in the
+   * server template.
    * @param {number} totalGaps
    */
   function updateLibraryCoverage(totalGaps) {

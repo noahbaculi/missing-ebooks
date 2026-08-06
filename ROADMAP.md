@@ -12,7 +12,7 @@ A skill that teaches an agent to drive the tool: trigger a scan, read which fold
 
 ## Tag-based search query
 
-Build the search-link query from embedded audio tags (author, title) read at scan time, instead of from the folder name. Folder names are often messy, so a tag-derived query finds the book more reliably. ADR-0010 sketches the shape: read tags during the walk, store the query on the cached node, and skip `clean_query` for the populated case. Tag reads are filesystem work, so they belong at scan time, not per render on a networked mount.
+Build the search-link query from embedded audio tags (author, title) read at scan time, instead of from the folder name. Folder names are often messy, so a tag-derived query finds the book more reliably. The `src/query.rs` module comment sketches the shape: read tags during the walk, store the query on the cached node, and skip `clean_query` for the populated case. Tag reads are filesystem work, so they belong at scan time, not per render on a networked mount.
 
 ## Tag-based scanning
 

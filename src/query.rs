@@ -1,7 +1,21 @@
 //! Build a search-link query from a folder name. The name is cleaned into a
 //! readable query here, and the caller percent-encodes it before filling a
-//! link template. Cleaning is pure and runs at render time (see
-//! docs/adr/0010-search-query-cleaned-at-render-time.md).
+//! link template.
+//!
+//! Search-link queries are cleaned from the folder name at render time,
+//! not stored on the cached scan node.
+//!
+//! The cache holds the raw scan output and every request renders from it
+//! (see ADR-0022). Cleaning a folder name is a cheap string transform, so
+//! running it per render costs nothing measurable and keeps the cached data
+//! free of a presentation concern. Storing a query per node would bloat the
+//! cache and tie the cached view model to one rendering detail.
+//!
+//! If a future search experience needs the query to come from somewhere
+//! other than the folder name (embedded audio tags are the obvious
+//! candidate), that work belongs at scan time rather than render time,
+//! because reading tags is filesystem work that cannot run cheaply per
+//! render on a networked mount.
 
 /// Clean a raw folder name into a search query. Drops bracketed segments,
 /// normalizes `_` and `.` to spaces, collapses whitespace, and trims dangling

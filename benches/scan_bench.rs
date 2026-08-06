@@ -12,7 +12,7 @@
 //!
 //! Regression check: `cargo bench --bench scan_bench -- --save-baseline main`
 //! on `main`, then `cargo bench --bench scan_bench -- --baseline main` on a
-//! branch. See `benchmarks/README.md`. Recorded in ADR-0035.
+//! branch. See `benchmarks/README.md` for the four-group design.
 
 // `criterion_group!` and `criterion_main!` generate undocumented items.
 #![allow(missing_docs)]
@@ -304,7 +304,7 @@ fn concurrency_levels(default: usize) -> Vec<usize> {
 /// One rayon pool per requested concurrency level, primed with a single walk
 /// so callers can size `Throughput` from the stats and (for the warm group)
 /// reuse the hot index. The Full and Gaps groups discard the index and walk
-/// fresh ones per iteration. ADR-0035's four-group design is unchanged.
+/// fresh ones per iteration. The four-group design is unchanged.
 fn for_each_pool(
     input: &BenchInput,
     default_threads: usize,

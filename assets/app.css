@@ -12,11 +12,16 @@
   --color-surface-raised: #ffffff;
   --color-primary: #605dff;
   --color-primary-content: #ffffff;
-  /* The gap / needs-attention role, amber. The base tints the soft pills and is
-     also the ink: by choice the default keeps the amber look over contrast, so
-     --color-warning-text equals the base and reads below AA on the pale pill. The
-     accent picker derives a readable per-theme ink for a custom base. See
-     docs/adr/0021. */
+  /* The gap / needs-attention role, amber.
+     Carries the gaps-to-fill count, the "needs ebook" badge, the flagged folder
+     icon, and per-root gap chips. Amber sits warm-but-yellower-than-error-red in
+     the palette, so a gap badge and an error badge do not read as the same alarm.
+     Token value is #f5a524 on both themes. The token keeps the name
+     --color-warning.
+     Ink policy: the default ink is the same #f5a524 on both themes, which puts
+     sub-AA contrast on the pale amber pill by choice, so the badge label and hero
+     count stay plain amber rather than compromising the color. The accent picker
+     derives a readable per-theme ink for a custom base to clear AA. */
   --color-warning: #f5a524;
   --color-success: #00b074;
   --color-error: #ef4565;
@@ -728,13 +733,18 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   border-radius: var(--radius-field);
   box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
 }
-/* Modal separation runs on two cues that survive both themes: (1) the panel sits
-   on --color-surface-raised, a step lighter than the page in dark and flush white
-   in light, so elevation reads by tone; (2) a light 45% scrim dims the page. The
-   scrim stays deliberately soft so live previews behind the panel keep working:
-   the accent picker retints the page in real time and the user needs to see that
-   update while the panel is still open. Elevation via surface tone, not scrim
-   opacity, is what carries the separation in dark. See docs/adr/0031. */
+/* Modal separation runs on surface tone, not scrim opacity or backdrop blur.
+   The panel sits on --color-surface-raised, #ffffff in light (flush with
+   existing panels) and #2b3139 in dark (a step lighter than the #191e24 body),
+   so elevation reads by tone on both themes. The token is orthogonal to the
+   --color-base-100/200/300 scale, which stays scoped to the page and its cards.
+   Backdrops keep a soft 45% black scrim across the settings panel, confirm
+   dialog, and mobile bottom sheets. No backdrop-filter: the accent picker's
+   live preview needs the page to stay legible behind an open panel. The 1px
+   border and drop shadow read as redundant in dark but stay because they carry
+   the elevation in light. A future pill or badge that wants the raised look
+   targets --color-surface-raised and adds a matching entry to the
+   accent-derive test's SURFACE map. */
 .settings-panel::backdrop {
   background: rgb(0 0 0 / 45%);
 }

@@ -8,9 +8,17 @@ The domain glossary lives at [`CONTEXT.md`](CONTEXT.md) in the repo root and def
 
 With the exception of [Rust](https://rust-lang.org/), development dependencies are managed by [`mise`](https://github.com/jdx/mise) via the `mise.toml` file. `mise install` provisions the pinned tools.
 
-The committed `.githooks/pre-commit` runs `cargo fmt`, `cargo clippy`, `cargo doc -D warnings`, and (for asset or accent-test changes) `mise run test:accent`. `mise.toml`'s `[hooks] enter` entry auto-activates the hook on the first `cd` into the worktree (see [ADR-0026](docs/adr/0026-pre-commit-hook-auto-activation.md)). Contributors who do not use mise shell integration run `mise run setup` once per clone (and once per worktree) to point git at the same hooks.
+The committed `.githooks/pre-commit` runs `cargo fmt`, `cargo clippy`, `cargo doc -D warnings`, and (for asset or accent-test changes) `mise run test:accent`. `mise.toml`'s `[hooks] enter` entry auto-activates the hook on the first `cd` into the worktree. Contributors who do not use mise shell integration run `mise run setup` once per clone (and once per worktree) to point git at the same hooks.
+
+Git shares `core.hooksPath` from the main `.git/config` across worktrees, so the first worktree's `enter` hook writes the value and every other worktree's idempotent guard short-circuits. `mise run setup` stays the manual fallback for clones without mise shell integration loaded.
+
+Alternatives rejected: `cargo-husky` adds a dev-dependency and does not fire until tests run; a `build.rs` side effect pollutes a build script with non-build behavior and skips the docs-only commit path; manual-only onboarding relies on humans reading instructions, which is exactly the failure mode the data showed. Revisit when mise shell integration stops being a reasonable baseline, or when the hook grows expensive enough to want a framework's parallelism or watcher features.
 
 Never bypass the hook with `--no-verify`. The hook runs the same checks CI enforces. Bypassing them just moves the failure to the CI run.
+
+### Client JS type checking
+
+`assets/app.js` and `assets/prepaint.js` are plain JavaScript with `// @ts-check` and JSDoc annotations. A check-only TypeScript pass (`tsconfig.json` with `checkJs` and `noEmit` under `strict`) reads them. The htmx surface and app-custom events are typed by a hand-written ambient stub at `types/htmx.d.ts`. There is no `package.json`, no lockfile, no `node_modules`, and nothing is emitted: the source stays the shipped artifact. The check is pinned through mise and runs in the pre-commit hook and CI. If the client ever grows into multiple modules that need bundling, a real build step becomes worth its weight and full TypeScript with emitted output would carry it; until then the check-only pass is the cheapest way to keep the surface honest.
 
 ## Build and test
 
