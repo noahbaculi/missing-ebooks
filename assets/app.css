@@ -44,6 +44,10 @@
   /* the kebab column on phones. one token so the trigger and the empty slot a
      covered row reserves cannot drift apart */
   --kebab-col: 1.6rem;
+  --scrim: rgb(0 0 0 / 45%);
+  --shadow-popover: 0 8px 24px rgb(0 0 0 / 18%);
+  --radius-pill: 999px;
+  --motion-fast: 0.15s;
 }
 
 [data-theme="dark"] {
@@ -170,7 +174,7 @@ details > summary::-webkit-details-marker {
   cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, transform 0.05s;
+  transition: background var(--motion-fast), border-color var(--motion-fast), transform 0.05s;
 }
 .btn:active {
   transform: translateY(1px);
@@ -270,7 +274,7 @@ details > summary::-webkit-details-marker {
   font-weight: 700;
   line-height: 1.4;
   padding: 0.12rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   white-space: nowrap;
 }
 .root-badge-gaps {
@@ -346,7 +350,7 @@ details > summary.row {
   width: var(--chev-size);
   flex: none;
   color: var(--color-muted);
-  transition: transform 0.15s;
+  transition: transform var(--motion-fast);
 }
 details[open] > summary .chev {
   transform: rotate(90deg);
@@ -557,7 +561,7 @@ details[open] > summary .chev {
   background: var(--color-base-100);
   border: var(--border) solid var(--color-border);
   border-radius: var(--radius-field);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  box-shadow: var(--shadow-popover);
 }
 /* where CSS anchor positioning is available, re-anchor the popover under its
    button. Elsewhere the popover keeps the usable centered top-layer default. */
@@ -588,7 +592,7 @@ details[open] > summary .chev {
   font-weight: 700;
   line-height: 1.4;
   padding: 0.1rem 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   flex: none;
   white-space: nowrap;
 }
@@ -746,7 +750,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   color: var(--color-base-content);
   border: var(--border) solid var(--color-border);
   border-radius: var(--radius-field);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  box-shadow: var(--shadow-popover);
 }
 /* Modal separation runs on surface tone, not scrim opacity or backdrop blur.
    The panel sits on --color-surface-raised, #ffffff in light (flush with
@@ -761,7 +765,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
    targets --color-surface-raised and adds a matching entry to the
    accent-derive test's SURFACE map. */
 .settings-panel::backdrop {
-  background: rgb(0 0 0 / 45%);
+  background: var(--scrim);
 }
 .settings-head {
   padding: 0.3rem 0.5rem 0.4rem;
@@ -856,9 +860,9 @@ html:not([data-italic-nested="off"]) .container-nested .name {
 .switch-track {
   width: 2.1rem;
   height: 1.2rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-base-300);
-  transition: background 0.15s;
+  transition: background var(--motion-fast);
 }
 .switch-track::after {
   content: "";
@@ -870,7 +874,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
-  transition: left 0.15s;
+  transition: left var(--motion-fast);
 }
 .switch input:checked + .switch-track {
   background: var(--color-primary);
@@ -957,7 +961,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   box-shadow: 0 16px 48px rgb(0 0 0 / 28%);
 }
 .confirm-dialog::backdrop {
-  background: rgb(0 0 0 / 45%);
+  background: var(--scrim);
 }
 .confirm-title {
   margin: 0 0 0.5rem;
@@ -1026,7 +1030,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     height: 0.5rem;
     min-width: 0.5rem;
     padding: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     overflow: hidden;
     white-space: nowrap;
     text-indent: 100%;
@@ -1229,7 +1233,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   /* dim the page behind the open sheet */
   .actions-group::backdrop,
   .settings-panel::backdrop {
-    background: rgb(0 0 0 / 45%);
+    background: var(--scrim);
   }
 
   /* reveal the sheet chrome the desktop cluster hides */
@@ -1244,7 +1248,7 @@ html:not([data-italic-nested="off"]) .container-nested .name {
     align-self: center;
     width: 2.25rem;
     height: 0.25rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--color-base-300);
   }
   .actions-group .sheet-title {
@@ -1434,7 +1438,7 @@ li.entering {
   overflow: hidden;
   background: color-mix(in srgb, var(--color-primary) 14%, transparent);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--motion-fast) ease;
   pointer-events: none;
 }
 /* The sliding segment. The track stays put while this loops across it. */
@@ -1450,7 +1454,7 @@ li.entering {
 }
 .scan-bar.htmx-request {
   opacity: 1;
-  transition: opacity 0.15s ease 0.2s;
+  transition: opacity var(--motion-fast) ease 0.2s;
 }
 .scan-bar:is(.htmx-request, .is-retrying)::before {
   animation: scan-indeterminate 1.05s ease-in-out infinite;
@@ -1458,12 +1462,12 @@ li.entering {
 /* The tree dims in place behind the same show-delay, so dim and bar arrive together
    and a fast scan leaves the tree untouched. The base #roots rule restores instantly. */
 #roots {
-  transition: opacity 0.15s ease;
+  transition: opacity var(--motion-fast) ease;
 }
 .roots-wrap:has(.scan-bar.htmx-request) #roots {
   opacity: 0.4;
   pointer-events: none;
-  transition: opacity 0.15s ease 0.2s;
+  transition: opacity var(--motion-fast) ease 0.2s;
 }
 @keyframes scan-indeterminate {
   from {
@@ -1698,7 +1702,7 @@ li.entering {
   height: 1.7rem;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--color-success-text);
   background: color-mix(in srgb, var(--color-success) 16%, var(--color-base-100));
 }
@@ -1740,7 +1744,7 @@ li.entering {
   font-size: 0.68rem;
   font-weight: 700;
   white-space: nowrap;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.05rem 0.4rem;
   background: color-mix(in srgb, var(--color-success) 18%, var(--color-base-100));
   color: var(--color-success-text);
@@ -1916,7 +1920,7 @@ li.entering {
   padding: 0.2rem 0.6rem;
   background: var(--color-base-200);
   border: var(--border) solid var(--color-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.8rem;
 }
 .gap-chip-name {
@@ -1939,7 +1943,7 @@ li.entering {
   margin-top: 0;
   height: 0.5rem;
   background: var(--color-base-200);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   overflow: hidden;
 }
 .gap-bar-fill {
