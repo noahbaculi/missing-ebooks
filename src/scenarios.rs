@@ -466,6 +466,11 @@ fn build_mixed_forest() -> ScenarioSpec {
             root(
                 "External Library",
                 vec![
+                    // A reference ebook stashed with no audio beneath.
+                    folder(
+                        "Reference Shelf",
+                        vec![ebook("The Hero with a Thousand Faces.epub")],
+                    ),
                     // Becky Chambers: a "Wayfarers" container. "The Long Way
                     // to a Small, Angry Planet" stays flagged. "A Closed and
                     // Common Orbit" is covered by its own epub, so the
@@ -630,6 +635,11 @@ fn build_messy_shelf() -> ScenarioSpec {
                 // subfolder, so the author folder itself is the flagged leaf.
                 folder("Stephen King", vec![audio("01 - The Gunslinger.mp3")]),
                 folder("Neil Gaiman", vec![audio("01 - Coraline.m4a")]),
+                // An ebook filed with no audio beneath: a plain container in the tree.
+                folder(
+                    "Emily St. John Mandel",
+                    vec![folder("Station Eleven", vec![ebook("Station Eleven.epub")])],
+                ),
                 // A half-sorted author: one book loose in the author folder,
                 // another in its own subfolder, so the author folder and its
                 // book both flag.

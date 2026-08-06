@@ -437,16 +437,20 @@ pub(crate) fn error_section(root: usize, message: &str) -> Markup {
     }
 }
 
-/// The row's mark slot: the amber "needs ebook" pill on a gap, the success check
-/// on a covered folder, nothing on a plain container. Its own flex item rather
-/// than the tail of the text run, so the mark holds one column down the list
-/// however long the names beside it run. Checks are show-all only: gaps-only
-/// renders no covered rows, and a gap is already flagged by the amber icon and
-/// the pill.
+/// The row's mark slot: the amber "needs ebook" pill on a gap, the neutral
+/// "no audio" pill on any folder whose entire subtree holds no audio, the
+/// success check on a covered folder, nothing otherwise. Its own flex item
+/// rather than the tail of the text run, so the mark holds one column down the
+/// list however long the names beside it run. Checks are show-all only:
+/// gaps-only renders no covered rows, and a gap is already flagged by the
+/// amber icon and the pill.
 fn row_mark(node: &Node, mode: ViewMode) -> Markup {
     html! {
         @if node.needs_ebook() {
             span.row-mark { span.badge.badge-warning title="needs ebook" { "needs ebook" } }
+        } @else if !node.has_audio_within() {
+            // Audio-less subtree: label it so the row does not read as a missing pill.
+            span.row-mark { span.badge.badge-neutral title="no audio" { "no audio" } }
         } @else if mode == ViewMode::All && !node.missing_ebook {
             span.row-mark.row-mark-done {
                 span.status title="covered" { (PreEscaped(include_str!("../../assets/svg/check.svg"))) }
@@ -819,6 +823,51 @@ mod tests {
         )];
         let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();
         assert!(html.contains("Book"));
+    }
+
+    #[test]
+    fn plain_container_gets_a_no_audio_badge_and_does_not_disturb_gap_counts() {
+        // A flagged sibling and an audio-less container beside it.
+        let with_plain = section(
+            "/lib",
+            forest(vec![
+                flagged_leaf("Book 1", "Book 1", &[]),
+                container(
+                    "Empty Series",
+                    "Empty Series",
+                    vec![container("Vol 2", "Empty Series/Vol 2", vec![])],
+                ),
+            ]),
+            1,
+        );
+        let baseline = section(
+            "/lib",
+            forest(vec![flagged_leaf("Book 1", "Book 1", &[])]),
+            1,
+        );
+
+        let with_plain_html =
+            render_section(&with_plain, 0, None, &[], ViewMode::All).into_string();
+        let baseline_gaps = baseline.gaps_within;
+
+        assert!(
+            with_plain_html
+                .contains(r#"<span class="badge badge-neutral" title="no audio">no audio</span>"#),
+            "plain container should render the no-audio badge, got: {with_plain_html}"
+        );
+        assert!(
+            with_plain_html.contains(
+                r#"<span class="badge badge-warning" title="needs ebook">needs ebook</span>"#
+            ),
+            "flagged sibling should still render needs-ebook, got: {with_plain_html}"
+        );
+        // A no-audio row must never carry the needs-ebook pill on the same row.
+        assert!(!with_plain_html.contains(r#"no audio</span><span class="badge badge-warning""#));
+        // Gap total unchanged versus the baseline tree.
+        assert_eq!(
+            with_plain.gaps_within, baseline_gaps,
+            "adding an audio-less container must not change the root's gap count"
+        );
     }
 
     #[test]

@@ -586,6 +586,10 @@ details[open] > summary .chev {
   background: color-mix(in srgb, var(--color-warning) 16%, var(--color-base-100));
   color: var(--color-warning-text);
 }
+.badge-neutral {
+  background: var(--color-base-200);
+  color: var(--color-muted);
+}
 
 /* flagged folders: amber icon and bolder name, the badge carries the label.
    The icon is foreground, so it takes the -text variant: the saturated base
