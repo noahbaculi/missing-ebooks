@@ -741,6 +741,7 @@ mod tests {
             cover_files: Vec::new(),
             audio_files: audio.iter().map(|s| (*s).into()).collect(),
             gaps_within: 1,
+            audio_within: 1,
         }
     }
 
@@ -756,12 +757,14 @@ mod tests {
             cover_files: cover_files.iter().map(|s| (*s).into()).collect(),
             audio_files: Vec::new(),
             gaps_within: 0,
+            audio_within: 1,
         }
     }
 
     /// A container row: no audio of its own, holds children.
     fn container(name: &str, rel: &str, children: Vec<Node>) -> Node {
         let gaps_within = children.iter().map(|c| c.gaps_within).sum();
+        let audio_within = children.iter().map(|c| c.audio_within).sum();
         Node {
             name: name.into(),
             rel_path: rel.into(),
@@ -771,6 +774,7 @@ mod tests {
             cover_files: Vec::new(),
             audio_files: Vec::new(),
             gaps_within,
+            audio_within,
         }
     }
 
@@ -921,6 +925,7 @@ mod tests {
             cover_files: Vec::new(),
             audio_files: vec!["01.mp3".into()],
             gaps_within: 2,
+            audio_within: 2,
         };
 
         let view = vec![section("/lib", forest(vec![loose, mixed]), 3)];
@@ -993,6 +998,7 @@ mod tests {
             cover_files: Vec::new(),
             audio_files: vec!["01 - The Colour of Magic.mp3".into()],
             gaps_within: 2,
+            audio_within: 2,
         };
         let view = vec![section("/lib", forest(vec![mixed]), 2)];
         let html = render_view(&view, &[], ViewMode::GapsOnly, 0).into_string();

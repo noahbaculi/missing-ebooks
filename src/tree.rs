@@ -38,6 +38,11 @@ pub struct Node {
     /// every descendant's. Precomputed once during `build_forest` so render
     /// reads it instead of re-walking. `has_gap_within()` is `gaps_within > 0`.
     pub gaps_within: usize,
+    /// Count of audio-holding folders in this subtree: this node's own
+    /// `directly_holds_audio` plus every descendant's. Precomputed once in
+    /// `build_forest` so render reads it instead of re-walking. Drives the
+    /// `no audio` badge: zero means the whole subtree is audio-less.
+    pub audio_within: usize,
 }
 
 impl Node {
@@ -53,6 +58,13 @@ impl Node {
     #[must_use]
     pub fn has_gap_within(&self) -> bool {
         self.gaps_within > 0
+    }
+
+    /// True when this node or any descendant directly holds audio. Inverse
+    /// drives the `no audio` badge in the row-mark slot.
+    #[must_use]
+    pub fn has_audio_within(&self) -> bool {
+        self.audio_within > 0
     }
 }
 
@@ -198,11 +210,26 @@ fn build_forest(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> V
                 cover_files: entry.cover_files.to_vec(),
                 audio_files: entry.audio_files.to_vec(),
                 gaps_within: 0,
+                audio_within: 1,
             },
         );
     }
     fill_gaps_within(&mut roots);
+    fill_audio_within(&mut roots);
     roots
+}
+
+/// Fill `Node::audio_within` bottom-up: this node's own `directly_holds_audio`
+/// plus the sum of its children's totals. Render reads the field to decide
+/// whether to emit the `no audio` badge.
+fn fill_audio_within(nodes: &mut [Node]) -> usize {
+    let mut total = 0;
+    for node in nodes.iter_mut() {
+        let below = fill_audio_within(&mut node.children);
+        node.audio_within = usize::from(node.directly_holds_audio) + below;
+        total += node.audio_within;
+    }
+    total
 }
 
 /// Fill `Node::gaps_within` bottom-up: each node's own gap plus the sum of its
@@ -242,6 +269,7 @@ fn insert_all(
                 cover_files: Vec::new(),
                 audio_files: Vec::new(),
                 gaps_within: 0,
+                audio_within: 0,
             });
             siblings.len() - 1
         }
@@ -343,6 +371,7 @@ mod tests {
                 cover_files: Vec::new(),
                 audio_files: Vec::new(),
                 gaps_within: 0,
+                audio_within: 0,
             };
             assert_eq!(node.needs_ebook(), want, "audio={audio} missing={missing}");
         }
@@ -418,6 +447,7 @@ mod tests {
             cover_files: Vec::new(),
             audio_files: Vec::new(),
             gaps_within: 1,
+            audio_within: 1,
         }
     }
 
@@ -588,10 +618,12 @@ mod tests {
                     cover_files: Vec::new(),
                     audio_files: Vec::new(),
                     gaps_within: 1,
+                    audio_within: 1,
                 }],
                 cover_files: Vec::new(),
                 audio_files: Vec::new(),
                 gaps_within: 1,
+                audio_within: 1,
             },
             Node {
                 name: "Series".to_string(),
@@ -608,6 +640,7 @@ mod tests {
                         cover_files: Vec::new(),
                         audio_files: Vec::new(),
                         gaps_within: 0,
+                        audio_within: 1,
                     },
                     Node {
                         name: "Book 2".to_string(),
@@ -618,6 +651,7 @@ mod tests {
                         cover_files: Vec::new(),
                         audio_files: Vec::new(),
                         gaps_within: 0,
+                        audio_within: 1,
                     },
                     Node {
                         name: "Book 10".to_string(),
@@ -628,11 +662,13 @@ mod tests {
                         cover_files: Vec::new(),
                         audio_files: Vec::new(),
                         gaps_within: 0,
+                        audio_within: 1,
                     },
                 ],
                 cover_files: vec!["Series.epub".to_string()],
                 audio_files: Vec::new(),
                 gaps_within: 0,
+                audio_within: 3,
             },
         ];
         assert_eq!(got, expected);
@@ -673,6 +709,7 @@ mod tests {
                     cover_files: Vec::new(),
                     audio_files: vec!["01.mp3".to_string()],
                     gaps_within: 1,
+                    audio_within: 1,
                 },
                 Node {
                     name: "Book 10".to_string(),
@@ -683,11 +720,13 @@ mod tests {
                     cover_files: Vec::new(),
                     audio_files: vec!["01.mp3".to_string()],
                     gaps_within: 1,
+                    audio_within: 1,
                 },
             ],
             cover_files: Vec::new(),
             audio_files: Vec::new(),
             gaps_within: 2,
+            audio_within: 2,
         }];
         assert_eq!(unified, expected);
     }
@@ -703,6 +742,7 @@ mod tests {
             cover_files: Vec::new(),
             audio_files: Vec::new(),
             gaps_within: 1,
+            audio_within: 1,
         };
         assert!(container.has_gap_within(), "a descendant gap counts");
 
@@ -720,12 +760,32 @@ mod tests {
                 cover_files: Vec::new(),
                 audio_files: Vec::new(),
                 gaps_within: 0,
+                audio_within: 1,
             }],
             cover_files: Vec::new(),
             audio_files: Vec::new(),
             gaps_within: 0,
+            audio_within: 1,
         };
         assert!(!covered.has_gap_within(), "a fully covered branch has none");
+    }
+
+    #[test]
+    fn audio_within_counts_the_whole_subtree() {
+        // Two audio-holding leaves under a plain container, plus a sibling
+        // container with no audio anywhere. Root sums both branches.
+        let folders = vec![
+            sf("series/book-1", true, true),
+            sf("series/book-2", true, false),
+            sf("empty/sub", false, true),
+        ];
+        let forest = build_root("Audiobooks", folders, ViewMode::All);
+        let series = forest.iter().find(|n| n.name == "series").unwrap();
+        assert_eq!(series.audio_within, 2);
+        assert!(series.has_audio_within());
+        let empty = forest.iter().find(|n| n.name == "empty").unwrap();
+        assert_eq!(empty.audio_within, 0);
+        assert!(!empty.has_audio_within());
     }
 
     #[test]
