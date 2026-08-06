@@ -65,6 +65,7 @@ Flags:
 | `--port N`   | Bind an exact port instead of the default 13379            |
 | `--ttl SECS` | Set the scan-cache staleness window (default 0, cache off) |
 | `--keep`     | Keep the seeded files on exit and print where they landed  |
+| `--bind <IP>` | Bind a specific address instead of `127.0.0.1`. Non-loopback binds skip the preferred-port fallback and warn on stderr. |
 
 > [!NOTE]
 > Marker buttons write real `.no_ebook` / `.ebook_elsewhere` files into the seeded tree. Pass `--keep` to inspect them after exit. Otherwise the temp directory is removed on shutdown.

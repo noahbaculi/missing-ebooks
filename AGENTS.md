@@ -38,6 +38,8 @@ To stop yours, match by working directory instead of killing every `explore`: ea
 
 When the user explicitly asks for a fresh reset, that restraint is off: sweep every stray harness with `pkill -f 'target/debug/examples/explore'` to catch instances that were orphaned and never cleaned up. Clear the visual-verification browsers in the same pass, since neither they nor the harness auto-clean. A Playwright session from the `playwright-cli` skill stays open until closed, so run `playwright-cli close-all` (or `playwright-cli kill-all` to force it). `playwright-cli list` shows what is still around.
 
+For tailnet verification, pass `--bind <tailnet-ip>` instead of running a TCP forwarder. The harness warns on stderr and skips the random-port fallback.
+
 ## Structural search
 
 `sg run -p '<pattern>' -l rust src/` does structural search across Rust source. Use it for refactors where regex would over- or under-match.

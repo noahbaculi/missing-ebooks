@@ -608,13 +608,14 @@ details[open] > summary .chev {
 .smell,
 .file-count {
   flex: none;
-  margin-inline-start: 0.5rem;
+  margin-inline-start: 0.35rem;
   font-size: 0.74rem;
   color: var(--color-muted);
 }
 .smell::before,
 .file-count::before {
-  content: "\00b7\00a0";
+  content: "·";
+  margin-inline-end: 0.35rem;
 }
 
 /* a revealed audio-file row: muted, indented on the tree guide like a child folder,
