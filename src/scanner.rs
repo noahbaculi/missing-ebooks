@@ -272,7 +272,7 @@ pub fn reduce_to_flagged(folders: &[ScannedFolder]) -> Vec<ScannedFolder> {
 
 /// One folder from a walk, tagged with both facts. `scan_warm` returns
 /// a `Vec<ScannedFolder>` (with `WalkStats`) that `tree::build`
-/// consumes. The root walked is the empty relative path (see ADR-0005),
+/// consumes. The root walked is the empty relative path (see ADR-0007),
 /// the loose-root case.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ScannedFolder {
@@ -600,12 +600,12 @@ fn list_dir_all(
     let covered = covered_from_above || !ebooks.is_empty() || !markers.is_empty();
 
     // A covering ebook or marker directly in the library root blanks the whole
-    // tree (see ADR-0005). Warn once, where the full walk reads the root.
+    // tree (see ADR-0007). Warn once, where the full walk reads the root.
     if dir == root && (!ebooks.is_empty() || !markers.is_empty()) {
         tracing::warn!(
             root = %root.display(),
             "a covering ebook or marker sits directly in the library root; \
-             this blanks the entire tree (see ADR-0005)"
+             this blanks the entire tree (see ADR-0007)"
         );
     }
 
@@ -744,7 +744,7 @@ mod tests {
         // A nested tree with a covered subtree, a glob-pruned subtree, loose audio
         // in the root, and a multi-file folder, so the comparison exercises Vec
         // order, per-folder audio_files, glob pruning, and the flaggable root
-        // (ADR-0005) under concurrency, not just the flagged set.
+        // (ADR-0007) under concurrency, not just the flagged set.
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("AuthorA/Book1/01.mp3"));
         touch(&dir.path().join("AuthorA/Book1/02.mp3"));
@@ -767,7 +767,7 @@ mod tests {
         assert_eq!(
             flagged,
             BTreeSet::from([
-                String::new(), // loose root audio (ADR-0005)
+                String::new(), // loose root audio (ADR-0007)
                 "AuthorA/Book1".to_string(),
                 "AuthorA/Book2".to_string(),
                 "AuthorB/Series/Book3".to_string(),
@@ -799,7 +799,7 @@ mod tests {
     #[test]
     fn loose_audio_in_the_root_flags_the_root_itself() {
         // Loose audio directly in the root, no author/book folder: the root is
-        // the gap, reported as the empty relative path (see ADR-0005).
+        // the gap, reported as the empty relative path (see ADR-0007).
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("01 - Loose Book.mp3"));
         let got = flagged_set(dir.path(), &default_settings(&[]));

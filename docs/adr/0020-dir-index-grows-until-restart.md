@@ -4,7 +4,7 @@ Date: 2026-06-15.
 
 ## Context
 
-The scanner keeps a per-directory index (`scanner::DirIndex`, a `HashMap` from a directory's path to its cached mtime, subdirs, and filenames), held in `AppState` as `Arc<Mutex<DirIndex>>`. Every scan path reads and writes it; only a `/rescan` click discards it before the walk (see ADR-0023).
+The scanner keeps a per-directory index (`scanner::DirIndex`, a `HashMap` from a directory's path to its cached mtime, subdirs, and filenames), held in `AppState` as `Arc<Mutex<DirIndex>>`. Every scan path reads and writes it; only a `/rescan` click discards it before the walk.
 
 ## Decision
 

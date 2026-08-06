@@ -4,7 +4,7 @@ Date: 2026-07-06.
 
 ## Context
 
-ADR-0023 introduced a server-side background loop that pushed changed sections over SSE while a browser was subscribed. ADR-0024 fixed the push granularity at one root section per event. ADR-0030 optimized cold load by discriminating first connect from reconnect with `Last-Event-ID`. The three ADRs together were the single largest source of complexity in the codebase: `src/autosync.rs` alone was 964 lines, on top of an SSE endpoint with a two-branch handshake, per-mode subscriber registries, per-root content hashes, an `ack` sentinel, and dependencies (`enum-map`, `tokio-stream`) that existed to serve this feature.
+An earlier iteration ran a server-side background loop that pushed changed sections over SSE while a browser was subscribed, at one-root-section granularity, with a `Last-Event-ID` handshake that distinguished first connect from reconnect. That arrangement was the single largest source of complexity in the codebase: `src/autosync.rs` alone was 964 lines, on top of an SSE endpoint with a two-branch handshake, per-mode subscriber registries, per-root content hashes, an `ack` sentinel, and dependencies (`enum-map`, `tokio-stream`) that existed to serve this feature.
 
 The user need is real: a self-hoster keeps the dashboard open while dropping ebooks into folders from a file manager, and the dashboard should reflect the drops without a manual reload. A design review on 2026-07-04 questioned whether server push was the simplest way to hit that need, and whether SSE was earning its complexity for the deployment shape this tool targets (one to two self-hosted tabs, warm scans in the low milliseconds).
 
@@ -30,10 +30,5 @@ The connection banner in `assets/app.js` stays as is. It already covers `/mark` 
 
 ## Related
 
-- ADR-0023 (autosync only runs while subscribed): superseded.
-- ADR-0024 (autosync section-level OOB swap): superseded. The section is still the swap unit for `/refresh`, but the transport is a plain HTMX GET response, not an SSE OOB fragment. The byte-equal invariant between the rescan swap and the refresh swap holds through `SectionHandle` per ADR-0032.
-- ADR-0030 (SSE first-connect dedup): superseded. No snapshot event, no `Last-Event-ID` discriminator, no `ack` sentinel.
-- ADR-0002 (marker writes edit cache in place): unchanged.
 - ADR-0022 (raw cache + render per request): unchanged. `current()` is exactly this contract.
-- ADR-0027 (substrate consolidated behind `RawViewStore`): unchanged.
 - ADR-0032 (render seam owns raw to HTML): unchanged. `/refresh` renders through `SectionHandle` like `/rescan`.

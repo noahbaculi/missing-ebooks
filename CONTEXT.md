@@ -49,7 +49,7 @@ A glob pattern matched against a folder's path relative to its library root, cas
 _Avoid_: filter, ignore pattern.
 
 **Raw view store**:
-The substrate that produces and memoizes raw scan output (`RawViewStore` in `src/state.rs`). Owns the scan settings, the dir index, the TTL-bounded cache slot, and the marker file IO. One slot per process, TTL-bounded by `ttl_seconds`; both view modes render from the same raw data at request time (ADR-0022). Marker writes edit the slot in place (ADR-0002). See ADR-0027.
+The substrate that produces and memoizes raw scan output (`RawViewStore` in `src/state.rs`). Owns the scan settings, the dir index, the TTL-bounded cache slot, and the marker file IO. One slot per process, TTL-bounded by `ttl_seconds`; both view modes render from the same raw data at request time, and marker writes edit the slot in place (see ADR-0022).
 _Avoid_: render cache, scan cache (ambiguous with the dir index), the cache.
 
 **Dir index**:

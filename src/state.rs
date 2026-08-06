@@ -2,7 +2,7 @@
 //! plus a TTL-memoized scan cache behind one mutex. The cache stores the raw
 //! per-root walk output and the response renders per `ViewMode` on each read
 //! (see ADR-0022). A marker write updates the stored raw view in place rather
-//! than rewalking (see docs/adr/0002-marker-writes-edit-cache-in-place.md).
+//! than rewalking (see docs/adr/0022-cache-holds-raw-scan-output.md).
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -41,7 +41,7 @@ struct CacheEntry {
 /// The guarded cache cell: the entry plus a monotonically increasing
 /// generation. Every store and every in-place edit bumps the generation, so
 /// a build that began before the latest write detects the move and declines
-/// to overwrite it (newest write wins, ADR-0036)
+/// to overwrite it (newest write wins, ADR-0022)
 struct Slot {
     generation: u64,
     entry: Option<Arc<CacheEntry>>,
@@ -80,7 +80,7 @@ type SharedBuild = Shared<BoxFuture<'static, Arc<RawView>>>;
 
 /// Owns the scan substrate, the TTL-bounded cache slot, and the marker file
 /// IO. The single place where raw scan output is produced, memoized, and
-/// edited. See ADR-0027.
+/// edited. See ADR-0022.
 pub struct RawViewStore {
     /// Shared internals, behind one `Arc` so mutation sequences can run in
     /// spawned tasks that outlive a dropped request handler
@@ -102,7 +102,7 @@ struct StoreInner {
     /// build, never across the walk. Also serializes the load-edit-store of
     /// marker edits against each other. Ordering against a concurrent
     /// build's store is the slot generation's job, not this lock's (see
-    /// ADR-0036)
+    /// ADR-0022)
     inflight: Mutex<Option<(u64, Weak<SharedBuild>)>>,
     /// Test-only pause point armed by `set_build_gate`, checked by every cold
     /// build between its walk and its store.
@@ -123,7 +123,7 @@ struct StoreInner {
     dir_indices: Vec<Arc<DirIndex>>,
     /// Held by the store for `build_view`. The same `Arc<Config>` is also
     /// exposed on `AppState.config` for handlers that read pure config data
-    /// (search links, cookie name, library roots). See ADR-0027.
+    /// (search links, cookie name, library roots). See ADR-0022.
     config: Arc<Config>,
     /// Instant of the last honored rescan, gating `RESCAN_COOLDOWN` (ADR-0037).
     /// A std mutex: held for nanoseconds and never across an await.
@@ -527,7 +527,7 @@ impl StoreInner {
         // A self-delete may not bump the folder mtime, so force a re-list
         this.invalidate_index(root, &canonical_root, rel);
 
-        // Walk the one affected root BEFORE taking the lock. ADR-0027 keeps
+        // Walk the one affected root BEFORE taking the lock. ADR-0022 keeps
         // the inflight lock held for microseconds only, and the dir index is
         // warm, so this is the cheap re-list of that subtree
         let section = build_section(
@@ -663,7 +663,7 @@ pub(crate) enum WriteFailure {
 
 impl RawViewStore {
     /// Write a marker into a folder and update the cached raw view in place,
-    /// without a rescan (ADR-0002). The guard and write run on a blocking task.
+    /// without a rescan (ADR-0022). The guard and write run on a blocking task.
     /// The cache lock is held only for the in-memory mutation.
     pub(crate) async fn write_mark(
         &self,
@@ -681,7 +681,7 @@ impl RawViewStore {
         let inner = Arc::clone(&self.inner);
         let rel = rel.to_string();
         // Spawned so a client disconnect cannot split the marker write from
-        // its index invalidation and cache edit (ADR-0036)
+        // its index invalidation and cache edit (ADR-0022)
         StoreInner::spawn_mutation(&self.inner, "mark", async move {
             StoreInner::apply_write_mark(&inner, root_path, root, &rel, marker).await
         })
@@ -689,7 +689,7 @@ impl RawViewStore {
     }
 
     /// Delete a marker file and refresh the cached view by rescanning the one
-    /// affected root (ADR-0002). The guard and delete run on a blocking task.
+    /// affected root (ADR-0022). The guard and delete run on a blocking task.
     /// The cache lock is held only for the per-root rebuild.
     pub(crate) async fn remove_mark(
         &self,

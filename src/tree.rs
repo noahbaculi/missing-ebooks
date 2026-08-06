@@ -6,7 +6,7 @@
 //! a show-all input every folder appears, so each node's own entry overwrites
 //! the placeholder. Siblings are ordered by case-insensitive natural sort, so
 //! `Book 2` precedes `Book 10`. The empty relative path is the library root
-//! itself (loose root audio, see ADR-0005): when it directly holds audio it
+//! itself (loose root audio, see ADR-0007): when it directly holds audio it
 //! becomes a node named after the root with relative path `.`, pinned ahead of
 //! the forest.
 
@@ -113,7 +113,7 @@ pub enum RootState {
 /// Builds the `RootState` for one library root in the requested mode.
 ///
 /// Dispatches over the `RootScan` variant, derives the display name from the
-/// canonical path for the loose-root `.`-node (ADR-0005), filters with
+/// canonical path for the loose-root `.`-node (ADR-0007), filters with
 /// `reduce_to_flagged` when `mode` is `ViewMode::GapsOnly`, and collapses an
 /// empty `GapsOnly` forest to `RootState::Clean`. Show-all keeps an empty
 /// forest as `RootState::Forest(vec![])` so the renderer's "Nothing here"
@@ -159,7 +159,7 @@ pub fn build(scan: &crate::scanner::RootScan, mode: ViewMode) -> RootState {
 /// today's pruned-walk behavior for the bare container above a flagged leaf. For
 /// a show-all input every folder appears, so each node's own entry overwrites
 /// the placeholder. `root_name` names the `.` node emitted when the root itself
-/// directly holds audio (see ADR-0005). Siblings are natural-sorted.
+/// directly holds audio (see ADR-0007). Siblings are natural-sorted.
 fn build_forest(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> Vec<Node> {
     let mut roots: Vec<Node> = Vec::new();
     let mut root_entry: Option<&crate::scanner::ScannedFolder> = None;
@@ -173,7 +173,7 @@ fn build_forest(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> V
             })
             .collect();
         if components.is_empty() {
-            // The empty relative path is the library root itself (see ADR-0005).
+            // The empty relative path is the library root itself (see ADR-0007).
             root_entry = Some(folder);
             continue;
         }
@@ -184,7 +184,7 @@ fn build_forest(root_name: &str, folders: &[crate::scanner::ScannedFolder]) -> V
         && entry.directly_holds_audio
     {
         // The root directly holds audio: surface it as a node, pinned ahead of
-        // the author forest (ADR-0005). In show-all it shows even when covered.
+        // the author forest (ADR-0007). In show-all it shows even when covered.
         // In gaps the filter only keeps it when `missing_ebook` is also true, so
         // it appears exactly when it is a gap.
         roots.insert(
@@ -281,7 +281,7 @@ mod tests {
     use std::path::PathBuf;
 
     /// Build a `RootScan::Walked` whose `canonical_path` ends in `name`, so the
-    /// loose-root `.`-node picks up `name` as its display label (ADR-0005). The
+    /// loose-root `.`-node picks up `name` as its display label (ADR-0007). The
     /// `/lib` prefix is arbitrary padding. Only the last component matters.
     fn walked(name: &str, folders: Vec<ScannedFolder>) -> RootScan {
         RootScan::Walked {
@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn loose_audio_in_the_root_becomes_a_flagged_root_node() {
         // The scanner reports the root itself as the empty relative path
-        // (see ADR-0005). It must surface as a flagged node pinned first.
+        // (see ADR-0007). It must surface as a flagged node pinned first.
         let owned = vec![ff("", &[]), ff("Andy Weir/Artemis", &[])];
         let roots = build_root("Audiobooks", owned, ViewMode::All);
         assert_eq!(names(&roots), vec!["Audiobooks", "Andy Weir"]);

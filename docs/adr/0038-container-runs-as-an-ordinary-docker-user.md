@@ -4,7 +4,7 @@ Date: 2026-08-04.
 
 ## Context
 
-ADR-0014 shipped the image with a 27-line `docker/entrypoint.sh` that dropped root to `PUID`/`PGID` via `su-exec` and sniffed for a mounted `/config/config.toml`. Its stated reason was that the PUID convention "sidesteps the permission friction of a UID baked into the image".
+An earlier iteration shipped the image with a 27-line `docker/entrypoint.sh` that dropped root to `PUID`/`PGID` via `su-exec` and sniffed for a mounted `/config/config.toml`. Its stated reason was that the PUID convention "sidesteps the permission friction of a UID baked into the image".
 
 That reason does not survive contact with the alternative. A baked-in UID was never the choice on the table. `--user 1000:1000` is set at run time and bakes in nothing, so it sidesteps the identical friction with no code, no `su-exec` package, no test script, and no CI job.
 
@@ -42,4 +42,4 @@ The three unit tests on `resolve_config_path` replace the 67-line shell test. Th
 
 ## Related
 
-Amends ADR-0014. Cites ADR-0003, ADR-0006, ADR-0008.
+Cites ADR-0003, ADR-0006, ADR-0008.

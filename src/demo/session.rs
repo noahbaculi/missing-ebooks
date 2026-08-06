@@ -22,7 +22,7 @@ impl SessionId {
 }
 
 /// One mark in the session's set: the library root index, the folder path
-/// relative to that root (or "." for the root itself, per ADR-0005), and the
+/// relative to that root (or "." for the root itself, per ADR-0007), and the
 /// marker kind. The set is keyed on this tuple, so repeated identical marks
 /// are no-ops at insert time and per-session size is structurally bounded by
 /// the scenario's `|markable folders x marker kinds|`.

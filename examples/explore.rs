@@ -5,7 +5,7 @@
 //! unchanged, and tears the directory down on Ctrl-C. There are no assertions and
 //! no browser automation: it just lets you click around a catalog of known
 //! library states. Loose root audio surfaces the root itself (see
-//! docs/adr/0005-library-root-itself-flaggable.md).
+//! docs/adr/0007-folder-granular-not-book-granular.md).
 
 use std::fmt::Write as _;
 use std::net::Ipv4Addr;

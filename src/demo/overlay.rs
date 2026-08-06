@@ -157,7 +157,7 @@ mod tests {
             },
             Case {
                 name: "single_root_dot",
-                // ADR-0005 root mark.
+                // ADR-0007 root mark.
                 marks: vec![(0, ".".to_string(), Marker::NoEbook)],
             },
             Case {

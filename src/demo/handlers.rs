@@ -127,7 +127,7 @@ fn resolve_in_store(
 /// Whether the (root, rel) pair names a folder the base view actually walked.
 /// Gates `/mark` and `/unmark` so garbage paths cannot enter the session set.
 ///
-/// `rel == "."` is true for any walked root, per ADR-0005 (the root carries
+/// `rel == "."` is true for any walked root, per ADR-0007 (the root carries
 /// an empty `rel_path` in `ScannedFolder`, not "."). For non-root cases the
 /// `rel` string is compared component-aware via `PathBuf` equality.
 ///
@@ -764,7 +764,7 @@ mod tests {
 
     #[tokio::test]
     async fn mark_accepts_root_dot_mark() {
-        // ADR-0005: every walked root is itself flaggable, named "." on the wire.
+        // ADR-0007: every walked root is itself flaggable, named "." on the wire.
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let state = build(dir.path(), 10, Duration::from_secs(1200)).await;

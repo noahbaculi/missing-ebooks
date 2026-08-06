@@ -1,7 +1,7 @@
 //! The raw scan output type and the pure rule that mutates it for a marker
 //! write. `RawView` is one `RootScan` per configured library root, in config
 //! order. `apply_mark_raw` applies a marker write in place, honoring the
-//! ADR-0005 root-mark rule (`rel == "."` covers the whole root) and the
+//! ADR-0007 root-mark rule (`rel == "."` covers the whole root) and the
 //! component-aware ancestor rule (`Author` does not cover `Authority/X`).
 //! Consumed by `state::RawViewStore` (which memoizes it and edits it in
 //! place on `write_mark`) and by `demo::overlay` (which replays against it
@@ -24,7 +24,7 @@ pub(crate) type RawView = Vec<RootScan>;
 /// every entry whose `rel_path` equals `P` or starts with `P` followed by `/`
 /// flips `missing_ebook` to false, and the entry whose `rel_path` equals `P`
 /// gains the marker filename in `cover_files`. For a root mark (rel == ".",
-/// see ADR-0005): every entry under that root flips `missing_ebook` to false,
+/// see ADR-0007): every entry under that root flips `missing_ebook` to false,
 /// and the empty-rel-path entry gains the marker filename. Component-aware
 /// match: `Author` does not cover `Authority/X`.
 pub(crate) fn apply_mark_raw(raw: &mut RawView, root: usize, rel: &str, marker: Marker) {

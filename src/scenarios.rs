@@ -2,7 +2,7 @@
 //! public demo binary. Each builder seeds folders and files under a base
 //! directory with `std::fs` and returns the library roots to configure, in
 //! render order. Loose root audio surfaces the root itself (see
-//! docs/adr/0005-library-root-itself-flaggable.md).
+//! docs/adr/0007-folder-granular-not-book-granular.md).
 
 use std::path::{Path, PathBuf};
 
@@ -772,12 +772,12 @@ fn build_clean_error() -> ScenarioSpec {
     }
 }
 
-/// Loose audio directly in the root, so the root itself is the gap (ADR-0005).
+/// Loose audio directly in the root, so the root itself is the gap (ADR-0007).
 fn build_root_flagged() -> ScenarioSpec {
     ScenarioSpec {
         roots: vec![
             // Audio loose in the root: the root itself is the gap, a single
-            // flagged node with rel_path "." (see ADR-0005).
+            // flagged node with rel_path "." (see ADR-0007).
             root(
                 "Loose Audio",
                 vec![
@@ -1104,7 +1104,7 @@ mod tests {
         let spec = build_root_flagged();
         let roots = materialize(&spec, dir.path());
         assert_eq!(roots.len(), 1);
-        // Loose audio in the root is reported as the empty relative path (ADR-0005).
+        // Loose audio in the root is reported as the empty relative path (ADR-0007).
         assert_eq!(flagged(&roots[0]), BTreeSet::from([String::new()]));
     }
 

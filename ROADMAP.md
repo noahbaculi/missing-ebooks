@@ -22,6 +22,6 @@ Identify and group audiobooks by their embedded metadata, the way Audiobookshelf
 
 These only earn their complexity once a library is big enough to feel the cost. None of them changes behavior today.
 
-- Per-row out-of-band swaps instead of re-rendering a whole section on a change (ADR-0024). A change deep in a large author section currently replaces the entire section's DOM. Per-row swaps need stable per-folder ids and add/remove plumbing.
+- Per-row out-of-band swaps instead of re-rendering a whole section on a change (previously ADR-0024, now covered by ADR-0034). A change deep in a large author section currently replaces the entire section's DOM. Per-row swaps need stable per-folder ids and add/remove plumbing.
 - Render memoization (ADR-0022). The view renders on every read, not just on a cache miss, so a session that swaps sections repeatedly within one TTL window multiplies the render cost. Memoize only if that multiplier ever bites.
 - Pruning the directory index (ADR-0020). The index never removes the entry for a folder deleted or renamed on disk, so memory grows with folder churn over the process's uptime, not with library size. A lingering entry is never read and cannot corrupt a scan, and every restart resets the index to empty, so this only matters on a high-churn library left running for a very long time. The fix is a root-scoped prune at the end of each walk.

@@ -1,12 +1,12 @@
 # A marker write swaps one section with vendored htmx, not a full reload
 
-> Amended 2026-06-26 by ADR-0028: the `service::mark` symbol cited below was inlined into the `web::mark` handler in `src/web.rs`.
+> Amended 2026-06-26 by ADR-0032: the `service::mark` symbol cited below was inlined into the `web::mark` handler in `src/web.rs`.
 
 Date: 2026-06-06.
 
 ## Context
 
-Superseded in part by ADR-0018 (commit `236073e`): the implicit progressive-enhancement framing here is gone, the UI requires JavaScript. The section-swap mechanism and the vendored-htmx decision below still stand, and ADR-0024 builds on the swap unit established here.
+Superseded in part by ADR-0018 (commit `236073e`): the implicit progressive-enhancement framing here is gone, the UI requires JavaScript. The section-swap mechanism and the vendored-htmx decision below still stand.
 
 ## Decision
 
