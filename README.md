@@ -184,6 +184,10 @@ If you want to clean up from this application, you can simply remove any marker 
 find /path/to/audiobooks \( -name '*.no_ebook' -o -name '*.ebook_elsewhere' \) -delete
 ```
 
+## Releases
+
+Release notes and published versions: [github.com/noahbaculi/missing-ebooks/releases](https://github.com/noahbaculi/missing-ebooks/releases).
+
 ## License
 
 Released under AGPL-3.0-or-later. See `LICENSE`.
