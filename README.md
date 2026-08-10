@@ -9,6 +9,18 @@ Self-hosted web server that scans your audiobook library to highlight folders th
 Try the live demo with dummy data: **[demo-missing-ebooks.noahbaculi.com](https://demo-missing-ebooks.noahbaculi.com)**.
 Each visit opens a private, throwaway sandbox seeded with sample audiobooks. Changes stay in your session and reset when idle.
 
+## Features
+
+- Zero-config Docker deploy (single multi-arch image, works with one env var)
+- No database: state lives as marker files in your library
+- Simple marker files (`.no_ebook`, `.ebook_elsewhere`), writable with one click from the UI
+- Responsive UI with light and dark mode
+- Multi-root libraries, each rendered as its own tree
+- Smart coverage detection: ebooks and markers cover their whole subtree, so container folders don't false-flag
+- Live auto-refresh while a tab is open, plus on-demand `Rescan`
+- Prepopulated search links (Goodreads, etc, fully configurable)
+- Tunable for slow network shares: parallel scanning and cached results
+
 ## Getting started
 
 Docker is the supported distribution path. A multi-arch image (amd64 and arm64) is published to GitHub Container Registry. With [Docker Compose](https://docs.docker.com/compose/), drop this `docker-compose.yml` beside your other stacks, edit the volume path, and run `docker compose up -d`:
