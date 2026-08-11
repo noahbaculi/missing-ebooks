@@ -1,11 +1,11 @@
 # Builder: compile a static musl binary on the runner's native architecture.
 # rust:alpine targets *-unknown-linux-musl by default, so cargo build emits a
 # fully static binary at target/release/.
-# Keep in sync with rust-toolchain.toml; bump both together.
+# Keep in sync with rust-toolchain.toml; the toolchain-drift CI job enforces it.
 # BIN selects the binary: the production server by default, or the demo via
 # --build-arg BIN=missing-ebooks-demo (see demo/docker-compose.yml).
 ARG BIN=missing-ebooks
-FROM rust:1.97.1-alpine AS builder
+FROM rust:1.96.0-alpine AS builder
 ARG BIN
 
 # Some crates link a C runtime; musl-dev provides it for the musl target.

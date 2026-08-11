@@ -65,6 +65,31 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo +1.96.0 build --locked
 
+  toolchain-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert Dockerfile, rust-toolchain.toml, and Cargo.toml MSRV agree
+        run: |
+          set -eu
+          dockerfile_ver=$(sed -n 's/^FROM rust:\([0-9.]*\)-alpine.*/\1/p' Dockerfile | head -n1)
+          toolchain_ver=$(sed -n 's/^channel = "\([0-9.]*\)"/\1/p' rust-toolchain.toml)
+          msrv_ver=$(sed -n 's/^rust-version = "\([0-9.]*\)"/\1/p' Cargo.toml)
+          echo "Dockerfile: $dockerfile_ver"
+          echo "rust-toolchain.toml: $toolchain_ver"
+          echo "Cargo.toml rust-version: $msrv_ver"
+          if [ -z "$dockerfile_ver" ] || [ -z "$toolchain_ver" ] || [ -z "$msrv_ver" ]; then
+            echo "Failed to parse one of the pinned versions"; exit 1
+          fi
+          if [ "$dockerfile_ver" != "$toolchain_ver" ]; then
+            echo "Dockerfile ($dockerfile_ver) != rust-toolchain.toml ($toolchain_ver)"; exit 1
+          fi
+          # MSRV may omit the patch component; require toolchain to start with the MSRV prefix.
+          case "$toolchain_ver" in
+            "$msrv_ver"|"$msrv_ver".*) ;;
+            *) echo "rust-toolchain.toml ($toolchain_ver) does not satisfy Cargo.toml MSRV ($msrv_ver)"; exit 1 ;;
+          esac
+
   docs:
     runs-on: ubuntu-latest
     env:
