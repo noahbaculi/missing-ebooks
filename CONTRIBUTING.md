@@ -30,6 +30,8 @@ MSRV is Rust 1.96 (matches `rust-toolchain.toml`).
 - `mise run test` runs nextest plus doctests.
 - `mise run lint` runs fmt, clippy, typos, taplo, and the unused-dep check.
 
+HTTP-reachable `tokio::spawn` sites must fold `JoinError` into a real error path. See `spawn_mutation` in `src/state.rs` for the pattern.
+
 ## Exploring the UI
 
 The UI harness seeds a synthetic library into a temp directory and serves the production router against it.

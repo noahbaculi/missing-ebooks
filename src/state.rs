@@ -193,14 +193,21 @@ impl RawViewStore {
             return StoreInner::build_coalesced(&self.inner, false, None).await;
         }
         let inner = Arc::clone(&self.inner);
-        tokio::spawn(async move {
+        let task_inner = Arc::clone(&inner);
+        match tokio::spawn(async move {
             for index in &inner.dir_indices {
                 index.clear();
             }
             StoreInner::build_coalesced(&inner, false, None).await
         })
         .await
-        .expect("rescan task panicked")
+        {
+            Ok(raw) => raw,
+            Err(join_err) => {
+                tracing::error!(error = %join_err, "rescan task panicked");
+                StoreInner::current(&task_inner).await
+            }
+        }
     }
 
     /// Returns the count of fresh builds stored into the slot since this
@@ -328,6 +335,7 @@ impl StoreInner {
             gate.release
                 .acquire()
                 .await
+                // Test owns the release semaphore for the gate's lifetime, so it cannot be closed here
                 .expect("build gate semaphore closed")
                 .forget();
         }
@@ -392,6 +400,7 @@ impl StoreInner {
             } else {
                 let registered_at = this.generation();
                 let task_inner = Arc::clone(this);
+                let fallback_inner = Arc::clone(&task_inner);
                 let task = tokio::spawn(async move {
                     let raw = Arc::new(
                         build_view(
@@ -407,9 +416,20 @@ impl StoreInner {
                     raw
                 });
                 let build: SharedBuild = async move {
-                    // JoinError is unreachable in practice: per-root panics are
-                    // folded into RootScan::Failed by build_section
-                    task.await.expect("cold build task panicked")
+                    // Per-root panics fold into RootScan::Failed inside build_section,
+                    // so JoinError here means the spawn wrapper itself unwound. Degrade
+                    // to the last-known-good view instead of unwinding the runtime.
+                    // On a first-ever cold build that resolves to the empty placeholder.
+                    match task.await {
+                        Ok(raw) => raw,
+                        Err(join_err) => {
+                            tracing::error!(error = %join_err, "cold build task panicked");
+                            fallback_inner
+                                .load()
+                                .map(|entry| Arc::clone(&entry.raw))
+                                .unwrap_or_else(|| Arc::new(Vec::new()))
+                        }
+                    }
                 }
                 .boxed()
                 .shared();
