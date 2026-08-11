@@ -44,7 +44,7 @@ Then open http://127.0.0.1:13379.
 Point the volume at your library on the host. The container reads it and writes marker files back into it. The container runs as uid 1000 by default; if the markers need to land under a different user or group on the host (common on NAS mounts), set `user:`; see [Advanced configuration](#advanced-configuration).
 
 > [!WARNING]
-> The server has no authentication. It binds to loopback by default, and binding to a non-loopback address logs a warning at startup. To reach it from the LAN, put a reverse proxy with authentication in front of it before exposing it beyond your machine.
+> The server has no authentication. It binds to loopback by default, and binding to a non-loopback address logs a warning at startup. To reach it from the LAN, put a reverse proxy with authentication in front of it before exposing it beyond your machine. See [SECURITY.md](SECURITY.md) for the full threat model and how to report a vulnerability.
 
 ## How it works
 
