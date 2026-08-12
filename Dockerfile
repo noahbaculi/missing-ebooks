@@ -43,10 +43,11 @@ COPY --from=builder /build/target/release/missing-ebooks /usr/local/bin/missing-
 # `--user` on docker run overrides it (see ADR-0038).
 USER 1000:1000
 
-# Bind all interfaces inside the container (loopback would be unreachable from
-# the host). Exposure is controlled at the port-publish layer (see ADR-0003).
-# The config path is a hint: absent the mount, the binary ignores it.
+# Bind all interfaces inside the container and acknowledge that non-loopback
+# bind on the image itself: exposure is controlled at the port-publish layer,
+# per ADR-0003. The native binary refuses non-loopback bind without the flag.
 ENV MISSING_EBOOKS_BIND=0.0.0.0 \
+    MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1 \
     MISSING_EBOOKS_CONFIG=/config/config.toml
 
 EXPOSE 13379
