@@ -91,6 +91,8 @@ services:
 - `MISSING_EBOOKS_LIBRARY_ROOTS` takes an OS-path-separated list (`:` on Unix, `;` on Windows), so multiple roots need one mount per root and one entry per container path.
 - Mount `config.toml` at `/config/config.toml`; the image auto-detects that path.
 
+Pin the image tag for reproducible deploys. Every stable release publishes `:MAJOR.MINOR.PATCH` (e.g. `:1.0.0`), `:MAJOR.MINOR` (`:1.0`), and `:MAJOR` (`:1`), plus `:latest` for the newest stable. Pick the narrowest tag you're willing to auto-upgrade past.
+
 ### The `config.toml` file
 
 Optional. The Docker image auto-detects `/config/config.toml` and the CLI accepts `--config <path>`. Every field, its default, the environment variable that overrides it, and its rationale live in the annotated template below. Env vars win over the file, and the file wins over the built-in defaults.
