@@ -93,9 +93,17 @@ async fn main() -> ExitCode {
         }
     };
     if !ip.is_loopback() {
+        let allow_env = std::env::var("MISSING_EBOOKS_ALLOW_PUBLIC_BIND").ok();
+        if !public_bind_allowed(ip, allow_env.as_deref()) {
+            tracing::error!(
+                bind = %config.bind,
+                "refusing to bind a non-loopback address without MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1. Bind loopback and front with a reverse proxy that enforces auth, or set the env var to acknowledge the trust model in SECURITY.md."
+            );
+            return ExitCode::from(1);
+        }
         tracing::warn!(
             bind = %config.bind,
-            "binding to a non-loopback address, put a reverse proxy with authentication in front before exposing this"
+            "binding to a non-loopback address with MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1, put a reverse proxy with authentication in front before exposing this"
         );
     }
     let addr = SocketAddr::new(ip, config.port);
