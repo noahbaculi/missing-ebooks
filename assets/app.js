@@ -579,8 +579,9 @@
 
   // connection status: detection + banner
 
-  // htmx has no request timeout by default. A generous backstop frees a truly hung
-  // request without aborting a legitimately slow big-library rescan.
+  // Backstop for /mark and /refresh, both fast. /rescan opts out via `hx-request`
+  // in `src/web/page.rs`: a legitimate big-library walk can exceed 30 s and a
+  // timeout there mislabels a successful rescan as failed.
   htmx.config.timeout = 30000;
 
   /** @type {HTMLElement | null} */

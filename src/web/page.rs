@@ -381,8 +381,12 @@ pub(crate) fn page(mode: ViewMode, poll_interval_seconds: u64, body: &Markup) ->
                         // the request. `hx-disabled-elt` locks it so a second click cannot
                         // double-scan, and the disabled state dims it (`app.css`). The
                         // label stays put, and both clear once the swap settles.
+                        // Opt out of the 30 s htmx global (`assets/app.js`). A large-library
+                        // walk can outrun it, and a timeout here mislabels a successful
+                        // rescan as a failure.
                         button.btn.btn-primary id="rescan-btn" type="button"
-                            hx-post="/rescan" hx-include="closest form" { "Rescan" }
+                            hx-post="/rescan" hx-include="closest form"
+                            hx-request=r#"{"timeout": 600000}"# { "Rescan" }
                     }
                 }
                 (intro_card())
@@ -673,6 +677,10 @@ mod tests {
         assert!(!html.contains(r#"action="/rescan""#));
         assert!(!html.contains(r#"method="post""#));
         assert!(html.contains(r#"id="rescan-btn" type="button" hx-post="/rescan""#));
+        // Rescan opts out of the 30 s htmx global with a per-request timeout so a
+        // slow big-library walk cannot be classified as failed.
+        assert!(html.contains("hx-request="));
+        assert!(html.contains("600000"));
     }
 
     #[test]
