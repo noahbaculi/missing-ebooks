@@ -63,7 +63,7 @@ jobs:
       - name: Install the MSRV toolchain
         run: rustup toolchain install 1.96.0
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +1.96.0 build --locked
+      - run: cargo +1.96.0 check --all-targets --locked
 
   toolchain-drift:
     runs-on: ubuntu-latest
