@@ -107,6 +107,9 @@ async fn mark(
     Form(req): Form<MarkRequest>,
 ) -> axum::response::Response {
     let started = Instant::now();
+    if let Err(resp) = validate_rel(&req.rel) {
+        return *resp;
+    }
     let links = &state.config.search_links;
     let mode = ViewMode::from_query(req.view.as_deref());
     let resp = match state.store.write_mark(req.root, &req.rel, req.kind).await {
@@ -140,6 +143,9 @@ async fn unmark(
     Form(req): Form<MarkRequest>,
 ) -> axum::response::Response {
     let started = Instant::now();
+    if let Err(resp) = validate_rel(&req.rel) {
+        return *resp;
+    }
     let links = &state.config.search_links;
     let mode = ViewMode::from_query(req.view.as_deref());
     let resp = match state.store.remove_mark(req.root, &req.rel, req.kind).await {
@@ -233,6 +239,18 @@ fn ascii_escape(s: &str) -> String {
         }
     }
     out
+}
+
+/// Reject `rel` values above `PATH_MAX` with a specific 400 instead of the
+/// router's generic 413.
+fn validate_rel(rel: &str) -> Result<(), Box<axum::response::Response>> {
+    const REL_MAX: usize = 4096;
+    if rel.len() > REL_MAX {
+        return Err(Box::new(
+            (axum::http::StatusCode::BAD_REQUEST, "rel too long").into_response(),
+        ));
+    }
+    Ok(())
 }
 
 /// Render a section response, optionally carrying an `HX-Trigger` header. A value

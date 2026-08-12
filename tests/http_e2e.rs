@@ -277,3 +277,33 @@ async fn mark_rejects_oversized_body() {
 
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
+
+#[tokio::test]
+async fn mark_rejects_oversized_rel() {
+    let (app, _tmp) = boot(vec![]);
+    // rel just over the 4 KB per-field cap but well under the 64 KB body cap.
+    let long_rel = "a".repeat(5000);
+    let body = format!(
+        "root=0&rel={}&kind=no_ebook&view=gaps",
+        urlencode(&long_rel)
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mark")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let text = body_string(response).await;
+    assert!(
+        text.contains("rel too long"),
+        "400 body must explain the reason, got: {text}"
+    );
+}
