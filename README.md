@@ -44,7 +44,7 @@ Then open http://127.0.0.1:13379.
 Point the volume at your library on the host. The container reads it and writes marker files back into it. The container runs as uid 1000 by default; if the markers need to land under a different user or group on the host (common on NAS mounts), set `user:`; see [Advanced configuration](#advanced-configuration).
 
 > [!WARNING]
-> The server has no authentication. It binds to loopback by default, and binding to a non-loopback address logs a warning at startup. To reach it from the LAN, put a reverse proxy with authentication in front of it before exposing it beyond your machine. See [SECURITY.md](SECURITY.md) for the full threat model and how to report a vulnerability.
+> The server has no authentication. It binds to loopback by default, and refuses to bind a non-loopback address unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1` is set (the shipped Docker image sets it, since the container binds `0.0.0.0` on purpose and exposure is controlled at the port-publish layer). To reach it from the LAN, put a reverse proxy with authentication in front of it before exposing it beyond your machine. See [SECURITY.md](SECURITY.md) for the full threat model and how to report a vulnerability.
 
 ## How it works
 
@@ -115,8 +115,9 @@ library_roots = []
 # RUST_LOG, if set, overrides it with full tracing filter syntax.
 
 # Address the HTTP server binds. Loopback by default (see ADR-0003). Set
-# "0.0.0.0" to listen on all interfaces. The server logs a warning at startup
-# when bound to a non-loopback address. Also settable as MISSING_EBOOKS_BIND.
+# "0.0.0.0" to listen on all interfaces; the server then refuses to start
+# unless MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1 is also set. Also settable as
+# MISSING_EBOOKS_BIND.
 bind = "127.0.0.1"
 
 # HTTP listen port. An uncommon high port, away from 8080 (see ADR-0011). Also

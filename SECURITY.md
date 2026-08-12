@@ -19,7 +19,7 @@ Once v1.0.0 is out, security fixes land on the latest minor line. Older minors d
 
 `missing-ebooks` has no authentication, no authorization, and no session concept. It is meant to run on loopback and sit behind a reverse proxy that enforces auth before any non-local access. See the [README warning](README.md#missing-ebooks) and [ADR-0003](docs/adr/0003-default-bind-loopback.md) for the default bind rationale, and [issue 15](.scratch/v1-readiness/issues/15-hardened-compose-sample.md) for the hardened compose sample this policy assumes.
 
-Binding to a non-loopback address (`0.0.0.0`, a LAN IP, a tailnet IP) logs a warning at startup but is not blocked. Doing so without a reverse proxy in front puts the server on the trust boundary described below.
+Binding to a non-loopback address (`0.0.0.0`, a LAN IP, a tailnet IP) is refused at startup unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1` is set. Setting it acknowledges the trust boundary described below: the server still ships with no auth, and any non-loopback bind belongs behind a reverse proxy that enforces one.
 
 ## Threat model on a non-loopback bind
 
