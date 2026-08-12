@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use axum::Router;
-use axum::extract::{Form, Query, State};
+use axum::extract::{DefaultBodyLimit, Form, Query, State};
 use axum::http::{HeaderName, HeaderValue};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
@@ -73,6 +73,7 @@ fn router_with_limit(state: Arc<AppState>, semaphore: Arc<tokio::sync::Semaphore
         .route("/static/htmx.min.js", get(assets::htmx_script))
         .route("/static/app.css", get(assets::app_css))
         .route("/static/app.js", get(assets::app_js))
+        .layer(DefaultBodyLimit::max(64 * 1024))
         .layer(tower::limit::GlobalConcurrencyLimitLayer::with_semaphore(
             semaphore,
         ))

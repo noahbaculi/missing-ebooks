@@ -255,3 +255,25 @@ async fn errored_root_renders_banner() {
         "errored root must render the error banner"
     );
 }
+
+#[tokio::test]
+async fn mark_rejects_oversized_body() {
+    let (app, _tmp) = boot(vec![]);
+    // 70 KB of form data, well over the 64 KB router cap.
+    let filler = "a".repeat(70 * 1024);
+    let body = format!("root=0&rel=x&kind=no_ebook&view=gaps&pad={filler}");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mark")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
