@@ -22,3 +22,9 @@ services:
       - /path/to/audiobooks_2:/audiobooks_2
       - ./config.toml:/config/config.toml:ro
     restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - "no-new-privileges:true"
+    tmpfs:
+      - /tmp

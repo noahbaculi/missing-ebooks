@@ -17,7 +17,9 @@ Once v1.0.0 is out, security fixes land on the latest minor line. Older minors d
 
 ## Deployment posture
 
-`missing-ebooks` has no authentication, no authorization, and no session concept. It is meant to run on loopback and sit behind a reverse proxy that enforces auth before any non-local access. See the [README warning](README.md#missing-ebooks) and [ADR-0003](docs/adr/0003-default-bind-loopback.md) for the default bind rationale, and [issue 15](.scratch/v1-readiness/issues/15-hardened-compose-sample.md) for the hardened compose sample this policy assumes.
+`missing-ebooks` has no authentication, no authorization, and no session concept. It is meant to run on loopback and sit behind a reverse proxy that enforces auth before any non-local access. See the [README warning](README.md#missing-ebooks) and [ADR-0003](docs/adr/0003-default-bind-loopback.md) for the default bind rationale.
+
+The shipped [`docker-compose.yml`](docker-compose.yml) and [`docker-compose.advanced.yml`](docker-compose.advanced.yml) run the container with `read_only: true`, `cap_drop: [ALL]`, `security_opt: ["no-new-privileges:true"]`, and `tmpfs: /tmp`. The app writes only to the mounted library, so read-only rootfs costs nothing, and the other flags remove capabilities and privilege-escalation paths a compromised process would otherwise inherit. Keep them set.
 
 Binding to a non-loopback address (`0.0.0.0`, a LAN IP, a tailnet IP) is refused at startup unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1` is set. Setting it acknowledges the trust boundary described below: the server still ships with no auth, and any non-loopback bind belongs behind a reverse proxy that enforces one.
 
@@ -32,7 +34,6 @@ Anything on the same network as an unauthenticated `0.0.0.0` instance can:
 ## What is not defended against
 
 - No CSRF token on `POST /mark`, `POST /unmark`, `POST /rescan`. A browser that can reach the server can be tricked into issuing writes via cross-origin form submits.
-- No request-body size limit on marker endpoints yet, tracked in [issue 12](.scratch/v1-readiness/issues/12-request-body-limit-marker-endpoints.md).
 - No per-IP rate limit beyond the global in-flight cap.
 - No transport encryption. Terminate TLS at the reverse proxy.
 

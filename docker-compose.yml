@@ -12,3 +12,9 @@ services:
     volumes:
       - /path/to/audiobooks:/audiobooks
     restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - "no-new-privileges:true"
+    tmpfs:
+      - /tmp

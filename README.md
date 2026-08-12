@@ -37,11 +37,19 @@ services:
     volumes:
       - /path/to/audiobooks:/audiobooks
     restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - "no-new-privileges:true"
+    tmpfs:
+      - /tmp
 ```
 
 Then open http://127.0.0.1:13379.
 
 Point the volume at your library on the host. The container reads it and writes marker files back into it. The container runs as uid 1000 by default; if the markers need to land under a different user or group on the host (common on NAS mounts), set `user:`; see [Advanced configuration](#advanced-configuration).
+
+The `read_only`, `cap_drop`, `security_opt`, and `tmpfs` lines sandbox the container: read-only rootfs, no Linux capabilities, no privilege escalation, and an in-memory `/tmp`. The app writes only to the mounted library, so nothing is lost, and a compromise inside the container has no persistence and no reach beyond the library mount. See [SECURITY.md](SECURITY.md) for the rationale.
 
 > [!WARNING]
 > The server has no authentication. It binds to loopback by default, and refuses to bind a non-loopback address unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1` is set (the shipped Docker image sets it, since the container binds `0.0.0.0` on purpose and exposure is controlled at the port-publish layer). To reach it from the LAN, put a reverse proxy with authentication in front of it before exposing it beyond your machine. See [SECURITY.md](SECURITY.md) for the full threat model and how to report a vulnerability.
@@ -85,6 +93,12 @@ services:
       - /path/to/audiobooks_2:/audiobooks_2
       - ./config.toml:/config/config.toml:ro
     restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - "no-new-privileges:true"
+    tmpfs:
+      - /tmp
 ```
 
 - `user:` sets the user the container runs as. The image defaults to `1000:1000`; match it to whoever owns the library on the host (run `id` to find yours). This is Docker's own directive, not an app setting, so it is not in `config.toml`.
