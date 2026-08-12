@@ -44,6 +44,15 @@ fn resolve_config_path(flag: Option<PathBuf>, env: Option<OsString>) -> Option<P
     flag.or_else(|| env.map(PathBuf::from).filter(|path| path.is_file()))
 }
 
+/// Decide whether the resolved bind IP may be used.
+///
+/// Loopback is always allowed. A non-loopback IP is allowed only when
+/// `MISSING_EBOOKS_ALLOW_PUBLIC_BIND` is set to exactly `"1"`. See
+/// `docs/adr/0003-default-bind-loopback.md` for the trust model.
+fn public_bind_allowed(ip: IpAddr, allow_env: Option<&str>) -> bool {
+    ip.is_loopback() || allow_env == Some("1")
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     missing_ebooks::telemetry::init();
@@ -219,5 +228,51 @@ mod tests {
             Some(OsString::from("/definitely/not/here.toml")),
         );
         assert_eq!(resolved, Some(flag));
+    }
+
+    #[test]
+    fn loopback_is_allowed_without_the_flag() {
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
+        assert!(public_bind_allowed(ip, None));
+    }
+
+    #[test]
+    fn ipv6_loopback_is_allowed_without_the_flag() {
+        let ip: IpAddr = "::1".parse().unwrap();
+        assert!(public_bind_allowed(ip, None));
+    }
+
+    #[test]
+    fn loopback_stays_allowed_with_the_flag() {
+        let ip: IpAddr = "127.0.0.1".parse().unwrap();
+        assert!(public_bind_allowed(ip, Some("1")));
+    }
+
+    #[test]
+    fn non_loopback_is_refused_without_the_flag() {
+        let ip: IpAddr = "0.0.0.0".parse().unwrap();
+        assert!(!public_bind_allowed(ip, None));
+    }
+
+    #[test]
+    fn non_loopback_is_allowed_with_exact_one() {
+        let ip: IpAddr = "0.0.0.0".parse().unwrap();
+        assert!(public_bind_allowed(ip, Some("1")));
+    }
+
+    #[test]
+    fn non_loopback_refuses_truthy_lookalikes() {
+        let ip: IpAddr = "192.168.1.10".parse().unwrap();
+        assert!(!public_bind_allowed(ip, Some("true")));
+        assert!(!public_bind_allowed(ip, Some("yes")));
+        assert!(!public_bind_allowed(ip, Some("on")));
+        assert!(!public_bind_allowed(ip, Some("")));
+        assert!(!public_bind_allowed(ip, Some("0")));
+    }
+
+    #[test]
+    fn ipv6_link_local_is_refused_without_the_flag() {
+        let ip: IpAddr = "fe80::1".parse().unwrap();
+        assert!(!public_bind_allowed(ip, None));
     }
 }
