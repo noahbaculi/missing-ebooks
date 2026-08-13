@@ -71,6 +71,32 @@ Two fixed marker files mark a folder as covered without actual ebook files:
 
 A marker covers the folder it sits in and everything below it, the same as an ebook. Writing one into a container (an author or series folder) covers every folder under it.
 
+## FAQ
+
+### How long does the first scan take on a large library?
+
+Scan time is dominated by per-directory latency, not file count. On a local SSD a few thousand folders finish in a second or two. On SMB or NFS, every folder is a round trip, so a library with tens of thousands of folders can take minutes on a cold start. Raise `scan_concurrency` to overlap the waits; see [Network shares](#network-shares) and [ADR-0019](docs/adr/0019-scan-walk-parallel-sized-by-concurrency.md).
+
+### How do I tell an errored root apart from an unmounted volume?
+
+Both surface at the root level, but they render differently. An errored root (canonicalization or walk failure) shows a red `scan error` badge with the OS message, so a missing mount point reads as `scan error: no such file or directory`. A root that exists but is empty (mount succeeded, no audio inside) renders as a normal root with no rows and a `no audio` note. If you see `scan error`, check the host-side mount.
+
+### How do I upgrade?
+
+`docker compose pull && docker compose up -d`. That fetches the current image for whichever tag you pinned and recreates the container. Pin narrowly (see the tag guidance under [Advanced configuration](#advanced-configuration)) if you want to control which upgrades you accept.
+
+### Is there a health check endpoint?
+
+Yes. `GET /` returns 200 once the server is serving, and the image's `HEALTHCHECK` uses it (see the `Dockerfile`). Docker's `docker ps` health column reflects it.
+
+### What happens if the host port is already bound?
+
+Docker fails at `up` time with a bind error and the container never starts. Change the host side of the port mapping (e.g. `"127.0.0.1:13380:13379"`) or free the port. The container-internal port is fixed at 13379 unless you also set `MISSING_EBOOKS_PORT`. See [ADR-0011](docs/adr/0011-default-port-uncommon-registered.md) for why 13379.
+
+### What state persists across restarts?
+
+Only the marker files (`.no_ebook`, `.ebook_elsewhere`) inside your library. The scan cache is in-memory and rebuilds on the first request after start; nothing else is written outside the mounted library roots. See [ADR-0037](docs/adr/0037-request-cap-and-rescan-cooldown.md) for the rescan cooldown behavior on top of that cache.
+
 ## Advanced configuration
 
 The defaults handle a working install. Reach for `config.toml` only to override search links, add exclusion patterns, or change extension lists. Everything else is an environment variable.
