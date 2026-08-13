@@ -17,7 +17,7 @@ Once v1.0.0 is out, security fixes land on the latest minor line. Older minors d
 
 ## Deployment posture
 
-`missing-ebooks` has no authentication, no authorization, and no session concept. It is meant to run on loopback and sit behind a reverse proxy that enforces auth before any non-local access. See the [README warning](README.md#missing-ebooks) and [ADR-0003](docs/adr/0003-default-bind-loopback.md) for the default bind rationale.
+`missing-ebooks` has no authentication, no authorization, and no session concept. It is meant to run on loopback and sit behind a reverse proxy that enforces auth before any non-local access. See the [README warning](README.md#getting-started) and [ADR-0003](docs/adr/0003-default-bind-loopback.md) for the default bind rationale.
 
 The shipped [`docker-compose.yml`](docker-compose.yml) and [`docker-compose.advanced.yml`](docker-compose.advanced.yml) run the container with `read_only: true`, `cap_drop: [ALL]`, `security_opt: ["no-new-privileges:true"]`, and `tmpfs: /tmp`. The app writes only to the mounted library, so read-only rootfs costs nothing, and the other flags remove capabilities and privilege-escalation paths a compromised process would otherwise inherit. Keep them set.
 
@@ -28,7 +28,7 @@ Binding to a non-loopback address (`0.0.0.0`, a LAN IP, a tailnet IP) is refused
 Anything on the same network as an unauthenticated `0.0.0.0` instance can:
 
 - Enumerate the full folder tree under every configured library root, including filenames and any path components that carry personal information.
-- Plant `.no_ebook` or `.ebook_elsewhere` markers under any library root via `POST /mark` and `POST /unmark`. Marker writes are guarded against `..` traversal ([ADR-0008](docs/adr/0008-marker-write-guarded-against-traversal.md)); known caveats around symlink TOCTOU, cross-mount, and Unicode are tracked in [issue 11](.scratch/v1-readiness/issues/11-marker-guard-toctou-mount-unicode.md).
+- Plant `.no_ebook` or `.ebook_elsewhere` markers under any library root via `POST /mark` and `POST /unmark`. Marker writes are guarded against `..` traversal ([ADR-0008](docs/adr/0008-marker-write-guarded-against-traversal.md)); known caveats around symlink TOCTOU, cross-mount, and Unicode are tracked in the maintainer's backlog.
 - Force repeated cold scans through `POST /rescan`, driving disk and CPU. The 16 in-flight request cap and rescan cooldown ([ADR-0037](docs/adr/0037-request-cap-and-rescan-cooldown.md)) limit the blast radius but do not stop a determined peer.
 
 ## What is not defended against
