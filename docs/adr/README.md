@@ -2,7 +2,7 @@
 
 One ADR per architectural decision, numbered sequentially. New ADRs use this shape:
 
-    # ADR-NNNN: title
+    # title
 
     Date: YYYY-MM-DD.
 

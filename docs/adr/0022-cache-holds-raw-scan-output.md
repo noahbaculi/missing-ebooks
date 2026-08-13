@@ -1,4 +1,4 @@
-# ADR-0022: Raw scan cache, in-place marker writes, and generation-guarded store mutations
+# Raw scan cache, in-place marker writes, and generation-guarded store mutations
 
 Date: 2026-08-04.
 

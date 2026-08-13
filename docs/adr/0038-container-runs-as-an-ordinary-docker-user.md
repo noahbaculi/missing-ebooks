@@ -1,4 +1,4 @@
-# ADR-0038: The container runs as an ordinary Docker user
+# The container runs as an ordinary Docker user
 
 Date: 2026-08-04.
 

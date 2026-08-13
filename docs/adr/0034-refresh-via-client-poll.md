@@ -1,4 +1,4 @@
-# ADR-0034: Refresh is a client-driven poll of `GET /refresh`
+# Refresh is a client-driven poll of `GET /refresh`
 
 Date: 2026-07-06.
 

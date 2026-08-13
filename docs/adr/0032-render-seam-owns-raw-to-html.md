@@ -1,4 +1,4 @@
-# ADR-0032: render seam owns raw → packaged → HTML
+# render seam owns raw → packaged → HTML
 
 > Amended 2026-07-06 by ADR-0034: SSE autosync is removed. `all_sections` no longer takes a wrap parameter, `SectionHandle` no longer exposes `content_hash` or `render_oob`, and the byte-equality contract inside the handle now covers the rescan and refresh paths.
 
