@@ -97,6 +97,32 @@ Docker fails at `up` time with a bind error and the container never starts. Chan
 
 Only the marker files (`.no_ebook`, `.ebook_elsewhere`) inside your library. The scan cache is in-memory and rebuilds on the first request after start; nothing else is written outside the mounted library roots. See [ADR-0037](docs/adr/0037-request-cap-and-rescan-cooldown.md) for the rescan cooldown behavior on top of that cache.
 
+## Stability
+
+At v1.0.0 and after, semver covers the operator-visible surface below. This is a binary and a Docker image, not a library crate, so the contract is about what an operator sees, not Rust API.
+
+Covered by semver:
+
+- Environment variables: `MISSING_EBOOKS_LIBRARY_ROOTS`, `MISSING_EBOOKS_CONFIG`, `MISSING_EBOOKS_BIND`, `MISSING_EBOOKS_PORT`, `MISSING_EBOOKS_LOG`, `MISSING_EBOOKS_POLL_INTERVAL_SECONDS`, `MISSING_EBOOKS_TTL_SECONDS`, `MISSING_EBOOKS_SCAN_CONCURRENCY`, `MISSING_EBOOKS_ALLOW_PUBLIC_BIND`. Names and semantics.
+- `config.toml` keys and their types, as shipped in the `CONFIG_TEMPLATE` block above.
+- Marker filenames on disk: `.no_ebook` and `.ebook_elsewhere`.
+- HTTP routes the shipped UI depends on: `/`, `/mark`, `/unmark`, `/rescan`, `/refresh`, `/static/htmx.min.js`, `/static/app.css`, `/static/app.js`.
+- Docker image tag scheme, as described under [Advanced configuration](#advanced-configuration).
+
+> The marker filenames are the highest-stakes item. Renaming either would silently orphan every marker a user has already written to disk.
+
+Not covered (may change in any release):
+
+- Rust API. No library target ships.
+- Log field shapes and log line wording (see [`docs/logging.md`](docs/logging.md)).
+- Rendered HTML structure and CSS class names.
+- ADR numbering and internal ADR wording.
+- `--print-config` output format.
+- Bench harness environment variables (`CONCURRENCY` and friends) under `benchmarks/`.
+- The demo binary (`missing-ebooks-demo`): its router, session cookie, and 303 posture.
+
+MSRV bumps ship in a minor release, never a patch. The current MSRV lives in `Cargo.toml`.
+
 ## Advanced configuration
 
 The defaults handle a working install. Reach for `config.toml` only to override search links, add exclusion patterns, or change extension lists. Everything else is an environment variable.
