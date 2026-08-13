@@ -221,6 +221,8 @@ url = "https://oceanofpdf.com/?s={query}"
 
 <!-- CONFIG_TEMPLATE:END -->
 
+Both `ttl_seconds = 0` and `poll_interval_seconds = 0` are supported off-states, not misconfigurations. `ttl_seconds = 0` disables the scan cache and rescans on every request, which is expensive on a network mount but useful when debugging staleness. `poll_interval_seconds = 0` disables client polling; users refresh with the `Rescan` UI button. Pairing both zeros is the recommended setup on slow SMB or NFS mounts (see [`docs/network-shares.md`](docs/network-shares.md)).
+
 ### Logging
 
 `MISSING_EBOOKS_LOG` sets verbosity to one of `error`, `warn`, `info` (the default), `debug`, or `trace`. See [`docs/logging.md`](docs/logging.md) for per-operation timing detail and the `RUST_LOG` override.
