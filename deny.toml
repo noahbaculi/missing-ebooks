@@ -6,8 +6,11 @@
 # only after confirming it is compatible with this crate's AGPL-3.0-or-later terms.
 
 [advisories]
-# RUSTSEC advisories and unmaintained crates fail by default in cargo-deny 0.19.
-# Add an advisory ID here only with a written reason and, ideally, a tracking link.
+# Fail on RUSTSEC advisories, yanked crates still in the lockfile, and any
+# unmaintained transitive. Add an advisory ID to `ignore` only with a written
+# reason and, ideally, a tracking link.
+yanked = "deny"
+unmaintained = "all"
 ignore = []
 
 [licenses]
