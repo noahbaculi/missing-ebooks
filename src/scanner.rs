@@ -227,31 +227,32 @@ impl DirIndex {
     /// the entry lives behind the lock. The clone is cheap once the cover and
     /// audio file lists become `Arc<[String]>` (M23, cluster 4).
     #[must_use]
-    pub fn get_cloned(&self, dir: &Path) -> Option<CachedDir> {
+    pub(crate) fn get_cloned(&self, dir: &Path) -> Option<CachedDir> {
         self.lock().get(dir).cloned()
     }
 
     /// Insert or replace the entry for `dir`.
-    pub fn insert(&self, dir: PathBuf, cached: CachedDir) {
+    pub(crate) fn insert(&self, dir: PathBuf, cached: CachedDir) {
         self.lock().insert(dir, cached);
     }
 
     /// Drop the entry for `dir`, so the next walk re-lists it. Returns whether one
     /// was present.
-    pub fn invalidate(&self, dir: &Path) -> bool {
+    pub(crate) fn invalidate(&self, dir: &Path) -> bool {
         self.lock().remove(dir).is_some()
     }
 
     /// Drop every cached entry. The next scan walks every directory from
     /// scratch and repopulates the map as it goes.
-    pub fn clear(&self) {
+    pub(crate) fn clear(&self) {
         self.lock().clear();
     }
 
     /// Number of cached directories.
+    #[cfg(test)]
     #[must_use]
     #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.lock().len()
     }
 }
