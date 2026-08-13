@@ -246,7 +246,7 @@ pub const CONFIG_TEMPLATE: &str = r##"# One or more library roots. Each is scann
 # Required: the server exits if this is unset in every layer. Also settable as
 # MISSING_EBOOKS_LIBRARY_ROOTS.
 library_roots = []
-# Example: library_roots = ["/path/to/audiobooks_1", "path/to/audiobooks_2"]
+# Example: library_roots = ["/path/to/audiobooks_1", "/path/to/audiobooks_2"]
 
 # Logging is set with the MISSING_EBOOKS_LOG environment variable only.
 # Can be set to: error, warn, info (default), debug, or trace.
