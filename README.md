@@ -58,7 +58,7 @@ The `read_only`, `cap_drop`, `security_opt`, and `tmpfs` lines sandbox the conta
 
 Point the server at one or more library roots. Each root is scanned and rendered as its own tree. A folder is flagged when it directly holds an audio file and nothing covers it: no ebook and no marker in that folder or any ancestor up to its root. An ebook file or marker covers everything beneath it. Folders with no audio anywhere beneath them are labelled `no audio` so a plain container reads as intentional rather than a missing row.
 
-A `Rescan` UI button forces a cold scan (clears the server cache, walks every directory). Open pages also refresh on their own: while a tab is visible, the client polls a warm rescan every `poll_interval_seconds` and swaps any changed root sections into the page. Scans are cached with a staleness ceiling (`ttl_seconds`) that caps how often the underlying walk runs regardless of how many tabs are open.
+A `Rescan` UI button forces a cold scan (clears the server cache, walks every directory). Open pages also refresh on their own: while a tab is visible, the client polls `/refresh` every `poll_interval_seconds`, and when the returned roots fragment differs from the last one it swaps `#roots` in one shot. Scans are cached with a staleness ceiling (`ttl_seconds`) that caps how often the underlying walk runs regardless of how many tabs are open.
 
 ### Markers
 
