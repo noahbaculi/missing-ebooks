@@ -11,9 +11,20 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Gate: re-run cargo-deny on the tagged commit so a red advisory or
+  # license check on main blocks the publish even if the tag was cut anyway.
+  deny:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check all
+
   # Gate: build the image, run it, and confirm it serves before any
   # multi-arch image reaches the registry.
   smoke:
+    needs: deny
     strategy:
       matrix:
         include:

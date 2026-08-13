@@ -38,3 +38,7 @@ Anything on the same network as an unauthenticated `0.0.0.0` instance can:
 - No transport encryption. Terminate TLS at the reverse proxy.
 
 Any deployment that exposes the raw server past loopback is trusted-network only.
+
+## Release supply chain
+
+The publish workflow ([`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml)) re-runs `cargo deny check all` on the tagged commit before the image builds, so a red advisory or license check blocks publish even if the tag was cut against a red `main`.
