@@ -22,6 +22,9 @@ services:
       - /path/to/audiobooks_2:/audiobooks_2
       - ./config.toml:/config/config.toml:ro
     restart: unless-stopped
+    # Give the walk time to drain on SIGTERM. Docker's 10s default can kill
+    # mid-scan on large libraries or slow network shares. See docs/network-shares.md.
+    stop_grace_period: 30s
     read_only: true
     cap_drop: [ALL]
     security_opt:

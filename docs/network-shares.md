@@ -10,4 +10,6 @@ Knob definitions live in the annotated `config.toml` in the README. This page la
 
 `poll_interval_seconds`: if your SMB link is too slow for warm rescanning to work effectively, set it to `0` to disable the poll so that clients refresh only via the `Rescan` UI button that triggers a cold scan.
 
+`stop_grace_period` (compose, not `config.toml`): the shutdown path waits for the in-flight walk to finish before axum exits, and a walk over a slow share can outrun Docker's 10s SIGTERM-to-SIGKILL default. `docker-compose.advanced.yml` sets `30s`. Raise it if your library is large enough or your mount slow enough that a cold scan takes longer than that. Nothing corrupts on a force-kill (the walk is read-only aside from atomic marker writes), but you lose the graceful drain.
+
 Staleness detection keys off directory mtime. On filesystems with coarse or unreliable mtime (some NFS and FAT mounts), a change made inside the same mtime tick can be missed until the next cold rescan. Use the `Rescan` UI button or a shorter TTL if your mount has this problem.
