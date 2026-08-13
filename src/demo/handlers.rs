@@ -19,6 +19,7 @@ use crate::raw_view::RawView;
 use crate::scanner;
 use crate::tree::ViewMode;
 use crate::web::assets::{app_css, app_js, htmx_script};
+use crate::web::package;
 use crate::web::render;
 use crate::web::{MarkRequest, ViewQuery};
 
@@ -233,7 +234,7 @@ fn apply_mark(
     };
     let overlay = MarkOverlay::new(&marks);
     let raw = package_view_with_overlay(&state.base_raw, &overlay);
-    let markup = render::packaged_section(&raw, req.root, mode).render(&state.search_links, None);
+    let markup = package::packaged_section(&raw, req.root, mode).render(&state.search_links, None);
     let mut response = Html(markup.into_string()).into_response();
     if let Some(cookie) = set_cookie {
         response.headers_mut().append(header::SET_COOKIE, cookie);

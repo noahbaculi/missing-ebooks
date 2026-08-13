@@ -13,6 +13,7 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 use missing_ebooks::scanner::RootScan;
 use missing_ebooks::synthetic::synthetic_root_scan;
 use missing_ebooks::tree::ViewMode;
+use missing_ebooks::web::package;
 use missing_ebooks::web::render;
 
 /// One bench input. Built once per size so the measured closure runs only
@@ -59,14 +60,14 @@ fn bench_render(c: &mut Criterion) {
         group.throughput(Throughput::Elements(size as u64));
         group.bench_with_input(BenchmarkId::new("gaps", label), &input, |b, i| {
             b.iter(|| {
-                render::packaged_section(&i.raw, 0, ViewMode::GapsOnly)
+                package::packaged_section(&i.raw, 0, ViewMode::GapsOnly)
                     .render(&[], None)
                     .into_string()
             });
         });
         group.bench_with_input(BenchmarkId::new("all", label), &input, |b, i| {
             b.iter(|| {
-                render::packaged_section(&i.raw, 0, ViewMode::All)
+                package::packaged_section(&i.raw, 0, ViewMode::All)
                     .render(&[], None)
                     .into_string()
             });

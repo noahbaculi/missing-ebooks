@@ -21,6 +21,7 @@ use crate::state::{AppState, WriteFailure};
 use crate::tree::ViewMode;
 
 pub(crate) mod assets;
+pub mod package;
 mod page;
 pub mod render;
 
@@ -114,7 +115,7 @@ async fn mark(
     let mode = ViewMode::from_query(req.view.as_deref());
     let resp = match state.store.write_mark(req.root, &req.rel, req.kind).await {
         Ok(applied) => {
-            let handle = render::packaged_section(&applied.raw, req.root, mode);
+            let handle = package::packaged_section(&applied.raw, req.root, mode);
             let markup = handle.render(links, None);
             let trigger = applied.created.then(|| {
                 // Read the section path off the packaged raw scan so the
@@ -150,7 +151,7 @@ async fn unmark(
     let mode = ViewMode::from_query(req.view.as_deref());
     let resp = match state.store.remove_mark(req.root, &req.rel, req.kind).await {
         Ok(raw) => {
-            let handle = render::packaged_section(&raw, req.root, mode);
+            let handle = package::packaged_section(&raw, req.root, mode);
             section_response(handle.render(links, None), None)
         }
         Err(failure) => failure_response(failure, &req, mode, links, "undo"),
@@ -182,7 +183,7 @@ fn failure_response(
             section_response(render::error_section(req.root, &message), None)
         }
         WriteFailure::Failed { error, raw } => {
-            let handle = render::packaged_section(&raw, req.root, mode);
+            let handle = package::packaged_section(&raw, req.root, mode);
             let message = format!("Could not {verb} {}: {error}", req.rel);
             section_response(handle.render(links, Some(&message)), None)
         }
