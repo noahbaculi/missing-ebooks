@@ -224,6 +224,23 @@ async fn rescan_returns_ok() {
 }
 
 #[tokio::test]
+async fn healthz_returns_ok() {
+    let (app, _tmp) = boot(vec![]);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+    assert!(body.is_empty(), "healthz body must be empty");
+}
+
+#[tokio::test]
 async fn refresh_returns_swap_payload() {
     let (app, _tmp) = boot(vec![]);
     let response = app

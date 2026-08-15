@@ -73,6 +73,7 @@ fn router_with_limit(state: Arc<AppState>, semaphore: Arc<tokio::sync::Semaphore
 
     Router::new()
         .route("/", get(index))
+        .route("/healthz", get(healthz))
         .route("/refresh", get(refresh))
         .route("/static/htmx.min.js", get(assets::htmx_script))
         .route("/static/app.css", get(assets::app_css))
@@ -83,6 +84,11 @@ fn router_with_limit(state: Arc<AppState>, semaphore: Arc<tokio::sync::Semaphore
             semaphore,
         ))
         .with_state(state)
+}
+
+/// Liveness probe. Answers without touching state or the scanner.
+async fn healthz() -> axum::http::StatusCode {
+    axum::http::StatusCode::OK
 }
 
 /// Reject POSTs that lack `HX-Request: true`. htmx sets it on every request

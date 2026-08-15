@@ -87,7 +87,7 @@ Both surface at the root level, but they render differently. An errored root (ca
 
 ### Is there a health check endpoint?
 
-Yes. `GET /` returns 200 once the server is serving, and the image's `HEALTHCHECK` uses it (see the `Dockerfile`). Docker's `docker ps` health column reflects it.
+Yes. `GET /healthz` returns 200 without touching the scanner or cache, and the image's `HEALTHCHECK` uses it (see the `Dockerfile`). Docker's `docker ps` health column reflects it.
 
 ### What happens if the host port is already bound?
 
@@ -106,7 +106,7 @@ Covered by semver:
 - Environment variables: `MISSING_EBOOKS_LIBRARY_ROOTS`, `MISSING_EBOOKS_CONFIG`, `MISSING_EBOOKS_BIND`, `MISSING_EBOOKS_PORT`, `MISSING_EBOOKS_LOG`, `MISSING_EBOOKS_POLL_INTERVAL_SECONDS`, `MISSING_EBOOKS_TTL_SECONDS`, `MISSING_EBOOKS_SCAN_CONCURRENCY`, `MISSING_EBOOKS_ALLOW_PUBLIC_BIND`. Names and semantics.
 - `config.toml` keys and their types, as shipped in the `CONFIG_TEMPLATE` block above.
 - Marker filenames on disk: `.no_ebook` and `.ebook_elsewhere`.
-- HTTP routes the shipped UI depends on: `/`, `/mark`, `/unmark`, `/rescan`, `/refresh`, `/static/htmx.min.js`, `/static/app.css`, `/static/app.js`.
+- HTTP routes the shipped UI depends on: `/`, `/healthz`, `/mark`, `/unmark`, `/rescan`, `/refresh`, `/static/htmx.min.js`, `/static/app.css`, `/static/app.js`.
 - Docker image tag scheme, as described under [Advanced configuration](#advanced-configuration).
 
 > The marker filenames are the highest-stakes item. Renaming either would silently orphan every marker a user has already written to disk.

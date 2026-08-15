@@ -54,6 +54,6 @@ EXPOSE 13379
 
 # Honor a custom port if MISSING_EBOOKS_PORT is set; default to 13379.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -q -O /dev/null "http://127.0.0.1:${MISSING_EBOOKS_PORT:-13379}/"
+  CMD wget -q -O /dev/null "http://127.0.0.1:${MISSING_EBOOKS_PORT:-13379}/healthz"
 
 ENTRYPOINT ["/usr/local/bin/missing-ebooks"]
