@@ -143,6 +143,7 @@ async fn mark_writes_marker_and_reflects_in_response() {
                 .method("POST")
                 .uri("/mark")
                 .header("content-type", "application/x-www-form-urlencoded")
+                .header("HX-Request", "true")
                 .body(Body::from(body))
                 .unwrap(),
         )
@@ -176,6 +177,7 @@ async fn unmark_removes_marker() {
                 .method("POST")
                 .uri("/mark")
                 .header("content-type", "application/x-www-form-urlencoded")
+                .header("HX-Request", "true")
                 .body(Body::from(form.clone()))
                 .unwrap(),
         )
@@ -191,6 +193,7 @@ async fn unmark_removes_marker() {
                 .method("POST")
                 .uri("/unmark")
                 .header("content-type", "application/x-www-form-urlencoded")
+                .header("HX-Request", "true")
                 .body(Body::from(form))
                 .unwrap(),
         )
@@ -209,6 +212,7 @@ async fn rescan_returns_ok() {
                 .method("POST")
                 .uri("/rescan")
                 .header("content-type", "application/x-www-form-urlencoded")
+                .header("HX-Request", "true")
                 .body(Body::from(""))
                 .unwrap(),
         )
@@ -269,6 +273,7 @@ async fn mark_rejects_oversized_body() {
                 .method("POST")
                 .uri("/mark")
                 .header("content-type", "application/x-www-form-urlencoded")
+                .header("HX-Request", "true")
                 .body(Body::from(body))
                 .unwrap(),
         )
@@ -294,6 +299,7 @@ async fn mark_rejects_oversized_rel() {
                 .method("POST")
                 .uri("/mark")
                 .header("content-type", "application/x-www-form-urlencoded")
+                .header("HX-Request", "true")
                 .body(Body::from(body))
                 .unwrap(),
         )
@@ -306,4 +312,69 @@ async fn mark_rejects_oversized_rel() {
         text.contains("rel too long"),
         "400 body must explain the reason, got: {text}"
     );
+}
+
+#[tokio::test]
+async fn mark_without_hx_request_is_forbidden() {
+    let (app, tmp) = boot(vec![]);
+    let rel = "Adrian Tchaikovsky/Elder Race";
+    let body = format!("root=0&rel={}&kind=no_ebook&view=gaps", urlencode(rel));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/mark")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let marker = tmp.path().join("Audiobooks").join(rel).join(".no_ebook");
+    assert!(
+        !marker.exists(),
+        "marker must not be written when HX-Request is absent"
+    );
+}
+
+#[tokio::test]
+async fn unmark_without_hx_request_is_forbidden() {
+    let (app, _tmp) = boot(vec![]);
+    let rel = "Adrian Tchaikovsky/Elder Race";
+    let body = format!("root=0&rel={}&kind=no_ebook&view=gaps", urlencode(rel));
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/unmark")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn rescan_without_hx_request_is_forbidden() {
+    let (app, _tmp) = boot(vec![]);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/rescan")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(""))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }

@@ -65,20 +65,43 @@ pub fn router(state: Arc<AppState>) -> Router {
 /// route; Router::layer wraps each route individually, so the per-layer
 /// ConcurrencyLimitLayer would mint a semaphore per route instead
 fn router_with_limit(state: Arc<AppState>, semaphore: Arc<tokio::sync::Semaphore>) -> Router {
-    Router::new()
-        .route("/", get(index))
+    let protected = Router::new()
         .route("/mark", post(mark))
         .route("/unmark", post(unmark))
         .route("/rescan", post(rescan))
+        .layer(axum::middleware::from_fn(require_htmx));
+
+    Router::new()
+        .route("/", get(index))
         .route("/refresh", get(refresh))
         .route("/static/htmx.min.js", get(assets::htmx_script))
         .route("/static/app.css", get(assets::app_css))
         .route("/static/app.js", get(assets::app_js))
+        .merge(protected)
         .layer(DefaultBodyLimit::max(64 * 1024))
         .layer(tower::limit::GlobalConcurrencyLimitLayer::with_semaphore(
             semaphore,
         ))
         .with_state(state)
+}
+
+/// Reject POSTs that lack `HX-Request: true`. htmx sets it on every request
+/// it issues, so a cross-origin form submit will not carry it. Cheap origin
+/// check, not a real CSRF token.
+async fn require_htmx(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let ok = req
+        .headers()
+        .get("HX-Request")
+        .and_then(|v| v.to_str().ok())
+        == Some("true");
+    if ok {
+        next.run(req).await
+    } else {
+        axum::http::StatusCode::FORBIDDEN.into_response()
+    }
 }
 
 async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ViewQuery>) -> Html<String> {
@@ -479,7 +502,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rescan_without_htmx_still_returns_sections() {
+    async fn rescan_without_htmx_is_rejected() {
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let response = app_for(dir.path())
@@ -493,12 +516,9 @@ mod tests {
             )
             .await
             .unwrap();
-        // There is no no-JS redirect: every rescan renders the sections and pushes
-        // the view URL, whether or not the request came from htmx.
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(response.headers().get("HX-Push-Url").unwrap(), "/");
-        let body = body_string(response).await;
-        assert!(body.contains(r#"class="card root""#));
+        // Cross-origin form submits do not carry HX-Request, so the mutation is
+        // refused before it reaches the handler.
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -544,6 +564,7 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/mark")
+                    .header("HX-Request", "true")
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
                     .unwrap(),
@@ -566,6 +587,7 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/mark")
+                    .header("HX-Request", "true")
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
                     .unwrap(),
@@ -597,6 +619,7 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/mark")
+                    .header("HX-Request", "true")
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(Body::from("root=0&rel=Author/Book&kind=no_ebook&view=all"))
                     .unwrap(),
@@ -626,6 +649,7 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/mark")
+                    .header("HX-Request", "true")
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(Body::from("root=0&rel=..&kind=no_ebook&view=gaps"))
                     .unwrap(),
@@ -657,6 +681,7 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/mark")
+                    .header("HX-Request", "true")
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
                     .unwrap(),
@@ -672,6 +697,7 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/unmark")
+                    .header("HX-Request", "true")
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(Body::from("root=0&rel=Book&kind=no_ebook&view=gaps"))
                     .unwrap(),
@@ -830,6 +856,7 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/mark")
+                    .header("HX-Request", "true")
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(Body::from("root=0&rel=A%2FB1&kind=no_ebook"))
                     .unwrap(),
@@ -874,6 +901,7 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/mark")
+                    .header("HX-Request", "true")
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(Body::from("root=0&rel=Book&kind=no_ebook&view=bogus"))
                     .unwrap(),
