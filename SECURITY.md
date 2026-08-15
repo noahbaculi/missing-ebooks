@@ -33,7 +33,7 @@ Anything on the same network as an unauthenticated `0.0.0.0` instance can:
 
 ## What is not defended against
 
-- No CSRF token on `POST /mark`, `POST /unmark`, `POST /rescan`. A browser that can reach the server can be tricked into issuing writes via cross-origin form submits.
+- Cross-origin form submits to `POST /mark`, `POST /unmark`, `POST /rescan` are rejected with 403 unless the request carries `HX-Request: true`. The vendored htmx client sets this header on every request it issues, so a plain HTML form on a hostile page cannot reach the handler. This is a cheap origin check, not a CSRF token: script running in a page the browser trusts can still forge the header.
 - No per-IP rate limit beyond the global in-flight cap.
 - No transport encryption. Terminate TLS at the reverse proxy.
 
