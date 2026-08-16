@@ -16,6 +16,8 @@ Alternatives rejected: `cargo-husky` adds a dev-dependency and does not fire unt
 
 Never bypass the hook with `--no-verify`. The hook runs the same checks CI enforces. Bypassing them just moves the failure to the CI run.
 
+GitHub Actions in `.github/workflows/` are pinned to a full 40-character commit SHA with a trailing `# vX.Y.Z` version comment (e.g., `uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0`). Dependabot's `github-actions` ecosystem entry refreshes the SHAs weekly and updates the version comment in the same PR. Do not introduce floating tag refs (`@v4`, `@main`); the supply-chain trail the release workflow publishes (SBOM + SLSA provenance) is only as strong as its weakest ref.
+
 ### Client JS type checking
 
 `assets/app.js` and `assets/prepaint.js` are plain JavaScript with `// @ts-check` and JSDoc annotations. A check-only TypeScript pass (`tsconfig.json` with `checkJs` and `noEmit` under `strict`) reads them. The htmx surface and app-custom events are typed by a hand-written ambient stub at `types/htmx.d.ts`. There is no `package.json`, no lockfile, no `node_modules`, and nothing is emitted: the source stays the shipped artifact. The check is pinned through mise and runs in the pre-commit hook and CI. If the client ever grows into multiple modules that need bundling, a real build step becomes worth its weight and full TypeScript with emitted output would carry it; until then the check-only pass is the cheapest way to keep the surface honest.
