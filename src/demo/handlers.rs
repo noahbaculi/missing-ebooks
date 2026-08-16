@@ -634,13 +634,13 @@ mod tests {
 
     #[tokio::test]
     async fn overlay_with_no_marks_matches_package_view_of_the_base() {
-        use std::collections::HashSet;
+        use std::collections::BTreeSet;
 
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
 
-        let empty: HashSet<crate::demo::session::MarkKey> = HashSet::new();
+        let empty: BTreeSet<crate::demo::session::MarkKey> = BTreeSet::new();
         let overlay = MarkOverlay::new(&empty);
         let derived = package_view_with_overlay(&state.base_raw, &overlay);
         assert_eq!(
@@ -649,7 +649,7 @@ mod tests {
             "with no marks, overlay must match a direct render"
         );
 
-        let mut marks: HashSet<crate::demo::session::MarkKey> = HashSet::new();
+        let mut marks: BTreeSet<crate::demo::session::MarkKey> = BTreeSet::new();
         marks.insert((0, "Book".to_string(), Marker::NoEbook));
         let overlay = MarkOverlay::new(&marks);
         let after = package_view_with_overlay(&state.base_raw, &overlay);

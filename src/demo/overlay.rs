@@ -3,7 +3,7 @@
 //! `derive_view` shape. The semantic oracle is `crate::raw_view::apply_mark_raw`.
 //! The equivalence test pins byte-for-byte parity.
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use crate::demo::session::MarkKey;
@@ -13,7 +13,7 @@ use crate::raw_view::RawView;
 /// Borrowing view over a session's mark set. Answers per-folder questions
 /// about which marks apply and how, without cloning the set.
 pub(crate) struct MarkOverlay<'a> {
-    marks: &'a HashSet<MarkKey>,
+    marks: &'a BTreeSet<MarkKey>,
 }
 
 /// What the overlay says about one folder: whether any ancestor mark cleared
@@ -32,7 +32,7 @@ pub(crate) struct EffectiveState {
 
 impl<'a> MarkOverlay<'a> {
     /// Borrow the session's mark set into a new overlay.
-    pub fn new(marks: &'a HashSet<MarkKey>) -> Self {
+    pub fn new(marks: &'a BTreeSet<MarkKey>) -> Self {
         Self { marks }
     }
 
@@ -45,7 +45,7 @@ impl<'a> MarkOverlay<'a> {
     /// `add_marker` output for the same canonical replay order.
     ///
     /// Depth is typically 2-3 in audiobook libraries, so this is `O(depth)`
-    /// `HashSet` probes per folder.
+    /// `BTreeSet` probes per folder.
     pub fn effective_state(&self, root: usize, rel: &Path) -> EffectiveState {
         let mut state = EffectiveState::default();
 
@@ -210,7 +210,7 @@ mod tests {
             let replay_html = render::page(&raw_replay, &links, mode, 0).into_string();
 
             // Path B: same logical state via the overlay.
-            let mark_set: HashSet<MarkKey> = valid_marks.iter().map(|k| (*k).clone()).collect();
+            let mark_set: BTreeSet<MarkKey> = valid_marks.iter().map(|k| (*k).clone()).collect();
             let overlay = MarkOverlay::new(&mark_set);
             let overlay_raw = package_view_with_overlay(&base, &overlay);
             let overlay_html = render::page(&overlay_raw, &links, mode, 0).into_string();
