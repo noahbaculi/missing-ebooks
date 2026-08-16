@@ -235,15 +235,15 @@ excluded_dirs = []
 exclude_globs = []
 # Example: exclude_globs = ["**/*(abridged)*", "**/*(Dramatized Adaptation)*"]
 
-# Search-link templates. {query} is replaced with the cleaned, URL-encoded
+# Search-link templates. {folder} is replaced with the cleaned, URL-encoded
 # folder name.
 [[search_links]]
 label = "Goodreads"
-url = "https://www.goodreads.com/search?q={query}"
+url = "https://www.goodreads.com/search?q={folder}"
 
 [[search_links]]
-label = "OceanofPDF"
-url = "https://oceanofpdf.com/?s={query}"
+label = "Google"
+url = "https://www.google.com/search?q={folder}"
 ```
 
 <!-- CONFIG_TEMPLATE:END -->

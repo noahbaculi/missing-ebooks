@@ -617,7 +617,7 @@ fn search_links(
                     onclick="event.stopPropagation()" { (PreEscaped(include_str!("../../assets/svg/search.svg"))) }
                 div.links-menu popover="auto" id=(id) onclick="event.stopPropagation()" {
                     @for link in links {
-                        a href=(link.url.replace("{query}", &query))
+                        a href=(link.url.replace("{folder}", &query))
                             target="_blank" rel="noopener noreferrer" {
                                 span.sheet-icon { (PreEscaped(include_str!("../../assets/svg/search.svg"))) }
                                 (link.label)
@@ -1111,11 +1111,11 @@ mod tests {
         vec![
             SearchLink {
                 label: "Goodreads".into(),
-                url: "https://www.goodreads.com/search?q={query}".into(),
+                url: "https://www.goodreads.com/search?q={folder}".into(),
             },
             SearchLink {
                 label: "OceanofPDF".into(),
-                url: "https://oceanofpdf.com/?s={query}".into(),
+                url: "https://oceanofpdf.com/?s={folder}".into(),
             },
         ]
     }

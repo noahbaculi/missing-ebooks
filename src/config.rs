@@ -10,13 +10,13 @@ use thiserror::Error;
 
 use crate::scanner::ScanInputs;
 
-/// A search-link template. `{query}` is replaced with the cleaned, encoded
+/// A search-link template. `{folder}` is replaced with the cleaned, encoded
 /// folder name at render time.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchLink {
     /// Text shown on the link button.
     pub label: String,
-    /// URL template. `{query}` is replaced with the encoded folder name.
+    /// URL template. `{folder}` is replaced with the encoded folder name.
     pub url: String,
 }
 
@@ -82,11 +82,11 @@ impl Default for Config {
             search_links: vec![
                 SearchLink {
                     label: "Goodreads".to_string(),
-                    url: "https://www.goodreads.com/search?q={query}".to_string(),
+                    url: "https://www.goodreads.com/search?q={folder}".to_string(),
                 },
                 SearchLink {
-                    label: "OceanofPDF".to_string(),
-                    url: "https://oceanofpdf.com/?s={query}".to_string(),
+                    label: "Google".to_string(),
+                    url: "https://www.google.com/search?q={folder}".to_string(),
                 },
             ],
         }
@@ -309,15 +309,15 @@ excluded_dirs = []
 exclude_globs = []
 # Example: exclude_globs = ["**/*(abridged)*", "**/*(Dramatized Adaptation)*"]
 
-# Search-link templates. {query} is replaced with the cleaned, URL-encoded
+# Search-link templates. {folder} is replaced with the cleaned, URL-encoded
 # folder name.
 [[search_links]]
 label = "Goodreads"
-url = "https://www.goodreads.com/search?q={query}"
+url = "https://www.goodreads.com/search?q={folder}"
 
 [[search_links]]
-label = "OceanofPDF"
-url = "https://oceanofpdf.com/?s={query}"
+label = "Google"
+url = "https://www.google.com/search?q={folder}"
 "##;
 
 #[cfg(test)]
@@ -349,7 +349,7 @@ mod tests {
         assert!(cfg.excluded_dirs.is_empty());
         assert!(cfg.exclude_globs.is_empty());
         let labels: Vec<&str> = cfg.search_links.iter().map(|l| l.label.as_str()).collect();
-        assert_eq!(labels, vec!["Goodreads", "OceanofPDF"]);
+        assert_eq!(labels, vec!["Goodreads", "Google"]);
         assert_eq!(cfg.scan_concurrency, 16);
     }
 
@@ -526,7 +526,7 @@ mod tests {
             .iter()
             .map(|l| l.label.as_str())
             .collect();
-        assert_eq!(labels, vec!["Goodreads", "OceanofPDF"]);
+        assert_eq!(labels, vec!["Goodreads", "Google"]);
         assert_eq!(parsed.scan_concurrency, 16);
     }
 

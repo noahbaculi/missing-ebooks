@@ -37,7 +37,7 @@ A just-written marker can be reversed from the undo toast that appears after a m
 _Avoid_: flag file, exception file, sentinel.
 
 **Search link**:
-A configured template whose `{query}` placeholder is filled with the folder name, cleaned and percent-encoded, shown on every node row. Following one opens a prefilled book search in a new tab, so the operator can go find the missing ebook without losing the page. The cleaning drops bracketed segments and normalizes separators. The query is built from the folder name only, with a tag-based query deferred.
+A configured template whose `{folder}` placeholder is filled with the folder name, cleaned and percent-encoded, shown on every node row. Following one opens a prefilled book search in a new tab, so the operator can go find the missing ebook without losing the page. The cleaning drops bracketed segments and normalizes separators. The query is built from the folder name only, with a tag-based query deferred.
 _Avoid_: lookup, external link.
 
 **Exclude name**:

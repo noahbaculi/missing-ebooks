@@ -24,12 +24,12 @@ exclude_globs = ["**/*(abridged)*", "**/*(Dramatized Adaptation)*"]
 # per-row link menu renders three entries in dev.
 [[search_links]]
 label = "Goodreads"
-url = "https://www.goodreads.com/search?q={query}"
+url = "https://www.goodreads.com/search?q={folder}"
 
 [[search_links]]
 label = "OceanofPDF"
-url = "https://oceanofpdf.com/?s={query}"
+url = "https://oceanofpdf.com/?s={folder}"
 
 [[search_links]]
 label = "eBooks.com"
-url = "https://www.ebooks.com/en-us/searchapp/searchresults.net?term={query}"
+url = "https://www.ebooks.com/en-us/searchapp/searchresults.net?term={folder}"
