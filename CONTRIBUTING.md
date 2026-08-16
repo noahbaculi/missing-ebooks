@@ -24,7 +24,7 @@ GitHub Actions in `.github/workflows/` are pinned to a full 40-character commit 
 
 ## Build and test
 
-MSRV is Rust 1.96 (matches `rust-toolchain.toml`).
+MSRV is Rust 1.97 (matches `rust-toolchain.toml`).
 
 MSRV tracks the latest stable Rust release. When a new stable ships, bump all four pinned locations in one commit. The `toolchain-drift` CI job enforces that they agree.
 
