@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in missing-ebooks is broken or behaves unexpectedly.
+title: "bug: "
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the bug.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `missing-ebooks --version`.
+      placeholder: Output of `missing-ebooks --version`
+    validations:
+      required: true
+  - type: dropdown
+    id: run-mode
+    attributes:
+      label: How you are running it
+      options:
+        - Prebuilt binary
+        - Docker image
+        - Built from source
+        - Other (explain in Additional context)
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered list. Include library layout details if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: Expected vs actual behavior
+      description: Two short paragraphs, or an "Expected:" / "Actual:" pair.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Scrub library paths if sensitive.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: OS, filesystem type, reverse-proxy setup, anything else.
+    validations:
+      required: false
