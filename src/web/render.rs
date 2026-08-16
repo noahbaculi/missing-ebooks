@@ -1749,7 +1749,7 @@ mod tests {
 
         let config = Config {
             library_roots: roots,
-            ttl_seconds: 600,
+            scan_cache_ttl_seconds: 600,
             ..Config::default()
         };
         let links = config.search_links.clone();

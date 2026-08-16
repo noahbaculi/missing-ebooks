@@ -5,7 +5,7 @@
 
 # Rescan on every request so edits to marker files show up immediately
 # during dev, at the cost of a scan per page load.
-ttl_seconds = 0
+scan_cache_ttl_seconds = 0
 
 # Poll every 2s while a tab is visible so tree changes appear fast.
 poll_interval_seconds = 2

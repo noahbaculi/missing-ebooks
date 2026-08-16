@@ -52,7 +52,7 @@ fn boot(extra_roots: Vec<PathBuf>) -> (Router, TempDir) {
 
     let cfg = Config {
         library_roots: roots,
-        ttl_seconds: 60,
+        scan_cache_ttl_seconds: 60,
         exclude_globs: vec!["**/*(abridged)*".to_string()],
         ..Default::default()
     };

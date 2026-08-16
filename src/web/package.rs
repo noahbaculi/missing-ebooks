@@ -121,10 +121,10 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    fn test_config(roots: Vec<PathBuf>, ttl_seconds: u64) -> Config {
+    fn test_config(roots: Vec<PathBuf>, scan_cache_ttl_seconds: u64) -> Config {
         Config {
             library_roots: roots,
-            ttl_seconds,
+            scan_cache_ttl_seconds,
             ..Default::default()
         }
     }

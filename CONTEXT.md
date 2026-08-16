@@ -49,7 +49,7 @@ A glob pattern matched against a folder's path relative to its library root, cas
 _Avoid_: filter, ignore pattern.
 
 **Raw view store**:
-The substrate that produces and memoizes raw scan output (`RawViewStore` in `src/state.rs`). Owns the scan settings, the dir index, the TTL-bounded cache slot, and the marker file IO. One slot per process, TTL-bounded by `ttl_seconds`; both view modes render from the same raw data at request time, and marker writes edit the slot in place (see ADR-0022).
+The substrate that produces and memoizes raw scan output (`RawViewStore` in `src/state.rs`). Owns the scan settings, the dir index, the TTL-bounded cache slot, and the marker file IO. One slot per process, TTL-bounded by `scan_cache_ttl_seconds`; both view modes render from the same raw data at request time, and marker writes edit the slot in place (see ADR-0022).
 _Avoid_: render cache, scan cache (ambiguous with the dir index), the cache.
 
 **Dir index**:
@@ -65,7 +65,7 @@ A scan that does not reuse any dir index entries, either because the index is em
 _Avoid_: full scan, rescan (the verb for the user action, not the scan type).
 
 **Refresh poll**:
-The client-driven refresh path: every open tab hits `GET /refresh` on `poll_interval_seconds` while `document.visibilityState` is `visible`, and swaps the response into `#roots`. The server serves each poll from the cached raw view when it is younger than `ttl_seconds`, so scan rate is capped by TTL regardless of how many tabs are polling. Rescan is the user's explicit "walk from scratch" action; refresh polls are the background pull that keeps a live tab current. See ADR-0034.
+The client-driven refresh path: every open tab hits `GET /refresh` on `poll_interval_seconds` while `document.visibilityState` is `visible`, and swaps the response into `#roots`. The server serves each poll from the cached raw view when it is younger than `scan_cache_ttl_seconds`, so scan rate is capped by TTL regardless of how many tabs are polling. Rescan is the user's explicit "walk from scratch" action; refresh polls are the background pull that keeps a live tab current. See ADR-0034.
 _Avoid_: autosync, autorefresh, live update.
 
 **Library coverage**:

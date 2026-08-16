@@ -605,13 +605,13 @@ impl StoreInner {
 }
 
 impl AppState {
-    /// Build the shared state. `ttl_seconds == 0` disables the cache. Any other
+    /// Build the shared state. `scan_cache_ttl_seconds == 0` disables the cache. Any other
     /// value sets the staleness window.
     pub fn new(config: Config, settings: ScanSettings) -> AppState {
-        let ttl = if config.ttl_seconds == 0 {
+        let ttl = if config.scan_cache_ttl_seconds == 0 {
             None
         } else {
-            Some(Duration::from_secs(config.ttl_seconds))
+            Some(Duration::from_secs(config.scan_cache_ttl_seconds))
         };
         let config = Arc::new(config);
         let dir_indices = (0..config.library_roots.len())
@@ -827,7 +827,7 @@ mod tests {
     #[test]
     fn ttl_zero_disables_the_cache() {
         let cfg = Config {
-            ttl_seconds: 0,
+            scan_cache_ttl_seconds: 0,
             ..Default::default()
         };
         let state = AppState::new(cfg, settings());
@@ -837,7 +837,7 @@ mod tests {
     #[test]
     fn nonzero_ttl_sets_the_window() {
         let cfg = Config {
-            ttl_seconds: 90,
+            scan_cache_ttl_seconds: 90,
             ..Default::default()
         };
         let state = AppState::new(cfg, settings());
@@ -847,7 +847,7 @@ mod tests {
     fn test_store(ttl: Option<Duration>, root: std::path::PathBuf) -> RawViewStore {
         let cfg = Config {
             library_roots: vec![root],
-            ttl_seconds: ttl.map(|t| t.as_secs()).unwrap_or(0),
+            scan_cache_ttl_seconds: ttl.map(|t| t.as_secs()).unwrap_or(0),
             ..Default::default()
         };
         let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
@@ -1437,7 +1437,7 @@ mod tests {
         crate::scenarios::touch(&b.path().join("Book/01.mp3"));
         let cfg = Config {
             library_roots: vec![a.path().to_path_buf(), b.path().to_path_buf()],
-            ttl_seconds: 600,
+            scan_cache_ttl_seconds: 600,
             ..Default::default()
         };
         let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();

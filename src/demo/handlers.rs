@@ -327,7 +327,7 @@ mod tests {
     async fn build(root: &Path, max_sessions: usize, idle: Duration) -> Arc<DemoState> {
         let cfg = Config {
             library_roots: vec![root.to_path_buf()],
-            ttl_seconds: 60,
+            scan_cache_ttl_seconds: 60,
             ..Default::default()
         };
         let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();

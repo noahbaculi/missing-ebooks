@@ -343,7 +343,7 @@ mod tests {
     fn app_for(root: &Path) -> Router {
         let cfg = Config {
             library_roots: vec![root.to_path_buf()],
-            ttl_seconds: 60,
+            scan_cache_ttl_seconds: 60,
             ..Default::default()
         };
         let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
@@ -363,7 +363,7 @@ mod tests {
         touch(&dir.path().join("Book/01.mp3"));
         let cfg = Config {
             library_roots: vec![dir.path().to_path_buf()],
-            ttl_seconds: 60,
+            scan_cache_ttl_seconds: 60,
             ..Default::default()
         };
         let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
@@ -971,7 +971,7 @@ mod tests {
         // Build state directly so we can read rebuild_count. The router helper hides it.
         let cfg = Config {
             library_roots: vec![dir.path().to_path_buf()],
-            ttl_seconds: 600,
+            scan_cache_ttl_seconds: 600,
             ..Default::default()
         };
         let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();
@@ -1018,7 +1018,7 @@ mod tests {
 
         let cfg = Config {
             library_roots: vec![dir.path().to_path_buf()],
-            ttl_seconds: 0, // disable cache so every /refresh forces a build path
+            scan_cache_ttl_seconds: 0, // disable cache so every /refresh forces a build path
             ..Default::default()
         };
         let settings = ScanSettings::compile(cfg.scan_inputs()).unwrap();

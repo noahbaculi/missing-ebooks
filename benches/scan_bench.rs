@@ -418,7 +418,7 @@ fn bench_scan_concurrent(c: &mut Criterion) {
         .expect("build tokio runtime");
     let cfg = Arc::new(Config {
         library_roots: vec![input.root.clone()],
-        ttl_seconds: 600,
+        scan_cache_ttl_seconds: 600,
         ..Default::default()
     });
     let mut group = c.benchmark_group("scan_concurrent");

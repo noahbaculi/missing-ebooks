@@ -34,7 +34,7 @@ pub struct Config {
     /// `/refresh` polls) serve from cache while it is younger than this and
     /// force a rebuild otherwise. Together with the client poll interval it
     /// caps how often the underlying scan runs regardless of open-tab count.
-    pub ttl_seconds: u64,
+    pub scan_cache_ttl_seconds: u64,
     /// Directories read at once during a scan. Sizes the scan thread pool. On a
     /// network mount each directory is a round trip, so reading several at once
     /// overlaps the waits. Size it by the mount speed, not the CPU count. One
@@ -67,7 +67,7 @@ impl Default for Config {
             library_roots: Vec::new(),
             bind: "127.0.0.1".to_string(),
             port: 13379,
-            ttl_seconds: 10,
+            scan_cache_ttl_seconds: 10,
             scan_concurrency: 16,
             poll_interval_seconds: 10,
             // Audiobookshelf's full supported sets (see ADR-0006).
@@ -220,10 +220,10 @@ fn apply_env_overrides(
         cfg.port = port;
     }
     if let Some(ttl) = parse_env::<u64>(
-        "MISSING_EBOOKS_TTL_SECONDS",
-        getenv("MISSING_EBOOKS_TTL_SECONDS"),
+        "MISSING_EBOOKS_SCAN_CACHE_TTL_SECONDS",
+        getenv("MISSING_EBOOKS_SCAN_CACHE_TTL_SECONDS"),
     )? {
-        cfg.ttl_seconds = ttl;
+        cfg.scan_cache_ttl_seconds = ttl;
     }
     if let Some(n) = parse_env::<usize>(
         "MISSING_EBOOKS_SCAN_CONCURRENCY",
@@ -270,8 +270,8 @@ port = 13379
 # otherwise. Together with poll_interval_seconds it caps how often the
 # underlying scan runs regardless of open-tab count. 0 disables the cache and
 # rescans on every request. /rescan is the primary freshness control for a
-# user who wants to know now. Also settable as MISSING_EBOOKS_TTL_SECONDS.
-ttl_seconds = 10
+# user who wants to know now. Also settable as MISSING_EBOOKS_SCAN_CACHE_TTL_SECONDS.
+scan_cache_ttl_seconds = 10
 
 # Directories the library scan reads at once. The scan is bound by per-directory
 # latency on a network mount (SMB/NFS), where each folder is a round trip, so
@@ -282,7 +282,7 @@ ttl_seconds = 10
 scan_concurrency = 16
 
 # Client-side poll cadence. When > 0, open tabs pull /refresh every N seconds
-# while the tab is visible, and ttl_seconds caps how often the underlying scan
+# while the tab is visible, and scan_cache_ttl_seconds caps how often the underlying scan
 # actually runs regardless of open-tab count. 0 keeps the poll marker in the
 # page but suppresses the interval so the client stays quiet. Also settable as
 # MISSING_EBOOKS_POLL_INTERVAL_SECONDS.
@@ -337,7 +337,7 @@ mod tests {
         let cfg = Config::default();
         assert_eq!(cfg.bind, "127.0.0.1");
         assert_eq!(cfg.port, 13379);
-        assert_eq!(cfg.ttl_seconds, 10);
+        assert_eq!(cfg.scan_cache_ttl_seconds, 10);
         assert_eq!(cfg.audio_exts.len(), 20); // ABS's full audio set (ADR-0006)
         assert!(cfg.audio_exts.contains(&".mp3".to_string()));
         assert!(cfg.audio_exts.contains(&".opus".to_string()));
@@ -409,7 +409,7 @@ mod tests {
         apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
         assert_eq!(cfg.port, 1234);
         assert_eq!(cfg.bind, "0.0.0.0");
-        assert_eq!(cfg.ttl_seconds, 10); // unset env leaves the default
+        assert_eq!(cfg.scan_cache_ttl_seconds, 10); // unset env leaves the default
     }
 
     #[test]
@@ -424,7 +424,7 @@ mod tests {
     fn defaults_pin_the_client_poll_shape() {
         let cfg = Config::default();
         assert_eq!(cfg.poll_interval_seconds, 10);
-        assert_eq!(cfg.ttl_seconds, 10);
+        assert_eq!(cfg.scan_cache_ttl_seconds, 10);
     }
 
     #[test]
@@ -493,11 +493,11 @@ mod tests {
     #[test]
     fn env_empty_value_fails() {
         let mut cfg = Config::default();
-        let env = fake_env(&[("MISSING_EBOOKS_TTL_SECONDS", "")]);
+        let env = fake_env(&[("MISSING_EBOOKS_SCAN_CACHE_TTL_SECONDS", "")]);
         let err = apply_env_overrides(&mut cfg, &|k| env.get(k).cloned())
             .expect_err("empty env value must error");
         assert!(
-            matches!(err, ConfigError::InvalidEnv { ref var, .. } if var == "MISSING_EBOOKS_TTL_SECONDS")
+            matches!(err, ConfigError::InvalidEnv { ref var, .. } if var == "MISSING_EBOOKS_SCAN_CACHE_TTL_SECONDS")
         );
     }
 
@@ -507,11 +507,11 @@ mod tests {
         let mut cfg = Config::default();
         let env = fake_env(&[
             ("MISSING_EBOOKS_PORT", "9000"),
-            ("MISSING_EBOOKS_TTL_SECONDS", "120"),
+            ("MISSING_EBOOKS_SCAN_CACHE_TTL_SECONDS", "120"),
         ]);
         apply_env_overrides(&mut cfg, &|k| env.get(k).cloned()).unwrap();
         assert_eq!(cfg.port, 9000);
-        assert_eq!(cfg.ttl_seconds, 120);
+        assert_eq!(cfg.scan_cache_ttl_seconds, 120);
     }
 
     #[test]

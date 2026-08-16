@@ -58,7 +58,7 @@ The `read_only`, `cap_drop`, `security_opt`, and `tmpfs` lines sandbox the conta
 
 Point the server at one or more library roots. Each root is scanned and rendered as its own tree. A folder is flagged when it directly holds an audio file and nothing covers it: no ebook and no marker in that folder or any ancestor up to its root. An ebook file or marker covers everything beneath it. Folders with no audio anywhere beneath them are labelled `no audio` so a plain container reads as intentional rather than a missing row.
 
-A `Rescan` UI button forces a cold scan (clears the server cache, walks every directory). Open pages also refresh on their own: while a tab is visible, the client polls `/refresh` every `poll_interval_seconds`, and when the returned roots fragment differs from the last one it swaps `#roots` in one shot. Scans are cached with a staleness ceiling (`ttl_seconds`) that caps how often the underlying walk runs regardless of how many tabs are open.
+A `Rescan` UI button forces a cold scan (clears the server cache, walks every directory). Open pages also refresh on their own: while a tab is visible, the client polls `/refresh` every `poll_interval_seconds`, and when the returned roots fragment differs from the last one it swaps `#roots` in one shot. Scans are cached with a staleness ceiling (`scan_cache_ttl_seconds`) that caps how often the underlying walk runs regardless of how many tabs are open.
 
 ### Markers
 
@@ -103,7 +103,7 @@ At v1.0.0 and after, semver covers the operator-visible surface below. This is a
 
 Covered by semver:
 
-- Environment variables: `MISSING_EBOOKS_LIBRARY_ROOTS`, `MISSING_EBOOKS_CONFIG`, `MISSING_EBOOKS_BIND`, `MISSING_EBOOKS_PORT`, `MISSING_EBOOKS_LOG`, `MISSING_EBOOKS_POLL_INTERVAL_SECONDS`, `MISSING_EBOOKS_TTL_SECONDS`, `MISSING_EBOOKS_SCAN_CONCURRENCY`, `MISSING_EBOOKS_ALLOW_PUBLIC_BIND`. Names and semantics.
+- Environment variables: `MISSING_EBOOKS_LIBRARY_ROOTS`, `MISSING_EBOOKS_CONFIG`, `MISSING_EBOOKS_BIND`, `MISSING_EBOOKS_PORT`, `MISSING_EBOOKS_LOG`, `MISSING_EBOOKS_POLL_INTERVAL_SECONDS`, `MISSING_EBOOKS_SCAN_CACHE_TTL_SECONDS`, `MISSING_EBOOKS_SCAN_CONCURRENCY`, `MISSING_EBOOKS_ALLOW_PUBLIC_BIND`. Names and semantics.
 - `config.toml` keys and their types, as shipped in the `CONFIG_TEMPLATE` block above.
 - Marker filenames on disk: `.no_ebook` and `.ebook_elsewhere`.
 - HTTP routes the shipped UI depends on: `/`, `/healthz`, `/mark`, `/unmark`, `/rescan`, `/refresh`, `/static/htmx.min.js`, `/static/app.css`, `/static/app.js`.
@@ -196,8 +196,8 @@ port = 13379
 # otherwise. Together with poll_interval_seconds it caps how often the
 # underlying scan runs regardless of open-tab count. 0 disables the cache and
 # rescans on every request. /rescan is the primary freshness control for a
-# user who wants to know now. Also settable as MISSING_EBOOKS_TTL_SECONDS.
-ttl_seconds = 10
+# user who wants to know now. Also settable as MISSING_EBOOKS_SCAN_CACHE_TTL_SECONDS.
+scan_cache_ttl_seconds = 10
 
 # Directories the library scan reads at once. The scan is bound by per-directory
 # latency on a network mount (SMB/NFS), where each folder is a round trip, so
@@ -208,7 +208,7 @@ ttl_seconds = 10
 scan_concurrency = 16
 
 # Client-side poll cadence. When > 0, open tabs pull /refresh every N seconds
-# while the tab is visible, and ttl_seconds caps how often the underlying scan
+# while the tab is visible, and scan_cache_ttl_seconds caps how often the underlying scan
 # actually runs regardless of open-tab count. 0 keeps the poll marker in the
 # page but suppresses the interval so the client stays quiet. Also settable as
 # MISSING_EBOOKS_POLL_INTERVAL_SECONDS.
@@ -248,7 +248,7 @@ url = "https://www.google.com/search?q={folder}"
 
 <!-- CONFIG_TEMPLATE:END -->
 
-Both `ttl_seconds = 0` and `poll_interval_seconds = 0` are supported off-states, not misconfigurations. `ttl_seconds = 0` disables the scan cache and rescans on every request, which is expensive on a network mount but useful when debugging staleness. `poll_interval_seconds = 0` disables client polling; users refresh with the `Rescan` UI button. Pairing both zeros is the recommended setup on slow SMB or NFS mounts (see [`docs/network-shares.md`](docs/network-shares.md)).
+Both `scan_cache_ttl_seconds = 0` and `poll_interval_seconds = 0` are supported off-states, not misconfigurations. `scan_cache_ttl_seconds = 0` disables the scan cache and rescans on every request, which is expensive on a network mount but useful when debugging staleness. `poll_interval_seconds = 0` disables client polling; users refresh with the `Rescan` UI button. Pairing both zeros is the recommended setup on slow SMB or NFS mounts (see [`docs/network-shares.md`](docs/network-shares.md)).
 
 ### Logging
 
@@ -256,7 +256,7 @@ Both `ttl_seconds = 0` and `poll_interval_seconds = 0` are supported off-states,
 
 ## Network shares
 
-Pointing a library root at an SMB or NFS mount is not encouraged but I understand that many users don't have a choice. The scan is slower than on local disk and scales with the number of folders. Raise `ttl_seconds` and treat the `Rescan` UI button as the deliberate refresh. On filesystems with coarse mtime (some NFS and FAT mounts), a change made inside the same mtime tick can be missed until the next cold rescan.
+Pointing a library root at an SMB or NFS mount is not encouraged but I understand that many users don't have a choice. The scan is slower than on local disk and scales with the number of folders. Raise `scan_cache_ttl_seconds` and treat the `Rescan` UI button as the deliberate refresh. On filesystems with coarse mtime (some NFS and FAT mounts), a change made inside the same mtime tick can be missed until the next cold rescan.
 
 See [`docs/network-shares.md`](docs/network-shares.md) for more details.
 

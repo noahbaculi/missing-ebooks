@@ -10,7 +10,7 @@ The user need is real: a self-hoster keeps the dashboard open while dropping ebo
 
 ## Decision
 
-The dashboard refreshes by polling. Every open tab hits `GET /refresh?view=<mode>` on an interval driven by `poll_interval_seconds` (default 10 s), gated on `document.visibilityState === "visible"` with a `visibilitychange` listener that fires one immediate poll when the tab returns to focus. The endpoint reads from `RawViewStore::current()`, so `ttl_seconds` (default lowered to 10 s) caps how often the underlying scan runs regardless of tab count. `build_coalesced` still joins concurrent cold builds into one walk.
+The dashboard refreshes by polling. Every open tab hits `GET /refresh?view=<mode>` on an interval driven by `poll_interval_seconds` (default 10 s), gated on `document.visibilityState === "visible"` with a `visibilitychange` listener that fires one immediate poll when the tab returns to focus. The endpoint reads from `RawViewStore::current()`, so `scan_cache_ttl_seconds` (default lowered to 10 s) caps how often the underlying scan runs regardless of tab count. `build_coalesced` still joins concurrent cold builds into one walk.
 
 The response is byte-equal to the `/rescan` response for the same underlying raw view and `view=` mode: both route through `SectionHandle` per ADR-0032, both target `#roots` with `innerHTML` swap. The one behavioral difference is that `/refresh` does not send `HX-Push-Url`; a poll is not a navigation.
 
@@ -20,7 +20,7 @@ The SSE endpoint, the subscriber registry, the per-tick loop, the snapshot hands
 
 The idle wire cost pattern flips. Long-lived SSE on a quiet library was one 15 s keepalive per tab (~4 KB per tab per hour). A 10 s poll with request headers is roughly 170 KB per tab per hour while visible, zero while backgrounded. On a LAN self-host case this is invisible; on a metered remote deployment a user can dial `poll_interval_seconds` up.
 
-Server-side scan rate is bounded by `ttl_seconds`, not tab count. Twenty tabs polling every 10 s with `ttl_seconds = 10` and a sub-second warm scan run at most one scan per interval regardless. Tabs polling faster than TTL do not increase server work; only their own network cost.
+Server-side scan rate is bounded by `scan_cache_ttl_seconds`, not tab count. Twenty tabs polling every 10 s with `scan_cache_ttl_seconds = 10` and a sub-second warm scan run at most one scan per interval regardless. Tabs polling faster than TTL do not increase server work; only their own network cost.
 
 The delete removes the test-only observability seams that existed to make the loop safe (`subscriber_count`, `render_count`, `abort_loop_for_test`, `has_seeded_baseline_for_test`), the poison-recovery pattern on the registry mutex, the `Weak<AppState>` lifecycle glue, and the per-mode hash bookkeeping. Coverage that evaporates: no-change-tick render-avoidance, per-mode subscriber isolation, registry poison recovery. Those properties existed to make the loop safe; without the loop they have no target.
 

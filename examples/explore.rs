@@ -40,8 +40,8 @@ struct Cli {
     #[arg(long)]
     port: Option<u16>,
     /// Scan-cache staleness window in seconds (default 0, cache off).
-    #[arg(long = "ttl", default_value_t = 0)]
-    ttl_seconds: u64,
+    #[arg(long = "scan-cache-ttl", default_value_t = 0)]
+    scan_cache_ttl_seconds: u64,
     /// Keep the seeded files on exit and print where they landed.
     #[arg(long)]
     keep: bool,
@@ -131,7 +131,7 @@ async fn main() -> ExitCode {
     // its own listener below, preferring the app's default port.
     let config = Config {
         library_roots: roots,
-        ttl_seconds: cli.ttl_seconds,
+        scan_cache_ttl_seconds: cli.scan_cache_ttl_seconds,
         ..Default::default()
     };
     let settings = match ScanSettings::compile(config.scan_inputs()) {
@@ -207,7 +207,7 @@ mod tests {
         let cli = Cli::try_parse_from(["explore", "mixed-forest"]).unwrap();
         assert_eq!(cli.scenario.as_deref(), Some("mixed-forest"));
         assert_eq!(cli.port, None);
-        assert_eq!(cli.ttl_seconds, 0);
+        assert_eq!(cli.scan_cache_ttl_seconds, 0);
         assert!(!cli.keep);
     }
 
@@ -218,14 +218,14 @@ mod tests {
             "clean-error",
             "--port",
             "9000",
-            "--ttl",
+            "--scan-cache-ttl",
             "30",
             "--keep",
         ])
         .unwrap();
         assert_eq!(cli.scenario.as_deref(), Some("clean-error"));
         assert_eq!(cli.port, Some(9000));
-        assert_eq!(cli.ttl_seconds, 30);
+        assert_eq!(cli.scan_cache_ttl_seconds, 30);
         assert!(cli.keep);
     }
 
