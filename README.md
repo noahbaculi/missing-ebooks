@@ -52,7 +52,7 @@ Point the volume at your library on the host. The container reads it and writes 
 The `read_only`, `cap_drop`, `security_opt`, and `tmpfs` lines sandbox the container: read-only rootfs, no Linux capabilities, no privilege escalation, and an in-memory `/tmp`. The app writes only to the mounted library, so nothing is lost, and a compromise inside the container has no persistence and no reach beyond the library mount. See [SECURITY.md](SECURITY.md) for the rationale.
 
 > [!WARNING]
-> The server has no authentication. It binds to loopback by default, and refuses to bind a non-loopback address unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND` is set to one of `1`, `true`, `yes`, `on` (case-insensitive, whitespace-trimmed; any other value fails startup). The shipped Docker image sets it, since the container binds `0.0.0.0` on purpose and exposure is controlled at the port-publish layer. To reach it from the LAN, put a reverse proxy with authentication in front of it before exposing it beyond your machine. See [SECURITY.md](SECURITY.md) for the full threat model and how to report a vulnerability.
+> The server has no authentication. It binds to loopback by default, and refuses to bind a non-loopback address unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND` is set to one of `1`, `true`, `yes`, `on` (case-insensitive, whitespace-trimmed; any other value fails startup). The shipped Docker image sets it in its own environment (not in the compose file below), since the container binds `0.0.0.0` on purpose and exposure is controlled at the port-publish layer. To reach it from the LAN, put a reverse proxy with authentication in front of it before exposing it beyond your machine. See [SECURITY.md](SECURITY.md) for the full threat model and how to report a vulnerability.
 
 ## How it works
 
@@ -265,7 +265,7 @@ See [`docs/network-shares.md`](docs/network-shares.md) for more details.
 If you want to clean up from this application, you can simply remove any marker files that may have been written:
 
 ```shell
-find /path/to/audiobooks \( -name '*.no_ebook' -o -name '*.ebook_elsewhere' \) -delete
+find /path/to/audiobooks \( -name '.no_ebook' -o -name '.ebook_elsewhere' \) -delete
 ```
 
 ## Releases
