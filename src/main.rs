@@ -44,13 +44,27 @@ fn resolve_config_path(flag: Option<PathBuf>, env: Option<OsString>) -> Option<P
     flag.or_else(|| env.map(PathBuf::from).filter(|path| path.is_file()))
 }
 
-/// Decide whether the resolved bind IP may be used.
+/// Parsed value of `MISSING_EBOOKS_ALLOW_PUBLIC_BIND`.
+#[derive(Debug)]
+enum AllowPublicBind {
+    On,
+    Off,
+    Invalid(String),
+}
+
+/// Parses `MISSING_EBOOKS_ALLOW_PUBLIC_BIND`.
 ///
-/// Loopback is always allowed. A non-loopback IP is allowed only when
-/// `MISSING_EBOOKS_ALLOW_PUBLIC_BIND` is set to exactly `"1"`. See
-/// `docs/adr/0003-default-bind-loopback.md` for the trust model.
-fn public_bind_allowed(ip: IpAddr, allow_env: Option<&str>) -> bool {
-    ip.is_loopback() || allow_env == Some("1")
+/// Accepted truthy values are `1`, `true`, `yes`, `on`, case-insensitive
+/// and whitespace-trimmed. Unset or empty is `Off`. Anything else is
+/// `Invalid` carrying the trimmed original.
+fn parse_allow_public_bind(raw: Option<&str>) -> AllowPublicBind {
+    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+        None => AllowPublicBind::Off,
+        Some(s) => match s.to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => AllowPublicBind::On,
+            _ => AllowPublicBind::Invalid(s.to_string()),
+        },
+    }
 }
 
 #[tokio::main]
@@ -94,17 +108,29 @@ async fn main() -> ExitCode {
     };
     if !ip.is_loopback() {
         let allow_env = std::env::var("MISSING_EBOOKS_ALLOW_PUBLIC_BIND").ok();
-        if !public_bind_allowed(ip, allow_env.as_deref()) {
-            tracing::error!(
-                bind = %config.bind,
-                "refusing to bind a non-loopback address without MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1. Bind loopback and front with a reverse proxy that enforces auth, or set the env var to acknowledge the trust model in SECURITY.md."
-            );
-            return ExitCode::from(1);
+        match parse_allow_public_bind(allow_env.as_deref()) {
+            AllowPublicBind::On => {
+                tracing::warn!(
+                    bind = %config.bind,
+                    "binding to a non-loopback address with MISSING_EBOOKS_ALLOW_PUBLIC_BIND opted in (accepted values: 1, true, yes, on). Put a reverse proxy with authentication in front before exposing this."
+                );
+            }
+            AllowPublicBind::Off => {
+                tracing::error!(
+                    bind = %config.bind,
+                    "refusing to bind a non-loopback address. Set MISSING_EBOOKS_ALLOW_PUBLIC_BIND to opt in (accepted values, case-insensitive: 1, true, yes, on) after reading SECURITY.md, or bind loopback and front with a reverse proxy that enforces auth."
+                );
+                return ExitCode::from(1);
+            }
+            AllowPublicBind::Invalid(value) => {
+                tracing::error!(
+                    bind = %config.bind,
+                    value = %value,
+                    "MISSING_EBOOKS_ALLOW_PUBLIC_BIND has an unrecognized value; accepted values (case-insensitive): 1, true, yes, on"
+                );
+                return ExitCode::from(1);
+            }
         }
-        tracing::warn!(
-            bind = %config.bind,
-            "binding to a non-loopback address with MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1, put a reverse proxy with authentication in front before exposing this"
-        );
     }
     let addr = SocketAddr::new(ip, config.port);
 
@@ -239,48 +265,60 @@ mod tests {
     }
 
     #[test]
-    fn loopback_is_allowed_without_the_flag() {
-        let ip: IpAddr = "127.0.0.1".parse().unwrap();
-        assert!(public_bind_allowed(ip, None));
+    fn unset_is_off() {
+        assert!(matches!(
+            parse_allow_public_bind(None),
+            AllowPublicBind::Off
+        ));
     }
 
     #[test]
-    fn ipv6_loopback_is_allowed_without_the_flag() {
-        let ip: IpAddr = "::1".parse().unwrap();
-        assert!(public_bind_allowed(ip, None));
+    fn empty_and_whitespace_are_off() {
+        assert!(matches!(
+            parse_allow_public_bind(Some("")),
+            AllowPublicBind::Off
+        ));
+        assert!(matches!(
+            parse_allow_public_bind(Some("   ")),
+            AllowPublicBind::Off
+        ));
     }
 
     #[test]
-    fn loopback_stays_allowed_with_the_flag() {
-        let ip: IpAddr = "127.0.0.1".parse().unwrap();
-        assert!(public_bind_allowed(ip, Some("1")));
+    fn canonical_truthy_values_are_on() {
+        for raw in ["1", "true", "yes", "on"] {
+            assert!(
+                matches!(parse_allow_public_bind(Some(raw)), AllowPublicBind::On),
+                "{raw} should parse as On"
+            );
+        }
     }
 
     #[test]
-    fn non_loopback_is_refused_without_the_flag() {
-        let ip: IpAddr = "0.0.0.0".parse().unwrap();
-        assert!(!public_bind_allowed(ip, None));
+    fn truthy_values_are_case_insensitive_and_trimmed() {
+        for raw in ["TRUE", "Yes", "  on  ", "\tON\n"] {
+            assert!(
+                matches!(parse_allow_public_bind(Some(raw)), AllowPublicBind::On),
+                "{raw} should parse as On"
+            );
+        }
     }
 
     #[test]
-    fn non_loopback_is_allowed_with_exact_one() {
-        let ip: IpAddr = "0.0.0.0".parse().unwrap();
-        assert!(public_bind_allowed(ip, Some("1")));
+    fn unknown_values_are_invalid_and_carry_the_trimmed_original() {
+        for raw in ["0", "false", "no", "off", "nope"] {
+            match parse_allow_public_bind(Some(raw)) {
+                AllowPublicBind::Invalid(v) => assert_eq!(v, raw.trim()),
+                other => panic!("{raw} should be Invalid, got {other:?}"),
+            }
+        }
     }
 
     #[test]
-    fn non_loopback_refuses_truthy_lookalikes() {
-        let ip: IpAddr = "192.168.1.10".parse().unwrap();
-        assert!(!public_bind_allowed(ip, Some("true")));
-        assert!(!public_bind_allowed(ip, Some("yes")));
-        assert!(!public_bind_allowed(ip, Some("on")));
-        assert!(!public_bind_allowed(ip, Some("")));
-        assert!(!public_bind_allowed(ip, Some("0")));
-    }
-
-    #[test]
-    fn ipv6_link_local_is_refused_without_the_flag() {
-        let ip: IpAddr = "fe80::1".parse().unwrap();
-        assert!(!public_bind_allowed(ip, None));
+    fn invalid_preserves_case_of_the_offending_input() {
+        match parse_allow_public_bind(Some("  Nope  ")) {
+            AllowPublicBind::Invalid(v) => assert_eq!(v, "Nope"),
+            other => panic!("expected Invalid, got {other:?}"),
+        }
     }
 }
