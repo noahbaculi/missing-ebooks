@@ -5,5 +5,6 @@
 pub mod banner;
 pub mod handlers;
 pub mod overlay;
+pub mod replay;
 pub mod session;
 pub mod state;
