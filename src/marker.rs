@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 /// A marker file a user writes to cover a folder on purpose (see CONTEXT.md).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Marker {
     /// `.no_ebook`: an ebook does not exist or could not be sourced.
@@ -55,5 +55,13 @@ mod tests {
         assert_eq!(parsed, Marker::EbookElsewhere);
         let token = serde_json::to_value(Marker::NoEbook).unwrap();
         assert_eq!(token, serde_json::json!("no_ebook"));
+    }
+
+    #[test]
+    fn ord_matches_declaration_order() {
+        assert!(Marker::NoEbook < Marker::EbookElsewhere);
+        let mut v = vec![Marker::EbookElsewhere, Marker::NoEbook];
+        v.sort();
+        assert_eq!(v, vec![Marker::NoEbook, Marker::EbookElsewhere]);
     }
 }
