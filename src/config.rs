@@ -256,7 +256,8 @@ library_roots = []
 
 # Address the HTTP server binds. Loopback by default (see ADR-0003). Set
 # "0.0.0.0" to listen on all interfaces; the server then refuses to start
-# unless MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1 is also set. Also settable as
+# unless MISSING_EBOOKS_ALLOW_PUBLIC_BIND is also set to one of
+# 1, true, yes, on (case-insensitive). Also settable as
 # MISSING_EBOOKS_BIND.
 bind = "127.0.0.1"
 

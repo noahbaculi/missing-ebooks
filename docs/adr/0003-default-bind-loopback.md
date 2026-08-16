@@ -16,9 +16,9 @@ Syncthing's GUI is the direct analog: single-user, no-auth, deliberately bound t
 
 ## Amendment (2026-08-07)
 
-The original decision logged a warning and continued when the bind resolved to a non-loopback address. In practice a warning line in startup logs is easy to miss, and the tool's unauthenticated write endpoint means a wrong-interface bind is a real footgun. The startup path now refuses to bind a non-loopback address unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1` is set, exiting with code 1 and naming the flag in the error. Loopback binds are unchanged.
+The original decision logged a warning and continued when the bind resolved to a non-loopback address. In practice a warning line in startup logs is easy to miss, and the tool's unauthenticated write endpoint means a wrong-interface bind is a real footgun. The startup path now refuses to bind a non-loopback address unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND` is set to one of `1`, `true`, `yes`, `on` (case-insensitive, whitespace-trimmed; other values exit 1 with a message naming the offending value), exiting with code 1 and naming the flag in the error. Loopback binds are unchanged.
 
-Only the exact string `"1"` opts in. No parsing, no case folding, one truthy value. That keeps the "did the operator acknowledge stepping off loopback" signal grep-legible in deployment configs.
+The accepted truthy values are `1`, `true`, `yes`, `on`, case-insensitive and whitespace-trimmed. Unset or empty stays off, and any other value fails startup naming the offending input. That keeps the "did the operator acknowledge stepping off loopback" signal grep-legible in deployment configs while sparing operators the `=true`-silently-ignored footgun.
 
 The shipped Docker image sets `MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1` alongside `MISSING_EBOOKS_BIND=0.0.0.0`. The container binds all interfaces on purpose (loopback inside the container would be unreachable from the host), and the exposure control lives at the port-publish layer as described in the original Consequences section. Setting the flag on the image preserves the "bind `0.0.0.0` in the container, publish `127.0.0.1:13379` on the host" pattern with no extra operator action.
 

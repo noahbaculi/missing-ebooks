@@ -21,7 +21,7 @@ Once v1.0.0 is out, security fixes land on the latest minor line. Older minors d
 
 The shipped [`docker-compose.yml`](docker-compose.yml) and [`docker-compose.advanced.yml`](docker-compose.advanced.yml) run the container with `read_only: true`, `cap_drop: [ALL]`, `security_opt: ["no-new-privileges:true"]`, and `tmpfs: /tmp`. The app writes only to the mounted library, so read-only rootfs costs nothing, and the other flags remove capabilities and privilege-escalation paths a compromised process would otherwise inherit. Keep them set.
 
-Binding to a non-loopback address (`0.0.0.0`, a LAN IP, a tailnet IP) is refused at startup unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND=1` is set. Setting it acknowledges the trust boundary described below: the server still ships with no auth, and any non-loopback bind belongs behind a reverse proxy that enforces one.
+Binding to a non-loopback address (`0.0.0.0`, a LAN IP, a tailnet IP) is refused at startup unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND` is set to one of `1`, `true`, `yes`, `on` (case-insensitive, whitespace-trimmed; any other value fails startup). Setting it acknowledges the trust boundary described below: the server still ships with no auth, and any non-loopback bind belongs behind a reverse proxy that enforces one.
 
 ## Threat model on a non-loopback bind
 
