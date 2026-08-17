@@ -2,7 +2,7 @@
 name = "missing-ebooks"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.96"
+rust-version = "1.97"
 description = "Surface audiobook folders that hold audio but no matching ebook"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/noahbaculi/missing-ebooks"

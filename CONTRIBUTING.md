@@ -24,7 +24,16 @@ GitHub Actions in `.github/workflows/` are pinned to a full 40-character commit 
 
 ## Build and test
 
-MSRV is Rust 1.96 (matches `rust-toolchain.toml`).
+MSRV is Rust 1.97 (matches `rust-toolchain.toml`).
+
+MSRV tracks the latest stable Rust release. When a new stable ships, bump all four pinned locations in one commit. The `toolchain-drift` CI job enforces that they agree.
+
+- `Dockerfile`: `FROM rust:X.Y.Z-alpine@sha256:...`, digest from the Dependabot base-image PR
+- `rust-toolchain.toml`: `channel = "X.Y.Z"`
+- `Cargo.toml`: `rust-version = "X.Y"`
+- `.github/workflows/ci.yml`: two `X.Y.0` references in the `msrv` job
+
+Dependabot's `docker` ecosystem opens the base-image PR that starts each bump.
 
 `mise tasks` lists every check. The shortcuts most reached for:
 

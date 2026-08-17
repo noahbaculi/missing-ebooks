@@ -1,9 +1,9 @@
 //! The demo's axum router and handlers. Handlers reuse the production `page`,
 //! `packaged_section`, and `all_sections` seams from the library, plus the
 //! static-asset handlers. A visitor is pinned to an in-memory session by a
-//! cookie. Their marks are applied via a `MarkOverlay` over the shared raw
-//! view per request, then rendered for the requested mode. The full index
-//! page carries the demo banner. The `/mark` partial does not.
+//! cookie. Their marks are replayed by folding `apply_mark_raw` over the
+//! shared raw view per request, then rendered for the requested mode. The
+//! full index page carries the demo banner. The `/mark` partial does not.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ use crate::web::render;
 use crate::web::{MarkRequest, ViewQuery};
 
 use super::banner;
-use super::overlay::{MarkOverlay, package_view_with_overlay};
+use super::replay::replay_marks;
 use super::session::{AtCapacity, SessionId, SessionStore};
 use super::state::{DemoConfig, DemoState};
 
@@ -166,8 +166,7 @@ async fn index(
     let Some((set_cookie, marks)) = resolved else {
         return capacity_response();
     };
-    let overlay = MarkOverlay::new(&marks);
-    let raw = package_view_with_overlay(&state.base_raw, &overlay);
+    let raw = replay_marks(&state.base_raw, &marks);
     // The demo runs no autosync loop and never rescans (its library is static
     // and its marks are in-process), so a nonzero poll interval would just
     // hit /refresh and get back the same bytes. Pass 0 so the page shell
@@ -232,8 +231,7 @@ fn apply_mark(
     let Some((set_cookie, marks)) = resolved else {
         return capacity_response();
     };
-    let overlay = MarkOverlay::new(&marks);
-    let raw = package_view_with_overlay(&state.base_raw, &overlay);
+    let raw = replay_marks(&state.base_raw, &marks);
     let markup = package::packaged_section(&raw, req.root, mode).render(&state.search_links, None);
     let mut response = Html(markup.into_string()).into_response();
     if let Some(cookie) = set_cookie {
@@ -633,26 +631,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn overlay_with_no_marks_matches_package_view_of_the_base() {
-        use std::collections::HashSet;
+    async fn replay_with_no_marks_matches_a_direct_render_of_base() {
+        use std::collections::BTreeSet;
 
         let dir = tempfile::tempdir().unwrap();
         touch(&dir.path().join("Book/01.mp3"));
         let state = build(dir.path(), 10, Duration::from_secs(1200)).await;
 
-        let empty: HashSet<crate::demo::session::MarkKey> = HashSet::new();
-        let overlay = MarkOverlay::new(&empty);
-        let derived = package_view_with_overlay(&state.base_raw, &overlay);
+        let empty: BTreeSet<crate::demo::session::MarkKey> = BTreeSet::new();
+        let derived = replay_marks(&state.base_raw, &empty);
         assert_eq!(
             render::page(&state.base_raw, &state.search_links, ViewMode::GapsOnly, 0).into_string(),
             render::page(&derived, &state.search_links, ViewMode::GapsOnly, 0).into_string(),
-            "with no marks, overlay must match a direct render"
+            "with no marks, replay must match a direct render"
         );
 
-        let mut marks: HashSet<crate::demo::session::MarkKey> = HashSet::new();
+        let mut marks: BTreeSet<crate::demo::session::MarkKey> = BTreeSet::new();
         marks.insert((0, "Book".to_string(), Marker::NoEbook));
-        let overlay = MarkOverlay::new(&marks);
-        let after = package_view_with_overlay(&state.base_raw, &overlay);
+        let after = replay_marks(&state.base_raw, &marks);
         assert_ne!(
             render::page(&state.base_raw, &state.search_links, ViewMode::GapsOnly, 0).into_string(),
             render::page(&after, &state.search_links, ViewMode::GapsOnly, 0).into_string(),

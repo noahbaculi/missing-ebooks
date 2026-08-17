@@ -2,7 +2,7 @@
 //! and when each session was last seen. Bounded by a global cap. Idle sessions
 //! are reaped on a timer. Nothing here touches disk.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::time::{Duration, Instant};
 
 use crate::marker::Marker;
@@ -31,7 +31,7 @@ pub(crate) type MarkKey = (usize, String, Marker);
 /// One visitor's private state: the marks they have applied as a set, and when
 /// the session was last touched.
 struct Session {
-    marks: HashSet<MarkKey>,
+    marks: BTreeSet<MarkKey>,
     last_seen: Instant,
 }
 
@@ -82,7 +82,7 @@ impl SessionStore {
         self.sessions.insert(
             sid,
             Session {
-                marks: HashSet::new(),
+                marks: BTreeSet::new(),
                 last_seen: now,
             },
         );
@@ -121,16 +121,16 @@ impl SessionStore {
     /// The marks a session has applied as a set. Empty when the session is
     /// unknown. Borrowed for the duration of the caller's lock guard. The
     /// render path consumes this reference directly without copying.
-    pub fn marks(&self, sid: &SessionId) -> &HashSet<MarkKey> {
+    pub fn marks(&self, sid: &SessionId) -> &BTreeSet<MarkKey> {
         // A static empty set so the unknown-session path can return a
-        // `&HashSet` without a per-call allocation. `OnceLock` keeps it
+        // `&BTreeSet` without a per-call allocation. `OnceLock` keeps it
         // const-eval-free without an unsafe `static mut` or a per-call
         // `Box::leak`.
-        static EMPTY: std::sync::OnceLock<HashSet<MarkKey>> = std::sync::OnceLock::new();
+        static EMPTY: std::sync::OnceLock<BTreeSet<MarkKey>> = std::sync::OnceLock::new();
         self.sessions
             .get(sid)
             .map(|session| &session.marks)
-            .unwrap_or_else(|| EMPTY.get_or_init(HashSet::new))
+            .unwrap_or_else(|| EMPTY.get_or_init(BTreeSet::new))
     }
 
     /// Drop every session idle for at least `idle` as of `now`. Returns how many

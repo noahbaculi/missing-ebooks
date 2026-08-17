@@ -46,3 +46,7 @@ Revisit if a future consumer needs the raw packaged section without HTML (a JSON
 ## Related
 
 - ADR-0022 (cache holds raw scan output): preserved. The store still owns the raw view; per-request rendering shape is unchanged.
+
+## Amendment: overlay retired
+
+The demo no longer runs a `MarkOverlay`. Session marks are replayed by folding `raw_view::apply_mark_raw` (the same rule the production write path uses) over the session's `BTreeSet<MarkKey>` at render time. The seam-sharing property this ADR set stays: the demo still hands a synthesized `RawView` to the shared `page`, `packaged_section`, and `all_sections` seams. Mark semantics now live in exactly one function.
