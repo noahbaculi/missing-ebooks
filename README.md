@@ -2,7 +2,7 @@
 
 Self-hosted web server that scans your audiobook library to highlight folders that hold audio but no matching ebook, so that gaps can be found and filled.
 
-![Tree view of a seeded library, showing folders flagged needs ebook, covered folders with a green checkmark, and a Reference Shelf folder tagged no audio](assets/screenshot.png)
+[![missing-ebooks tree view in light and dark mode on desktop and mobile](assets/screenshot.png)](https://demo-missing-ebooks.noahbaculi.com)
 
 ## Live demo
 
