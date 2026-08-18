@@ -1065,6 +1065,9 @@ html:not([data-italic-nested="off"]) .container-nested .name {
   body {
     padding: 1rem 0.75rem;
   }
+  .navbar {
+    gap: 0.6rem;
+  }
   /* phone navbar lays out in three rows: the title with the help, settings cog
      and rescan on top, the view toggle as a full-width segmented control below,
      and the filter box last, from the 800px block above.
