@@ -22,8 +22,15 @@ updates:
     schedule:
       interval: weekly
 
-  # GitHub Actions `uses:` pins across .github/workflows/.
+  # GitHub Actions `uses:` pins across .github/workflows/. Group minor + patch
+  # bumps into one PR; let majors come through individually so release notes
+  # get read.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    groups:
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch
