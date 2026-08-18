@@ -1,4 +1,4 @@
-# missing-ebooks
+# Missing Ebooks
 
 Self-hosted web server that scans your audiobook library to highlight folders that hold audio but no matching ebook, so that gaps can be found and filled.
 
@@ -22,7 +22,7 @@ Each visit opens a private, throwaway sandbox seeded with sample audiobooks. Cha
 - Simple marker files (`.no_ebook`, `.ebook_elsewhere`), writable with one click from the UI
 - Responsive UI with light and dark mode
 - Multi-root libraries, each rendered as its own tree
-- Smart coverage detection: ebooks and markers cover their whole subtree, so container folders don't false-flag
+- Coverage detection: ebooks and markers cover their whole subtree, so container folders don't false-flag
 - Live auto-refresh while a tab is open, plus on-demand `Rescan`
 - Prepopulated search links (Goodreads, etc, fully configurable)
 - Tunable for slow network shares: parallel scanning and cached results

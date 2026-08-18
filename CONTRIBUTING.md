@@ -4,6 +4,12 @@ This repo is a single-author hobby project, so the contribution surface is small
 
 The domain glossary lives at [`CONTEXT.md`](CONTEXT.md) in the repo root and defines common terminology for this project.
 
+## Terminology
+
+Use `ebook` for the general object: `missing ebook`, `ebook file`, `ebooks and markers`. Use `Ebook` only at the start of a sentence or where title case is required. Use `audiobook` as one word, `EPUB` for the file format, and `Books` only when naming a library category. Do not use `eBook` or `e-book` in project copy unless quoting another product or source.
+
+Marker filenames stay lowercase and underscored on disk: `.no_ebook` and `.ebook_elsewhere`.
+
 ## Dev setup
 
 With the exception of [Rust](https://rust-lang.org/), development dependencies are managed by [`mise`](https://github.com/jdx/mise) via the `mise.toml` file. `mise install` provisions the pinned tools.
