@@ -158,7 +158,7 @@ pub(super) fn search_box() -> Markup {
         div.search id="search" {
             (PreEscaped(include_str!("../../assets/svg/search.svg")))
             input.search-input id="search-input" type="search"
-                placeholder="Filter folders" aria-label="Filter folders"
+                placeholder="Filter" aria-label="Filter folders"
                 autocomplete="off" disabled;
             button.search-clear id="search-clear" type="button"
                 aria-label="Clear filter" hidden {
@@ -702,6 +702,7 @@ mod tests {
         // that once the tree and handler are wired, so the box is greyed but never a
         // dead box the user can type into before it works.
         assert!(box_html.contains(r#"id="search-input""#));
+        assert!(box_html.contains(r#"placeholder="Filter""#));
         assert!(box_html.contains(r#"aria-label="Filter folders""#));
         assert!(box_html.contains(r#"<div class="search" id="search">"#));
         assert!(box_html.contains(r#"autocomplete="off" disabled>"#));
