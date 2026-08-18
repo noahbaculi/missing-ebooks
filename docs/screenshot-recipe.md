@@ -1,6 +1,6 @@
-# Recreating `assets/screenshot.png`
+# Recreating the README screenshots
 
-Steps to reproduce the README screenshot contact sheet with `playwright-cli` against the `explore` example.
+Steps to reproduce the theme-responsive README screenshots with `playwright-cli` against the `explore` example.
 
 The composition step needs Pillow. Install it into whichever Python environment you use for local screenshot work:
 
@@ -74,9 +74,9 @@ playwright-cli eval "() => { document.activeElement?.blur(); window.getSelection
 playwright-cli screenshot --filename=.scratch/screenshots/mobile-dark.png
 ```
 
-## Compose the README image
+## Compose the README images
 
-Build flat diagonal composites first, then place those images inside the final rounded frames. The page is captured once on black and once on white, then Pillow reconstructs alpha from the pair so only the outside canvas becomes transparent.
+Build flat diagonal composites first, then place those images inside the final rounded frames. Both final images keep the dominant theme on the left: `assets/screenshot-light.png` is mostly light on the left, and `assets/screenshot-dark.png` is mostly dark on the left. The page is captured once on black and once on white for each final image, then Pillow reconstructs alpha from each pair so only the outside canvas becomes transparent.
 
 ```shell
 python3 - <<'PY'
@@ -84,7 +84,7 @@ import math
 
 from PIL import Image, ImageDraw
 
-ANGLE_DEGREES = 65
+ANGLE_DEGREES = 80
 RESAMPLE = Image.Resampling.LANCZOS
 
 
@@ -95,25 +95,27 @@ def cover(path, size):
     return resized.crop((0, 0, size[0], size[1]))
 
 
-def diagonal(light_path, dark_path, out_path, size):
-    light = cover(light_path, size)
-    dark = cover(dark_path, size)
+def diagonal(left_path, right_path, out_path, size, reveal_ratio):
+    left = cover(left_path, size)
+    right = cover(right_path, size)
     scale = 4
     hi_size = (size[0] * scale, size[1] * scale)
     mask = Image.new('L', hi_size, 0)
     slope = math.tan(math.radians(ANGLE_DEGREES))
-    center_x = hi_size[0] / 2
+    center_x = hi_size[0] * reveal_ratio
     center_y = hi_size[1] / 2
     top_x = center_x + center_y / slope
     bottom_x = center_x - center_y / slope
     ImageDraw.Draw(mask).polygon([(0, 0), (top_x, 0), (bottom_x, hi_size[1]), (0, hi_size[1])], fill=255)
     mask = mask.resize(size, RESAMPLE)
-    dark.paste(light, (0, 0), mask)
-    dark.save(out_path, optimize=True)
+    right.paste(left, (0, 0), mask)
+    right.save(out_path, optimize=True)
 
 
-diagonal('.scratch/screenshots/desktop-light.png', '.scratch/screenshots/desktop-dark.png', '.scratch/screenshots/desktop-composite.png', (1860, 1240))
-diagonal('.scratch/screenshots/mobile-light.png', '.scratch/screenshots/mobile-dark.png', '.scratch/screenshots/mobile-composite.png', (564, 1120))
+diagonal('.scratch/screenshots/desktop-light.png', '.scratch/screenshots/desktop-dark.png', '.scratch/screenshots/desktop-light-composite.png', (1860, 1240), 0.91)
+diagonal('.scratch/screenshots/mobile-light.png', '.scratch/screenshots/mobile-dark.png', '.scratch/screenshots/mobile-light-composite.png', (564, 1120), 0.86)
+diagonal('.scratch/screenshots/desktop-dark.png', '.scratch/screenshots/desktop-light.png', '.scratch/screenshots/desktop-dark-composite.png', (1860, 1240), 0.91)
+diagonal('.scratch/screenshots/mobile-dark.png', '.scratch/screenshots/mobile-light.png', '.scratch/screenshots/mobile-dark-composite.png', (564, 1120), 0.86)
 PY
 
 cat > .scratch/screenshots/contact-sheet.html <<'HTML'
@@ -124,7 +126,6 @@ cat > .scratch/screenshots/contact-sheet.html <<'HTML'
   * { box-sizing: border-box; }
   :root {
     --matte: #000;
-    --phone: #101827;
   }
   html,
   body {
@@ -181,11 +182,11 @@ cat > .scratch/screenshots/contact-sheet.html <<'HTML'
   }
 </style>
 <main>
-  <figure class="device desktop" aria-label="Desktop light and dark screenshot split diagonally">
-    <div class="screen"><img src="desktop-composite.png" alt=""></div>
+  <figure class="device desktop" aria-label="Desktop screenshot split diagonally">
+    <div class="screen"><img id="desktop" src="desktop-light-composite.png" alt=""></div>
   </figure>
-  <figure class="device mobile" aria-label="Mobile light and dark screenshot split diagonally">
-    <div class="screen"><img src="mobile-composite.png" alt=""></div>
+  <figure class="device mobile" aria-label="Mobile screenshot split diagonally">
+    <div class="screen"><img id="mobile" src="mobile-light-composite.png" alt=""></div>
   </figure>
 </main>
 HTML
@@ -194,29 +195,54 @@ python3 -m http.server 13381 --directory .scratch/screenshots &
 playwright-cli open http://127.0.0.1:13381/contact-sheet.html
 playwright-cli resize 2560 1320
 playwright-cli eval "() => { document.activeElement?.blur(); window.getSelection()?.removeAllRanges(); window.scrollTo(0, 0); }"
-playwright-cli screenshot --filename=.scratch/screenshots/contact-sheet-black.png
+playwright-cli screenshot --filename=.scratch/screenshots/contact-sheet-light-black.png
 playwright-cli eval "() => document.documentElement.style.setProperty('--matte', '#fff')"
-playwright-cli screenshot --filename=.scratch/screenshots/contact-sheet-white.png
+playwright-cli screenshot --filename=.scratch/screenshots/contact-sheet-light-white.png
+playwright-cli eval "() => { document.documentElement.style.setProperty('--matte', '#000'); document.getElementById('desktop').src = 'desktop-dark-composite.png'; document.getElementById('mobile').src = 'mobile-dark-composite.png'; }"
+playwright-cli screenshot --filename=.scratch/screenshots/contact-sheet-dark-black.png
+playwright-cli eval "() => document.documentElement.style.setProperty('--matte', '#fff')"
+playwright-cli screenshot --filename=.scratch/screenshots/contact-sheet-dark-white.png
 python3 - <<'PY'
 from PIL import Image
-black = Image.open('.scratch/screenshots/contact-sheet-black.png').convert('RGB')
-white = Image.open('.scratch/screenshots/contact-sheet-white.png').convert('RGB')
-out = Image.new('RGBA', black.size)
-out_pix = out.load()
-for y in range(black.height):
-    for x in range(black.width):
-        br, bg, bb = black.getpixel((x, y))
-        wr, wg, wb = white.getpixel((x, y))
-        a = 255 - max(wr - br, wg - bg, wb - bb)
-        if a <= 0:
-            out_pix[x, y] = (0, 0, 0, 0)
-        else:
-            out_pix[x, y] = (
-                min(255, round(br * 255 / a)),
-                min(255, round(bg * 255 / a)),
-                min(255, round(bb * 255 / a)),
-                a,
-            )
-out.save('assets/screenshot.png', optimize=True)
+
+
+def alpha_from_pair(black_path, white_path, out_path):
+    black = Image.open(black_path).convert('RGB')
+    white = Image.open(white_path).convert('RGB')
+    out = Image.new('RGBA', black.size)
+    out_pix = out.load()
+    for y in range(black.height):
+        for x in range(black.width):
+            br, bg, bb = black.getpixel((x, y))
+            wr, wg, wb = white.getpixel((x, y))
+            a = 255 - max(wr - br, wg - bg, wb - bb)
+            if a <= 0:
+                out_pix[x, y] = (0, 0, 0, 0)
+            else:
+                out_pix[x, y] = (
+                    min(255, round(br * 255 / a)),
+                    min(255, round(bg * 255 / a)),
+                    min(255, round(bb * 255 / a)),
+                    a,
+                )
+    out.save(out_path, optimize=True)
+
+
+alpha_from_pair('.scratch/screenshots/contact-sheet-light-black.png', '.scratch/screenshots/contact-sheet-light-white.png', 'assets/screenshot-light.png')
+alpha_from_pair('.scratch/screenshots/contact-sheet-dark-black.png', '.scratch/screenshots/contact-sheet-dark-white.png', 'assets/screenshot-dark.png')
 PY
+```
+
+## Wire the README image
+
+GitHub supports theme-specific images through `<picture>` and `prefers-color-scheme` media queries. Keep the fallback `img` on the light screenshot so Markdown renderers that ignore `<picture>` still show an image.
+
+```html
+<a href="https://demo-missing-ebooks.noahbaculi.com">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshot-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/screenshot-light.png">
+    <img src="assets/screenshot-light.png" alt="missing-ebooks tree view in light and dark mode on desktop and mobile">
+  </picture>
+</a>
 ```

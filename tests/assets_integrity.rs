@@ -5,6 +5,8 @@
 
 use sha2::{Digest, Sha256};
 
+const README: &str = include_str!("../README.md");
+
 // Pinned against the file bytes that include the provenance header committed
 // alongside this test. Recompute with `sha256sum assets/htmx.min.js` after any
 // intentional edit.
@@ -23,4 +25,14 @@ fn htmx_min_js_matches_pinned_digest() {
         actual, HTMX_MIN_JS_SHA256,
         "vendored htmx.min.js has drifted; update the provenance header and the pinned digest together"
     );
+}
+
+#[test]
+fn readme_uses_theme_responsive_screenshot_sources() {
+    assert!(README.contains("<picture>"));
+    assert!(README.contains("media=\"(prefers-color-scheme: dark)\""));
+    assert!(README.contains("media=\"(prefers-color-scheme: light)\""));
+    assert!(README.contains("assets/screenshot-dark.png"));
+    assert!(README.contains("assets/screenshot-light.png"));
+    assert!(!README.contains("assets/screenshot.png"));
 }

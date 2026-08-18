@@ -2,7 +2,13 @@
 
 Self-hosted web server that scans your audiobook library to highlight folders that hold audio but no matching ebook, so that gaps can be found and filled.
 
-[![missing-ebooks tree view in light and dark mode on desktop and mobile](assets/screenshot.png)](https://demo-missing-ebooks.noahbaculi.com)
+<a href="https://demo-missing-ebooks.noahbaculi.com">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshot-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/screenshot-light.png">
+    <img src="assets/screenshot-light.png" alt="missing-ebooks tree view in light and dark mode on desktop and mobile">
+  </picture>
+</a>
 
 ## Live demo
 
