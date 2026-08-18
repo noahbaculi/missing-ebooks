@@ -84,7 +84,7 @@ import math
 
 from PIL import Image, ImageDraw
 
-ANGLE_DEGREES = 80
+ANGLE_DEGREES = 65
 RESAMPLE = Image.Resampling.LANCZOS
 
 
@@ -112,10 +112,10 @@ def diagonal(left_path, right_path, out_path, size, reveal_ratio):
     right.save(out_path, optimize=True)
 
 
-diagonal('.scratch/screenshots/desktop-light.png', '.scratch/screenshots/desktop-dark.png', '.scratch/screenshots/desktop-light-composite.png', (1860, 1240), 0.91)
-diagonal('.scratch/screenshots/mobile-light.png', '.scratch/screenshots/mobile-dark.png', '.scratch/screenshots/mobile-light-composite.png', (564, 1120), 0.86)
-diagonal('.scratch/screenshots/desktop-dark.png', '.scratch/screenshots/desktop-light.png', '.scratch/screenshots/desktop-dark-composite.png', (1860, 1240), 0.91)
-diagonal('.scratch/screenshots/mobile-dark.png', '.scratch/screenshots/mobile-light.png', '.scratch/screenshots/mobile-dark-composite.png', (564, 1120), 0.86)
+diagonal('.scratch/screenshots/desktop-light.png', '.scratch/screenshots/desktop-dark.png', '.scratch/screenshots/desktop-light-composite.png', (1860, 1240), 0.86)
+diagonal('.scratch/screenshots/mobile-light.png', '.scratch/screenshots/mobile-dark.png', '.scratch/screenshots/mobile-light-composite.png', (564, 1120), 0.80)
+diagonal('.scratch/screenshots/desktop-dark.png', '.scratch/screenshots/desktop-light.png', '.scratch/screenshots/desktop-dark-composite.png', (1860, 1240), 0.86)
+diagonal('.scratch/screenshots/mobile-dark.png', '.scratch/screenshots/mobile-light.png', '.scratch/screenshots/mobile-dark-composite.png', (564, 1120), 0.80)
 PY
 
 cat > .scratch/screenshots/contact-sheet.html <<'HTML'
