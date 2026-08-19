@@ -4,9 +4,9 @@ Self-hosted web server that scans your audiobook library to highlight folders th
 
 <a href="https://demo-missing-ebooks.noahbaculi.com">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshot-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/screenshot-light.png">
-    <img src="assets/screenshot-light.png" alt="missing-ebooks tree view in light and dark mode on desktop and mobile">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme-preview-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/readme-preview-light.png">
+    <img src="assets/readme-preview-light.png" alt="missing-ebooks desktop and mobile tree views shown as light and dark front/back stacks">
   </picture>
 </a>
 
