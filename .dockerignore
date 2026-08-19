@@ -15,10 +15,17 @@ examples
 *.md
 LICENSE
 
-# Demo compose stack lives here; the prod image doesn't need it
+# Dev-only inputs the prod image doesn't need
+benches
 demo
+dev
+tools
+docker-compose*.yml
+assets/brand
 
 # Agent scratch trees
+.crush
+.playwright
 .playwright-mcp
 .superpowers
 .serena

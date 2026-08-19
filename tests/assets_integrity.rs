@@ -32,7 +32,7 @@ fn readme_uses_theme_responsive_screenshot_sources() {
     assert!(README.contains("<picture>"));
     assert!(README.contains("media=\"(prefers-color-scheme: dark)\""));
     assert!(README.contains("media=\"(prefers-color-scheme: light)\""));
-    assert!(README.contains("assets/readme-preview-dark.png"));
-    assert!(README.contains("assets/readme-preview-light.png"));
+    assert!(README.contains("docs/screenshots/readme-preview-dark.png"));
+    assert!(README.contains("docs/screenshots/readme-preview-light.png"));
     assert!(!README.contains("assets/screenshot.png"));
 }

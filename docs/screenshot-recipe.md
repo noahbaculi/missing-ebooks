@@ -10,7 +10,7 @@ cargo run --example explore -- mixed-forest --port 13380
 
 ## Capture the four views
 
-The capture commands use the same scenario in desktop and mobile sizes, then force the stored theme to light and dark. Each pass opens the target URL before resizing because `playwright-cli open` creates a fresh page with the default viewport. Reload after setting the theme so the page paints in the requested mode, then clear highlights, focus, text selection, and scroll position before taking the screenshot. The four `.scratch/screenshots/` files are local working screenshots; copy them into `assets/` after capture so the recipe has checked-in source fixtures for future composition work.
+The capture commands use the same scenario in desktop and mobile sizes, then force the stored theme to light and dark. Each pass opens the target URL before resizing because `playwright-cli open` creates a fresh page with the default viewport. Reload after setting the theme so the page paints in the requested mode, then clear highlights, focus, text selection, and scroll position before taking the screenshot. The four `.scratch/screenshots/` files are local working screenshots; copy them into `docs/screenshots/` after capture so the recipe has checked-in source fixtures for future composition work.
 
 ```shell
 mkdir -p .scratch/screenshots
@@ -68,18 +68,18 @@ playwright-cli eval "() => { document.activeElement?.blur(); window.getSelection
 playwright-cli screenshot --filename=.scratch/screenshots/mobile-dark.png
 ```
 
-Copy the source fixtures into the checked-in assets directory:
+Copy the source fixtures into the checked-in docs assets directory:
 
 ```shell
-cp .scratch/screenshots/desktop-light.png assets/screenshot-desktop-light.png
-cp .scratch/screenshots/desktop-dark.png assets/screenshot-desktop-dark.png
-cp .scratch/screenshots/mobile-light.png assets/screenshot-mobile-light.png
-cp .scratch/screenshots/mobile-dark.png assets/screenshot-mobile-dark.png
+cp .scratch/screenshots/desktop-light.png docs/screenshots/screenshot-desktop-light.png
+cp .scratch/screenshots/desktop-dark.png docs/screenshots/screenshot-desktop-dark.png
+cp .scratch/screenshots/mobile-light.png docs/screenshots/screenshot-mobile-light.png
+cp .scratch/screenshots/mobile-dark.png docs/screenshots/screenshot-mobile-dark.png
 ```
 
 ## Compose the README images
 
-Build one staging page that places desktop and mobile screenshots in side-by-side front/back device stacks. The page reads from the checked-in `assets/screenshot-*.png` source fixtures, then Playwright captures transparent images directly so rounded corners keep their native antialiasing. `assets/readme-preview-light.png` puts light screenshots in front and dark screenshots behind; `assets/readme-preview-dark.png` swaps only those image sources so dark screenshots sit in front.
+Build one staging page that places desktop and mobile screenshots in side-by-side front/back device stacks. The page reads from the checked-in `docs/screenshots/screenshot-*.png` source fixtures, then Playwright captures transparent images directly so rounded corners keep their native antialiasing. `docs/screenshots/readme-preview-light.png` puts light screenshots in front and dark screenshots behind; `docs/screenshots/readme-preview-dark.png` swaps only those image sources so dark screenshots sit in front.
 
 ```shell
 cat > .scratch/screenshots/contact-sheet.html <<'HTML'
@@ -153,16 +153,16 @@ cat > .scratch/screenshots/contact-sheet.html <<'HTML'
 </style>
 <main>
   <figure class="device desktop back" aria-label="Desktop screenshot behind the foreground desktop screenshot">
-    <div class="screen"><img id="desktop-back" src="../../assets/screenshot-desktop-dark.png" alt=""></div>
+    <div class="screen"><img id="desktop-back" src="../../docs/screenshots/screenshot-desktop-dark.png" alt=""></div>
   </figure>
   <figure class="device desktop front" aria-label="Desktop screenshot in front of the background desktop screenshot">
-    <div class="screen"><img id="desktop-front" src="../../assets/screenshot-desktop-light.png" alt=""></div>
+    <div class="screen"><img id="desktop-front" src="../../docs/screenshots/screenshot-desktop-light.png" alt=""></div>
   </figure>
   <figure class="device mobile back" aria-label="Mobile screenshot behind the foreground mobile screenshot">
-    <div class="screen"><img id="mobile-back" src="../../assets/screenshot-mobile-dark.png" alt=""></div>
+    <div class="screen"><img id="mobile-back" src="../../docs/screenshots/screenshot-mobile-dark.png" alt=""></div>
   </figure>
   <figure class="device mobile front" aria-label="Mobile screenshot in front of the background mobile screenshot">
-    <div class="screen"><img id="mobile-front" src="../../assets/screenshot-mobile-light.png" alt=""></div>
+    <div class="screen"><img id="mobile-front" src="../../docs/screenshots/screenshot-mobile-light.png" alt=""></div>
   </figure>
 </main>
 HTML
@@ -172,9 +172,9 @@ playwright-cli open http://127.0.0.1:13381/.scratch/screenshots/contact-sheet.ht
 playwright-cli resize 2560 1320
 playwright-cli eval "() => { document.activeElement?.blur(); window.getSelection()?.removeAllRanges(); window.scrollTo(0, 0); }"
 playwright-cli eval "() => { const desktop = [...document.querySelectorAll('.desktop')].map(el => el.getBoundingClientRect()); const mobile = [...document.querySelectorAll('.mobile')].map(el => el.getBoundingClientRect()); const desktopRight = Math.max(...desktop.map(box => box.right)); const mobileLeft = Math.min(...mobile.map(box => box.left)); const gutter = mobileLeft - desktopRight; if (gutter < 64) throw new Error('Expected at least 64px between device stacks, got ' + gutter + 'px'); return gutter; }"
-playwright-cli run-code "async page => await page.screenshot({ path: 'assets/readme-preview-light.png', type: 'png', omitBackground: true })"
-playwright-cli eval "() => { document.getElementById('desktop-front').src = '../../assets/screenshot-desktop-dark.png'; document.getElementById('desktop-back').src = '../../assets/screenshot-desktop-light.png'; document.getElementById('mobile-front').src = '../../assets/screenshot-mobile-dark.png'; document.getElementById('mobile-back').src = '../../assets/screenshot-mobile-light.png'; }"
-playwright-cli run-code "async page => await page.screenshot({ path: 'assets/readme-preview-dark.png', type: 'png', omitBackground: true })"
+playwright-cli run-code "async page => await page.screenshot({ path: 'docs/screenshots/readme-preview-light.png', type: 'png', omitBackground: true })"
+playwright-cli eval "() => { document.getElementById('desktop-front').src = '../../docs/screenshots/screenshot-desktop-dark.png'; document.getElementById('desktop-back').src = '../../docs/screenshots/screenshot-desktop-light.png'; document.getElementById('mobile-front').src = '../../docs/screenshots/screenshot-mobile-dark.png'; document.getElementById('mobile-back').src = '../../docs/screenshots/screenshot-mobile-light.png'; }"
+playwright-cli run-code "async page => await page.screenshot({ path: 'docs/screenshots/readme-preview-dark.png', type: 'png', omitBackground: true })"
 ```
 
 ## Wire the README image
@@ -186,14 +186,14 @@ GitHub supports theme-specific images through `<picture>` and `prefers-color-sch
   <picture>
     <source
       media="(prefers-color-scheme: dark)"
-      srcset="assets/readme-preview-dark.png"
+      srcset="docs/screenshots/readme-preview-dark.png"
     />
     <source
       media="(prefers-color-scheme: light)"
-      srcset="assets/readme-preview-light.png"
+      srcset="docs/screenshots/readme-preview-light.png"
     />
     <img
-      src="assets/readme-preview-light.png"
+      src="docs/screenshots/readme-preview-light.png"
       alt="missing-ebooks desktop and mobile tree views shown as light and dark front/back stacks"
     />
   </picture>
