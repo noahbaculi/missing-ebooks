@@ -28,7 +28,7 @@ docs/superpowers/
 demo/.env
 
 # Companion JSON scan_bench writes beside criterion output on local runs
-benchmarks/scan-context-*.json
+docs/benchmarks/scan-context-*.json
 
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

@@ -10,7 +10,7 @@ A realistic NAS-layout snapshot of a real audiobook tree, kept here for ad-hoc d
 | `rehydrate.sh` | Replays the snapshot into a tree of empty files so the scanner can walk a real directory structure. |
 | `README.md` | This file. |
 
-The snapshot holds names and extensions only, no file contents. Coverage logic keys off which files exist and what their extensions are (see [`CONTEXT.md`](../../../CONTEXT.md)), so empty files are enough to exercise it.
+The snapshot holds names and extensions only, no file contents. Coverage logic keys off which files exist and what their extensions are (see [`docs/CONTEXT.md`](../../../docs/CONTEXT.md)), so empty files are enough to exercise it.
 
 For a limited-context reader: this README, with the counts under "Structure and quirks" below, is enough to understand the tree's shape. You do not need to load `audiobooks.snapshot` (700 KB+) to reason about it. For small, hand-checkable cases with known expected verdicts, use [`../curated/`](../curated/) instead.
 
@@ -46,7 +46,7 @@ The `--manifest-path` resolves relative to this fixture directory; from the repo
 
 ## Structure and quirks
 
-The common shape is `Author / [Series] / Book / files`, but the real tree breaks that pattern often enough that the scanner has to handle the exceptions. Mapped to the `CONTEXT.md` vocabulary:
+The common shape is `Author / [Series] / Book / files`, but the real tree breaks that pattern often enough that the scanner has to handle the exceptions. Mapped to the `docs/CONTEXT.md` vocabulary:
 
 - The library root is `Audiobooks`. Every reported folder lives under it.
 - Containers are usually author folders, and sometimes a series folder one level down (for example `Brandon Sanderson/The Mistborn Saga`). Some series sit at the top level with no author above them, such as `Dresden Files` and `Legends of the First Empire`, so a top-level entry is not always an author.

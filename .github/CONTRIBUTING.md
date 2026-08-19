@@ -2,7 +2,7 @@
 
 This repo is a single-author hobby project, so the contribution surface is small: open an issue first for anything non-trivial, and keep changes scoped and well-explained.
 
-The domain glossary lives at [`CONTEXT.md`](CONTEXT.md) in the repo root and defines common terminology for this project.
+The domain glossary lives at [`docs/CONTEXT.md`](../docs/CONTEXT.md) and defines common terminology for this project.
 
 ## Terminology
 
@@ -26,7 +26,7 @@ GitHub Actions in `.github/workflows/` are pinned to a full 40-character commit 
 
 ### Client JS type checking
 
-`assets/app.js` and `assets/prepaint.js` are plain JavaScript with `// @ts-check` and JSDoc annotations. A check-only TypeScript pass (`tsconfig.json` with `checkJs` and `noEmit` under `strict`) reads them. The htmx surface and app-custom events are typed by a hand-written ambient stub at `types/htmx.d.ts`. There is no `package.json`, no lockfile, no `node_modules`, and nothing is emitted: the source stays the shipped artifact. The check is pinned through mise and runs in the pre-commit hook and CI. If the client ever grows into multiple modules that need bundling, a real build step becomes worth its weight and full TypeScript with emitted output would carry it; until then the check-only pass is the cheapest way to keep the surface honest.
+`assets/app.js` and `assets/prepaint.js` are plain JavaScript with `// @ts-check` and JSDoc annotations. A check-only TypeScript pass (`tools/tsconfig.json` with `checkJs` and `noEmit` under `strict`) reads them. The htmx surface and app-custom events are typed by a hand-written ambient stub at `tools/htmx.d.ts`. There is no `package.json`, no lockfile, no `node_modules`, and nothing is emitted: the source stays the shipped artifact. The check is pinned through mise and runs in the pre-commit hook and CI. If the client ever grows into multiple modules that need bundling, a real build step becomes worth its weight and full TypeScript with emitted output would carry it; until then the check-only pass is the cheapest way to keep the surface honest.
 
 ## Build and test
 
@@ -93,12 +93,12 @@ For a live-reload loop while iterating on the UI, run `bacon explore` instead. I
 
 ## Running against a real library (Docker)
 
-`docker-compose.dev.yml` builds the local `missing-ebooks:dev` image, mounts a host path as `/audiobooks`, and layers `config.dev.toml` at `/config/config.toml`. The image auto-detects that path (`Dockerfile` sets `MISSING_EBOOKS_CONFIG=/config/config.toml`), so no extra env is needed.
+`dev/docker-compose.yml` builds the local `missing-ebooks:dev` image, mounts a host path as `/audiobooks`, and layers `dev/config.toml` at `/config/config.toml`. The image auto-detects that path (`Dockerfile` sets `MISSING_EBOOKS_CONFIG=/config/config.toml`), so no extra env is needed.
 
 Build and start:
 
 ```shell
-docker build -t missing-ebooks:dev . && docker compose -f docker-compose.dev.yml up -d --force-recreate
+docker build -t missing-ebooks:dev . && docker compose -f dev/docker-compose.yml up -d --force-recreate
 ```
 
 Then open http://localhost:13379/.
@@ -106,11 +106,10 @@ Then open http://localhost:13379/.
 Stop and remove:
 
 ```shell
-docker compose -f docker-compose.dev.yml down
-docker image rm missing-ebooks:dev
+docker compose -f dev/docker-compose.yml down
 ```
 
-Point the `/audiobooks` mount at your library by editing `docker-compose.dev.yml`. `config.dev.toml` is only read by this compose file and stays out of the release images.
+Point the `/audiobooks` mount at your library by editing `dev/docker-compose.yml`. `dev/config.toml` is only read by this compose file and stays out of the release images.
 
 ## Commit style
 

@@ -1,6 +1,6 @@
 # Agent conventions
 
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md) first. This file layers agent-only conventions on top and does not repeat them.
+Read [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) first. This file layers agent-only conventions on top and does not repeat them.
 
 ## Issues, PRDs, and plans
 
@@ -22,7 +22,7 @@ When a skill mentions a role (e.g. "apply the AFK-ready triage label"), write th
 
 ## Domain docs
 
-This repo is a single context: one [`CONTEXT.md`](CONTEXT.md) at the root and one [`docs/adr/`](docs/adr/) tree alongside it. There is no `CONTEXT-MAP.md` and no per-context ADR directories under `src/`. Skills that read or write domain documentation target those two locations.
+This repo is a single context: one [`docs/CONTEXT.md`](docs/CONTEXT.md) and one [`docs/adr/`](docs/adr/) tree. There is no `CONTEXT-MAP.md` and no per-context ADR directories under `src/`. Skills that read or write domain documentation target those two locations.
 
 ## Superpowers artifacts
 

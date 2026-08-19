@@ -8,6 +8,6 @@
     "lib": ["DOM", "DOM.Iterable", "ES2017"],
     "types": []
   },
-  "include": ["assets/app.js", "assets/prepaint.js", "types/htmx.d.ts"],
-  "exclude": ["assets/htmx.min.js"]
+  "include": ["../assets/app.js", "../assets/prepaint.js", "htmx.d.ts"],
+  "exclude": ["../assets/htmx.min.js"]
 }

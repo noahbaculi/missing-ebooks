@@ -20,7 +20,7 @@ The guard means that even a request that reaches `/mark`, whether through a misc
 
 Three properties of the guard are known and accepted for v1.
 
-The two `canonicalize` calls and the marker `open` are separate syscalls, so a local attacker with write access somewhere under a configured root could swap a symlink between them to redirect the create (a TOCTOU race). Exploiting this requires filesystem write access under a root the operator already trusts. That is outside the threat model in `SECURITY.md`, which assumes the loopback bind or the reverse-proxy front end is the only untrusted edge. The upgrade path, if the threat model changes, is `openat` on an `O_DIRECTORY | O_NOFOLLOW` dirfd followed by `openat(dirfd, filename, O_CREAT | O_EXCL | O_NOFOLLOW)`.
+The two `canonicalize` calls and the marker `open` are separate syscalls, so a local attacker with write access somewhere under a configured root could swap a symlink between them to redirect the create (a TOCTOU race). Exploiting this requires filesystem write access under a root the operator already trusts. That is outside the threat model in the [security policy](../../.github/SECURITY.md), which assumes the loopback bind or the reverse-proxy front end is the only untrusted edge. The upgrade path, if the threat model changes, is `openat` on an `O_DIRECTORY | O_NOFOLLOW` dirfd followed by `openat(dirfd, filename, O_CREAT | O_EXCL | O_NOFOLLOW)`.
 
 The guard uses lexical `Path::starts_with` on canonical paths and does not compare `st_dev`. Bind mounts and NFS submounts under a configured root are accepted as inside the root. Self-hosted libraries composed from a NAS mount plus a local disk are a first-class use case, and rejecting cross-`dev` targets would break them.
 

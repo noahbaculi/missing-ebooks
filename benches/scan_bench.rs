@@ -8,11 +8,11 @@
 //! page cache before each Full or Gaps iteration.
 //! `MISSING_EBOOKS_SCAN_BENCH_CONCURRENCY=1,4,8,16,32` sweeps thread counts
 //! (or caller counts, for `scan_concurrent`). A companion JSON per run
-//! lands at `benchmarks/scan-context-<label>-<host>-<unix>.json`.
+//! lands at `docs/benchmarks/scan-context-<label>-<host>-<unix>.json`.
 //!
 //! Regression check: `cargo bench --bench scan_bench -- --save-baseline main`
 //! on `main`, then `cargo bench --bench scan_bench -- --baseline main` on a
-//! branch. See `benchmarks/README.md` for the four-group design.
+//! branch. See `docs/benchmarks/README.md` for the four-group design.
 
 // `criterion_group!` and `criterion_main!` generate undocumented items.
 #![allow(missing_docs)]
@@ -216,7 +216,7 @@ fn write_companion_once(input: &BenchInput) {
             }],
             criterion_output: "target/criterion/",
         };
-        let out_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("benchmarks");
+        let out_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/benchmarks");
         let _ = std::fs::create_dir_all(&out_dir);
         let path = out_dir.join(format!("scan-context-{label}-{host}-{unix_time}.json"));
         match serde_json::to_string_pretty(&comp) {

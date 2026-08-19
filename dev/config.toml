@@ -1,4 +1,4 @@
-# Dev config for docker-compose.dev.yml. Mounted read-only at
+# Dev config for dev/docker-compose.yml. Mounted read-only at
 # /config/config.toml. library_roots and log level come from env in the
 # compose file (env wins over file, see ADR-0004), so this file exercises the
 # file-only and less-obvious knobs.

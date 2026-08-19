@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// A marker file a user writes to cover a folder on purpose (see CONTEXT.md).
+/// A marker file a user writes to cover a folder on purpose (see docs/CONTEXT.md).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Marker {

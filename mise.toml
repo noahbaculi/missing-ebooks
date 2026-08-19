@@ -29,14 +29,14 @@ description = "Run fmt, clippy, typos, taplo, and the unused-dep check"
 run = [
   "cargo fmt --check",
   "cargo clippy --locked --all-targets",
-  "typos",
+  "typos --config tools/_typos.toml",
   "taplo format --check",
   "cargo machete",
 ]
 
 [tasks.typecheck]
 description = "Type-check the client JS with tsc (check only, no emit)"
-run = "tsc --noEmit"
+run = "tsc --project tools/tsconfig.json --noEmit"
 
 [tasks."test:hooks"]
 description = "Run the pre-commit hook test"

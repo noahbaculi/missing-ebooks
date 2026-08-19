@@ -325,7 +325,7 @@ mod tests {
 
     #[test]
     fn scripts_do_not_persist_the_view_toggle() {
-        // CONTEXT.md:31: the show-all toggle rides ?view= only and a reload
+        // docs/CONTEXT.md:31: the show-all toggle rides ?view= only and a reload
         // lands on gaps-only. Fence any localStorage view key out
         for shape in [
             r#"localStorage.getItem("view")"#,
@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn app_script_caps_the_toast_stack_and_evicts_the_oldest() {
-        // CONTEXT.md:36: at most three toasts, the oldest evicted on overflow
+        // docs/CONTEXT.md:36: at most three toasts, the oldest evicted on overflow
         assert!(APP_JS_BYTES.contains("var MAX_TOASTS = 3;"));
         assert!(APP_JS_BYTES.contains("while (stack.children.length >= MAX_TOASTS)"));
         assert!(APP_JS_BYTES.contains("hardRemove"));

@@ -24,7 +24,7 @@ pub struct Node {
     /// This folder directly contains at least one audio file.
     pub directly_holds_audio: bool,
     /// No ebook or marker covers it: none here and none in any ancestor up to the
-    /// root. The inverse of CONTEXT.md's "covered".
+    /// root. The inverse of docs/CONTEXT.md's "covered".
     pub missing_ebook: bool,
     /// Child nodes, natural-sorted and case-insensitive.
     pub children: Vec<Node>,
@@ -47,7 +47,7 @@ pub struct Node {
 
 impl Node {
     /// A gap: this folder holds audio and is missing an ebook. Reproduces the old
-    /// `flagged` value. CONTEXT.md's "flagged folder".
+    /// `flagged` value. docs/CONTEXT.md's "flagged folder".
     #[must_use]
     pub fn needs_ebook(&self) -> bool {
         self.directly_holds_audio && self.missing_ebook

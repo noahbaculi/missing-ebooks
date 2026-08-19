@@ -8,7 +8,7 @@ Four criterion groups mirror the four historical questions the bench answered: `
 
 A small companion JSON per run records host, kernel, build profile, fstype, and mount options, since criterion's own output does not carry environmental context.
 
-The 2026-06 schema-versioned JSON reports stay under `benchmarks/` as historical evidence for ADR-0019, ADR-0020, and ADR-0022; they no longer round-trip through the current bench binary. `cargo bench --bench scan_bench -- --baseline main` is the routine regression check; env-var overrides steer the same tool at real backends when a new question comes up.
+The 2026-06 schema-versioned JSON reports stay under `docs/benchmarks/` as historical evidence for ADR-0019, ADR-0020, and ADR-0022; they no longer round-trip through the current bench binary. `cargo bench --bench scan_bench -- --baseline main` is the routine regression check; env-var overrides steer the same tool at real backends when a new question comes up.
 
 ## Regression check
 
@@ -61,7 +61,7 @@ cargo bench --bench scan_bench --release -- scan_full
 
 ## Companion JSON
 
-Each run writes `benchmarks/scan-context-<label>-<host>-<unix>.json`. It records host, kernel, build profile, whether `DROP_CACHES` was set, `input_source` (`synthetic`, `snapshot`, or `root`), and the root's fstype and mount options. Criterion owns the timings under `target/criterion/`; the companion carries only environmental context.
+Each run writes `docs/benchmarks/scan-context-<label>-<host>-<unix>.json`. It records host, kernel, build profile, whether `DROP_CACHES` was set, `input_source` (`synthetic`, `snapshot`, or `root`), and the root's fstype and mount options. Criterion owns the timings under `target/criterion/`; the companion carries only environmental context.
 
 ## Snapshot fixture
 

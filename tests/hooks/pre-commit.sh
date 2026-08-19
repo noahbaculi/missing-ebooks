@@ -40,8 +40,15 @@ exit "${MISE_EXIT:-0}"
 STUB_EOF
 chmod +x "$STUB/mise"
 
+cat > "$STUB/typos" <<'STUB_EOF'
+#!/bin/sh
+exit "${TYPOS_EXIT:-0}"
+STUB_EOF
+chmod +x "$STUB/typos"
+
 export MISE_LOG="$WORK/mise.log"
 export MISE_EXIT=0
+export TYPOS_EXIT=0
 
 export CARGO_LOG="$WORK/cargo.log"
 export CARGO_FMT_EXIT=0
@@ -185,15 +192,15 @@ expect_typecheck_ran "js: ran typecheck"
 expect_log_empty "js: cargo not invoked"
 expect_accent_ran "js: ran accent"
 
-# 6. tsconfig change also triggers the type check.
-stage_case tsconfig.json
+# 6. tools/tsconfig.json change also triggers the type check.
+stage_case tools/tsconfig.json
 MISE_EXIT=0
-expect_exit "tsconfig: passing typecheck exits 0" 0 "$(hook_exit)"
-expect_typecheck_ran "tsconfig: ran typecheck"
-expect_accent_skipped "tsconfig: accent not invoked"
+expect_exit "tools-tsconfig: passing typecheck exits 0" 0 "$(hook_exit)"
+expect_typecheck_ran "tools-tsconfig: ran typecheck"
+expect_accent_skipped "tools-tsconfig: accent not invoked"
 
 # 6b. A .d.ts change (the ambient stubs) also triggers the type check.
-stage_case types/htmx.d.ts
+stage_case tools/htmx.d.ts
 MISE_EXIT=0
 expect_exit "dts: passing typecheck exits 0" 0 "$(hook_exit)"
 expect_typecheck_ran "dts: ran typecheck"

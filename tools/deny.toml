@@ -30,7 +30,7 @@ confidence-threshold = 0.8
 [bans]
 multiple-versions = "deny"
 # Current, accepted duplicates. Each entry is a known transitive conflict.
-# Remove it when the tree converges. Re-run `cargo deny check bans` after a dep bump.
+# Remove it when the tree converges. Re-run `cargo deny check --config tools/deny.toml bans` after a dep bump.
 skip = [
   # proptest 1.11 pulls rand 0.9 (getrandom 0.3); tempfile 3.27 still uses getrandom 0.4.
   { name = "getrandom", version = "=0.3.4" },

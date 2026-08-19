@@ -13,7 +13,7 @@
 //! `&DirIndex` entry when the mtime is unchanged, listing the rest. The
 //! index is interior-mutable, so a shared reference is enough. Passing a
 //! fresh `DirIndex::new()` skips the reuse and walks every directory from
-//! scratch, what `CONTEXT.md` calls a cold scan.
+//! scratch, what `docs/CONTEXT.md` calls a cold scan.
 
 use std::collections::HashSet;
 use std::ffi::OsStr;
@@ -401,7 +401,7 @@ pub(crate) fn scan_root(root: &Path, settings: &ScanSettings, index: &DirIndex) 
 /// A warm scan: stat each directory and reuse the `index` entry when the
 /// mtime is unchanged, listing and re-indexing the rest. The same `index`
 /// passed across calls makes each rescan cheaper than the last cold walk.
-/// Pass a fresh `DirIndex::new()` to perform what `CONTEXT.md` calls a
+/// Pass a fresh `DirIndex::new()` to perform what `docs/CONTEXT.md` calls a
 /// cold scan: a walk with no warm cache to consult.
 ///
 /// The walk is level-synchronous breadth-first: each level is read in

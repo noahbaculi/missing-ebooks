@@ -4,7 +4,7 @@ Date: 2026-06-22.
 
 ## Context
 
-This began as two walks. Gaps-only ran a coverage-pruning walk that stopped descending the moment it hit an ebook or marker, show-all ran the full walk, and the two were kept apart to keep the common path off the fuller walk on a large networked library. The benchmark retired that split: coverage in a real library sits at the leaf book folders and prunes no subtree, so the gaps-only walk visited the same directories and entries as the full walk and ran within noise of it (see `benchmarks/README.md` and ADR-0019).
+This began as two walks. Gaps-only ran a coverage-pruning walk that stopped descending the moment it hit an ebook or marker, show-all ran the full walk, and the two were kept apart to keep the common path off the fuller walk on a large networked library. The benchmark retired that split: coverage in a real library sits at the leaf book folders and prunes no subtree, so the gaps-only walk visited the same directories and entries as the full walk and ran within noise of it (see `../benchmarks/README.md` and ADR-0019).
 
 ## Decision
 

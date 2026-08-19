@@ -15,7 +15,7 @@ staged=$(git diff --cached --name-only --diff-filter=ACMR)
 # Each language's checks run only when a staged file could change their result,
 # so unrelated commits (docs, or the other language) stay fast.
 rust_changed=$(printf '%s\n' "$staged" | grep -Eq '(\.rs$|(^|/)Cargo\.(toml|lock)$|(^|/)(rust-toolchain|rustfmt|\.rustfmt|clippy)\.toml$)' && echo 1 || true)
-js_changed=$(printf '%s\n' "$staged" | grep -Eq '((^|/)assets/app\.js$|(^|/)assets/prepaint\.js$|\.d\.ts$|(^|/)tsconfig\.json$)' && echo 1 || true)
+js_changed=$(printf '%s\n' "$staged" | grep -Eq '((^|/)assets/app\.js$|(^|/)assets/prepaint\.js$|\.d\.ts$|(^|/)tools/tsconfig\.json$)' && echo 1 || true)
 accent_changed=$(printf '%s\n' "$staged" | grep -Eq '((^|/)assets/app\.(css|js)$|(^|/)assets/prepaint\.js$|(^|/)tests/accent/)' && echo 1 || true)
 toml_changed=$(printf '%s\n' "$staged" | grep -Eq '\.toml$' && echo 1 || true)
 
@@ -59,7 +59,7 @@ if [ -n "$toml_changed" ]; then
   fi
 fi
 
-if ! typos; then
-  echo "pre-commit: 'typos' found spelling issues above. Fix them (or extend the typos allow-list), then re-stage and commit." >&2
+if ! typos --config tools/_typos.toml; then
+  echo "pre-commit: 'typos --config tools/_typos.toml' found spelling issues above. Fix them (or extend the typos allow-list), then re-stage and commit." >&2
   exit 1
 fi
