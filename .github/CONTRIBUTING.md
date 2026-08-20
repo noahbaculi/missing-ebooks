@@ -120,7 +120,7 @@ Work lands on `main` by rebase and fast-forward only, so each commit sits inline
 ## Where work lives
 
 - Issues, PRDs, and implementation plans live under `.scratch/<feature>/`, gitignored by default.
-- ADRs live at `docs/adr/NNNN-kebab-title.md`. The template and amendment convention are in [`docs/adr/README.md`](docs/adr/README.md).
+- ADRs live at `docs/adr/NNNN-kebab-title.md`. The template and amendment convention are in [`docs/adr/README.md`](../docs/adr/README.md).
 
 ## PR expectations
 

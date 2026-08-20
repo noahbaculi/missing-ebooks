@@ -12,6 +12,9 @@ node = "22"
 "npm:@playwright/cli" = "0.1"
 "cargo:cargo-nextest" = "0.9"
 "cargo:cargo-machete" = "0.9"
+actionlint = "1.7.12"
+lychee = "0.24.2"
+shellcheck = "0.11.0"
 typos = "1"
 taplo = "0.10"
 ast-grep = "0.44"
@@ -25,18 +28,32 @@ description = "Install the playwright-cli SKILL bundle into this clone's .claude
 run = "playwright-cli install --skills"
 
 [tasks.lint]
-description = "Run fmt, clippy, typos, taplo, and the unused-dep check"
+description = "Run fmt, clippy, typos, taplo, actionlint, shellcheck, and the unused-dep check"
 run = [
   "cargo fmt --check",
   "cargo clippy --locked --all-targets",
   "typos --config tools/_typos.toml",
   "taplo format --check",
+  "mise run lint:actions",
+  "mise run lint:shell",
   "cargo machete",
 ]
+
+[tasks."lint:actions"]
+description = "Lint GitHub Actions workflows"
+run = "actionlint"
+
+[tasks."lint:shell"]
+description = "Lint shell scripts"
+run = "shellcheck .githooks/pre-commit tests/hooks/pre-commit.sh tests/fixtures/example-nas/rehydrate.sh"
 
 [tasks.typecheck]
 description = "Type-check the client JS with tsc (check only, no emit)"
 run = "tsc --project tools/tsconfig.json --noEmit"
+
+[tasks."check:links"]
+description = "Check Markdown links with lychee"
+run = "lychee --exclude-loopback README.md AGENTS.md '.github/**/*.md' 'docs/**/*.md' 'demo/**/*.md' 'tests/fixtures/**/*.md'"
 
 [tasks."test:hooks"]
 description = "Run the pre-commit hook test"
