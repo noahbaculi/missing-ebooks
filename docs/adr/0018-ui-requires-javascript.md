@@ -14,6 +14,6 @@ We removed it: the rescan handler renders the sections for every request, the re
 
 ## Consequences
 
-This leaves one render path for rescan instead of two, and one interaction model across every button. The demo binary keeps its own 303 redirects for rescan and reset, since a public, shared, crawlable deployment has its own reasons to keep Post/Redirect/Get; that is a separate decision from the self-hosted UI.
+This leaves one render path for rescan instead of two, and one interaction model across every button. The demo binary keeps its own 303 redirects for rescan and reset, since a public, shared, crawlable deployment has its own reasons to keep Post/Redirect/Get. That is a separate decision from the self-hosted UI.
 
 Supersedes the progressive-enhancement framing of ADR 0009. The rest of 0009 stands: the section-swap mechanism and the vendored-htmx decision are unchanged.

@@ -1,6 +1,6 @@
 # example-nas library snapshot
 
-A realistic NAS-layout snapshot of a real audiobook tree, kept here for ad-hoc developer benchmarking against `cargo bench --bench scan_bench`. **The automated test suite does not exercise this directory.** It lives under `tests/fixtures/` for historical reasons; the canonical hand-checkable test fixtures are in [`../curated/`](../curated/). The artifact is a frozen, machine-readable listing of one developer's NAS; the `rehydrate.sh` script replays it into a tree of empty files so the scanner can walk a real directory structure on a machine that has no access to the mount.
+A realistic NAS-layout snapshot of a real audiobook tree, kept here for ad-hoc developer benchmarking against `cargo bench --bench scan_bench`. **The automated test suite does not exercise this directory.** It lives under `tests/fixtures/` for historical reasons. The canonical hand-checkable test fixtures are in [`../curated/`](../curated/). The artifact is a frozen, machine-readable listing of one developer's NAS. The `rehydrate.sh` script replays it into a tree of empty files so the scanner can walk a real directory structure on a machine that has no access to the mount.
 
 ## What is here
 
@@ -18,7 +18,7 @@ For a limited-context reader: this README, with the counts under "Structure and 
 
 One developer's homelab capture, host and share name scrubbed. The source mount was a CIFS/SMB share at `/mnt/example-nas`, library root `/mnt/example-nas/Entertainment/Audiobooks`. Captured 2026-06-04: 126 top-level entries, 900 directories, 7,902 files.
 
-The snapshot was captured once for the SMB scaling investigation (ADR-0019) and has been kept since as the canonical realistic-layout artifact for `scan_bench`. Numbers are useful for relative comparisons inside one machine; they are not a normative baseline.
+The snapshot was captured once for the SMB scaling investigation (ADR-0019) and has been kept since as the canonical realistic-layout artifact for `scan_bench`. Numbers are useful for relative comparisons inside one machine. They are not a normative baseline.
 
 To regenerate from the NAS:
 
@@ -42,7 +42,7 @@ cargo bench --bench scan_bench --manifest-path ../../../Cargo.toml -- --root /tm
 rm -rf /tmp/scanbench-fixture
 ```
 
-The `--manifest-path` resolves relative to this fixture directory; from the repo root, drop the flag.
+The `--manifest-path` resolves relative to this fixture directory. From the repo root, drop the flag.
 
 ## Structure and quirks
 

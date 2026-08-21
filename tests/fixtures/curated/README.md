@@ -12,8 +12,8 @@ A small, hand-built audiobook tree distilled from [`../example-nas/`](../example
 | Folder | Verdict | Pattern it exercises |
 | --- | --- | --- |
 | `Adrian Tchaikovsky/Cage of Souls` | covered | ebook (`.epub`) beside the audio, the typical covered case |
-| `Adrian Tchaikovsky/Elder Race` | flagged | audio (`.mp3`), no ebook; a `.png` cover is not an ebook |
-| `Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire` | flagged | deep author / series / book nesting; a hidden `.beets` sidecar (name embeds `.m4b`) is ignored |
+| `Adrian Tchaikovsky/Elder Race` | flagged | audio (`.mp3`), no ebook. A `.png` cover is not an ebook |
+| `Brandon Sanderson/The Mistborn Saga/Mistborn 01 - The Final Empire` | flagged | deep author / series / book nesting. A hidden `.beets` sidecar (name embeds `.m4b`) is ignored |
 | `Orson Scott Card/Space Boy` | covered | `.no_ebook` marker in the folder |
 | `Brandon Sanderson/The Mistborn Saga/4.5 - Allomancer Jak and the Pits of Eltania` | covered | `.ebook_elsewhere` marker beside the audio (in-folder coverage, the real shape this marker takes in the snapshot) |
 | `Ursula K. Le Guin/The Earthsea Trilogy/*` | covered | `.ebook_elsewhere` marker one level up (ancestor coverage) |
@@ -28,13 +28,13 @@ A small, hand-built audiobook tree distilled from [`../example-nas/`](../example
 | `Unsorted` | absent | no audio anywhere, never flagged |
 | `Dresden Files/Dead Beat` | flagged | a `.cue` sheet beside the audio is not an ebook |
 | `Becky Chambers/Wayfarers/4 - The Galaxy, and the Ground Within` | flagged | three hidden `.beets` sidecars (names embed `.mp3`) are all ignored |
-| `Robin Hobb/Farseer Trilogy/1 - Assassin’s Apprentice` | flagged | `[ebook]` in a `.jpg` name is not an ebook; non-ASCII apostrophe (U+2019) |
+| `Robin Hobb/Farseer Trilogy/1 - Assassin’s Apprentice` | flagged | `[ebook]` in a `.jpg` name is not an ebook. Non-ASCII apostrophe (U+2019) |
 | `Robin Hobb/_Extras` | absent | maps-only folder (`.jpg`/`.jpeg`/`.webp`), no audio |
 | `Arthur C. Clarke/Rendezvous with Rama` | flagged | a sibling `_more_ebooks` stash does not cover it |
 | `Margaret Atwood/The Handmaid's Tale/1 - The Handmaid's Tale` | flagged | two audio formats (`.m4b` + `.mp3`) reported together |
 | `Michael J. Sullivan/Riyria Revelations` | absent | empty subtree (`.gitkeep` only), no audio |
 | `Christopher Paolini/Inheritance Cycle (Abridged)` | excluded | `**/*(abridged)*` glob prunes the subtree (ADR-0001) |
-| `James Clear/Atomic Habits (Unabridged)` | flagged | the `**/*(abridged)*` glob must not match `(Unabridged)`; the folder is scanned, not pruned (synthetic) |
+| `James Clear/Atomic Habits (Unabridged)` | flagged | the `**/*(abridged)*` glob must not match `(Unabridged)`. The folder is scanned, not pruned (synthetic) |
 | `missing_ebooks.txt` (root) | ignored | the reference tool's own output file |
 
 The verdicts follow the rules in [`docs/CONTEXT.md`](../../../docs/CONTEXT.md) and are the contract the scanner must satisfy. When the scanner changes a rule, update `expected.json` in the same change.

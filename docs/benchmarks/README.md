@@ -4,11 +4,11 @@
 
 ## Design
 
-Four criterion groups mirror the four historical questions the bench answered: `scan_full` (full listing walk), `scan_gaps` (listing walk plus reduce to flagged folders), `scan_warm` (reuse walk against a primed `DirIndex`), and `scan_concurrent` (five concurrent `RawViewStore::current()` callers against a fresh store). Default input is a synthetic tempdir seeded via `missing_ebooks::synthetic::generate`; env vars point at a real filesystem or rehydrate the `example-nas` snapshot for backend probes. Criterion's `--baseline main` covers regression detection.
+Four criterion groups mirror the four historical questions the bench answered: `scan_full` (full listing walk), `scan_gaps` (listing walk plus reduce to flagged folders), `scan_warm` (reuse walk against a primed `DirIndex`), and `scan_concurrent` (five concurrent `RawViewStore::current()` callers against a fresh store). Default input is a synthetic tempdir seeded via `missing_ebooks::synthetic::generate`. Env vars point at a real filesystem or rehydrate the `example-nas` snapshot for backend probes. Criterion's `--baseline main` covers regression detection.
 
 A small companion JSON per run records host, kernel, build profile, fstype, and mount options, since criterion's own output does not carry environmental context.
 
-The 2026-06 schema-versioned JSON reports stay under `docs/benchmarks/` as historical evidence for ADR-0019, ADR-0020, and ADR-0022; they no longer round-trip through the current bench binary. `cargo bench --bench scan_bench -- --baseline main` is the routine regression check; env-var overrides steer the same tool at real backends when a new question comes up.
+The 2026-06 schema-versioned JSON reports stay under `docs/benchmarks/` as historical evidence for ADR-0019, ADR-0020, and ADR-0022. They no longer round-trip through the current bench binary. `cargo bench --bench scan_bench -- --baseline main` is the routine regression check. Env-var overrides steer the same tool at real backends when a new question comes up.
 
 ## Regression check
 
@@ -61,7 +61,7 @@ cargo bench --bench scan_bench --release -- scan_full
 
 ## Companion JSON
 
-Each run writes `docs/benchmarks/scan-context-<label>-<host>-<unix>.json`. It records host, kernel, build profile, whether `DROP_CACHES` was set, `input_source` (`synthetic`, `snapshot`, or `root`), and the root's fstype and mount options. Criterion owns the timings under `target/criterion/`; the companion carries only environmental context.
+Each run writes `docs/benchmarks/scan-context-<label>-<host>-<unix>.json`. It records host, kernel, build profile, whether `DROP_CACHES` was set, `input_source` (`synthetic`, `snapshot`, or `root`), and the root's fstype and mount options. Criterion owns the timings under `target/criterion/`. The companion carries only environmental context.
 
 ## Snapshot fixture
 
@@ -69,11 +69,11 @@ Each run writes `docs/benchmarks/scan-context-<label>-<host>-<unix>.json`. It re
 
 ## 2026-06 sweep
 
-Eighteen `scan-bench-*.json` files (schema v1 through v5) and three `cifs-*` text artifacts under this directory are the evidence base for ADR-0019, ADR-0020, and ADR-0022. They no longer round-trip through the bench binary; the per-run findings, fstab and `smb.conf` levers, and the result narratives live in [`EXPERIMENTS-2026-06.md`](EXPERIMENTS-2026-06.md).
+Eighteen `scan-bench-*.json` files (schema v1 through v5) and three `cifs-*` text artifacts under this directory are the evidence base for ADR-0019, ADR-0020, and ADR-0022. They no longer round-trip through the bench binary. The per-run findings, fstab and `smb.conf` levers, and the result narratives live in [`EXPERIMENTS-2026-06.md`](EXPERIMENTS-2026-06.md).
 
 ## Render regression bench
 
-`benches/render.rs` is a `criterion` bench that guards the ADR-0022 per-folder render claim. It seeds three sizes (1k, 10k, 50k folders) at one shape (`depth = 3`, `fanout` sized per row via `missing_ebooks::synthetic::synthetic_root_scan`), then times `render::page` and the per-section render across both view modes. The synthetic seeder is shared with `benches/scan_bench.rs`. The old `tree_bench` shape-sweep tool was removed once the render bench covered its regression role (`render::page` includes `tree::build`); it lives in git history.
+`benches/render.rs` is a `criterion` bench that guards the ADR-0022 per-folder render claim. It seeds three sizes (1k, 10k, 50k folders) at one shape (`depth = 3`, `fanout` sized per row via `missing_ebooks::synthetic::synthetic_root_scan`), then times `render::page` and the per-section render across both view modes. The synthetic seeder is shared with `benches/scan_bench.rs`. The old `tree_bench` shape-sweep tool was removed once the render bench covered its regression role (`render::page` includes `tree::build`). It lives in git history.
 
 The baseline/compare workflow matches `scan_bench`:
 
@@ -84,4 +84,4 @@ cargo bench --bench render -- --baseline main
 
 The per-folder column (under `Throughput`) is the figure ADR-0022 cites.
 
-Both benches are excluded from `cargo test`. CI's `cargo clippy --all-targets` step in `.github/workflows/ci.yml` compile-checks `benches/render.rs` and `benches/scan_bench.rs` on every push, so a breaking change to their consumed surface fails CI before it reaches a developer's bench run. JSON reports under `target/criterion/` are not committed; this directory holds only long-lived scan-bench artifacts (the 2026-06 reports and per-run companion JSONs).
+Both benches are excluded from `cargo test`. CI's `cargo clippy --all-targets` step in `.github/workflows/ci.yml` compile-checks `benches/render.rs` and `benches/scan_bench.rs` on every push, so a breaking change to their consumed surface fails CI before it reaches a developer's bench run. JSON reports under `target/criterion/` are not committed. This directory holds only long-lived scan-bench artifacts (the 2026-06 reports and per-run companion JSONs).

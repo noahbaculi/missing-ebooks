@@ -16,7 +16,7 @@ ADR-0018 later moved rescan onto the same htmx POST path as every other button (
 
 We drive the swap with htmx rather than a client framework. The server already renders HTML with Maud, and htmx lets that markup ask for updates through attributes, with no build step and no client-side model to keep in sync. The runtime is one small script.
 
-The script is vendored and served from `/static/htmx.min.js` rather than loaded from a CDN. The tool is self-hosted and often runs on loopback or behind a private tunnel, where outbound internet is not a given; a CDN reference would leave the page dead in those setups and add a third-party request besides. The file is pinned to htmx 2.0.4 and embedded with `include_str!`, so the binary carries its own copy and the version cannot move under the app.
+The script is vendored and served from `/static/htmx.min.js` rather than loaded from a CDN. The tool is self-hosted and often runs on loopback or behind a private tunnel, where outbound internet is not a given. A CDN reference would leave the page dead in those setups and add a third-party request besides. The file is pinned to htmx 2.0.4 and embedded with `include_str!`, so the binary carries its own copy and the version cannot move under the app.
 
 ## Consequences
 

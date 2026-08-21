@@ -16,7 +16,7 @@ Candidate #02 of the 2026-07 architecture review flagged the pattern and recomme
 
 Two moves land together.
 
-**Service layer dissolved.** The four wrappers inlined into the four handlers in `src/web.rs`. `FlaggedView` and `RootSection` moved next to the markup in `src/web/render.rs`. `DomainError` moved next to the store in `src/state.rs`. `MarkOutcome` dissolved: the `web::mark` handler reads `Applied.created` directly off the store result. The `Arc<FlaggedView>` wrappers vanished; handlers hold `FlaggedView` by value, borrow one `&RootSection` for the section-shaped responses, and drop the view at the end of the response.
+**Service layer dissolved.** The four wrappers inlined into the four handlers in `src/web.rs`. `FlaggedView` and `RootSection` moved next to the markup in `src/web/render.rs`. `DomainError` moved next to the store in `src/state.rs`. `MarkOutcome` dissolved: the `web::mark` handler reads `Applied.created` directly off the store result. The `Arc<FlaggedView>` wrappers vanished. Handlers hold `FlaggedView` by value, borrow one `&RootSection` for the section-shaped responses, and drop the view at the end of the response.
 
 **Render module owns raw → packaged → HTML.** The render module's outward surface is:
 
@@ -35,9 +35,9 @@ The demo overlay's `package_view_with_overlay` now returns the synthesized `RawV
 
 Wins: the render module's outward surface drops from eight entry points plus two types to four entry points plus one small type with three methods. The byte-equality contract lives inside `SectionHandle` by construction rather than being pinned by a cross-module test. Autosync's `compute_pushes` stops owning a hasher. Demo handlers stop echoing the prod render shape. A future per-root field on the packaged section lands in one place.
 
-Costs: one new named concept (`SectionHandle`) plus one enum (`SectionWrap`). `page` and `all_sections` are two entry points where arguably one enum-parameterized function would do; splitting was chosen because `page` also emits the shell, gap summary, and scan bar that the multi-section shapes do not want, and folding those into an enum variant made the internals harder to follow than the split.
+Costs: one new named concept (`SectionHandle`) plus one enum (`SectionWrap`). `page` and `all_sections` are two entry points where arguably one enum-parameterized function would do. Splitting was chosen because `page` also emits the shell, gap summary, and scan bar that the multi-section shapes do not want, and folding those into an enum variant made the internals harder to follow than the split.
 
-Revisit if a future consumer needs the raw packaged section without HTML (a JSON API, a CLI report): the handle grows a `packaged(&self) -> &RootSection` accessor and `RootSection` returns to being crate-public. The seams do not change; only visibility. A second HTTP-shaped consumer (JSON API, CLI HTTP harness) would justify lifting the response-packaging pattern back out into a `response` module.
+Revisit if a future consumer needs the raw packaged section without HTML (a JSON API, a CLI report): the handle grows a `packaged(&self) -> &RootSection` accessor and `RootSection` returns to being crate-public. The seams do not change. Only visibility. A second HTTP-shaped consumer (JSON API, CLI HTTP harness) would justify lifting the response-packaging pattern back out into a `response` module.
 
 ## History
 
@@ -45,7 +45,7 @@ Revisit if a future consumer needs the raw packaged section without HTML (a JSON
 
 ## Related
 
-- ADR-0022 (cache holds raw scan output): preserved. The store still owns the raw view; per-request rendering shape is unchanged.
+- ADR-0022 (cache holds raw scan output): preserved. The store still owns the raw view. Per-request rendering shape is unchanged.
 
 ## Amendment: overlay retired
 

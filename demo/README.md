@@ -1,6 +1,6 @@
 # missing-ebooks demo site
 
-A public, ephemeral demo of missing-ebooks. One server process serves every visitor; each visitor gets a private view seeded with sample data, and their changes are kept in memory and reset after a few idle minutes. The stack is the demo server fronted by a Cloudflare Tunnel. No inbound ports are opened on the host.
+A public, ephemeral demo of missing-ebooks. One server process serves every visitor. Each visitor gets a private view seeded with sample data, and their changes are kept in memory and reset after a few idle minutes. The stack is the demo server fronted by a Cloudflare Tunnel. No inbound ports are opened on the host.
 
 ## What runs where
 
@@ -10,7 +10,7 @@ A public, ephemeral demo of missing-ebooks. One server process serves every visi
 
 ## How isolation works
 
-One process serves all visitors. The seeded library is scanned once at startup into shared, read-only base views. A session cookie pins each visitor to an in-memory set of marks; on every request the server clones the base view and replays that session's marks on top, so each visitor sees only their own changes. Marks never touch disk, the data is synthetic, and an idle reaper recycles abandoned sessions. A global session cap bounds memory; at the cap a new visitor gets a soft 503 page. Request volume is throttled at the Cloudflare edge.
+One process serves all visitors. The seeded library is scanned once at startup into shared, read-only base views. A session cookie pins each visitor to an in-memory set of marks. On every request the server clones the base view and replays that session's marks on top, so each visitor sees only their own changes. Marks never touch disk, the data is synthetic, and an idle reaper recycles abandoned sessions. A global session cap bounds memory. At the cap a new visitor gets a soft 503 page. Request volume is throttled at the Cloudflare edge.
 
 ## One-time host setup
 
@@ -71,4 +71,4 @@ Tune the demo by editing the `DEMO_*` environment values in `demo/docker-compose
 ## Notes
 
 - The app has no authentication. That is acceptable here because the data is synthetic and the only per-session write is an in-memory mark that resets when the session is idle. No marker file is written on the request path.
-- A container restart drops every in-memory session; there is no on-disk state to clean up.
+- A container restart drops every in-memory session. There is no on-disk state to clean up.

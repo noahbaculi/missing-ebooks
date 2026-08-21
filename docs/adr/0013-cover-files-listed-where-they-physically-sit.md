@@ -8,7 +8,7 @@ This refines ADR-0012, which said the scanner does not track why a folder is cov
 
 ## Decision
 
-The show-all view lists, on each covered row, the ebook and marker filenames that physically sit in that folder. A folder covered only by an ancestor's ebook lists nothing of its own; the covering name appears once, on the row that holds the file. `scanner::ScannedFolder` and `tree::Node` carry a `cover_files: Vec<String>` for this, ebooks first then markers, each natural-sorted, collected during the existing `scan_all` walk.
+The show-all view lists, on each covered row, the ebook and marker filenames that physically sit in that folder. A folder covered only by an ancestor's ebook lists nothing of its own. The covering name appears once, on the row that holds the file. `scanner::ScannedFolder` and `tree::Node` carry a `cover_files: Vec<String>` for this, ebooks first then markers, each natural-sorted, collected during the existing `scan_all` walk.
 
 Markers are listed alongside real ebooks, by filename, so a marker-covered folder is distinguishable from an ancestor-covered one. A marker written through the UI in show-all is appended to the row's cover files in memory, so the just-marked row shows it without waiting for a rescan, consistent with the in-place edit of ADR-0022.
 

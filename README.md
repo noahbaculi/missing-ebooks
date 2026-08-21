@@ -1,6 +1,6 @@
 # Missing Ebooks
 
-Self-hosted web server that scans your audiobook library to highlight folders that hold audio but no matching ebook, so that gaps can be found and filled.
+Self-hosted web server that scans your audiobook library and highlights folders that have audio but no matching ebook.
 
 <a href="https://demo-missing-ebooks.noahbaculi.com">
   <picture>
@@ -12,24 +12,24 @@ Self-hosted web server that scans your audiobook library to highlight folders th
 
 ## Live demo
 
-Try the live demo with dummy data: **[demo-missing-ebooks.noahbaculi.com](https://demo-missing-ebooks.noahbaculi.com)**.
+Try the live demo with dummy data: ✨ [demo-missing-ebooks.noahbaculi.com](https://demo-missing-ebooks.noahbaculi.com) ✨.
 Each visit opens a private, throwaway sandbox seeded with sample audiobooks. Changes stay in your session and reset when idle.
 
 ## Features
 
-- Zero-config Docker deploy (single multi-arch image, works with one env var)
 - No database: state lives as marker files in your library
-- Simple marker files (`.no_ebook`, `.ebook_elsewhere`), writable with one click from the UI
+- Multi-platform Docker image (amd64 and arm64)
 - Responsive UI with light and dark mode
+- UI buttons for simple `.no_ebook` and `.ebook_elsewhere` marker files
+- Prepopulated search links (Goodreads, Google, or your own)
 - Multi-root libraries, each rendered as its own tree
 - Coverage detection: ebooks and markers cover their whole subtree, so container folders don't false-flag
 - Live auto-refresh while a tab is open, plus on-demand `Rescan`
-- Prepopulated search links (Goodreads, etc, fully configurable)
-- Tunable for slow network shares: parallel scanning and cached results
+- Parallel scanning and cached results for slower network shares
 
 ## Getting started
 
-Docker is the supported distribution path. A multi-arch image (amd64 and arm64) is published to GitHub Container Registry. With [Docker Compose](https://docs.docker.com/compose/), drop this `docker-compose.yml` beside your other stacks, edit the volume path, and run `docker compose up -d`:
+Docker Compose is the easiest way to run the server. Copy the sample below, change `/path/to/audiobooks`, and start it:
 
 ```yaml
 services:
@@ -51,14 +51,18 @@ services:
       - /tmp
 ```
 
+```shell
+docker compose up -d
+```
+
 Then open http://127.0.0.1:13379.
 
-Point the volume at your library on the host. The container reads it and writes marker files back into it. The container runs as uid 1000 by default; if the markers need to land under a different user or group on the host (common on NAS mounts), set `user:`; see [Advanced configuration](#advanced-configuration).
+The server reads your library and writes marker files back into it. The container runs as uid 1000 by default. If the markers need to land under a different user or group on the host (common on NAS mounts), set `user:`. See [Advanced configuration](#advanced-configuration).
 
-The `read_only`, `cap_drop`, `security_opt`, and `tmpfs` lines sandbox the container: read-only rootfs, no Linux capabilities, no privilege escalation, and an in-memory `/tmp`. The app writes only to the mounted library, so nothing is lost, and a compromise inside the container has no persistence and no reach beyond the library mount. See [.github/SECURITY.md](.github/SECURITY.md) for the rationale.
+The `read_only`, `cap_drop`, `security_opt`, and `tmpfs` lines keep the container narrow: read-only rootfs, no Linux capabilities, no privilege escalation, and an in-memory `/tmp`. The app writes only to the mounted library. See [.github/SECURITY.md](.github/SECURITY.md) for the rationale.
 
 > [!WARNING]
-> The server has no authentication. It binds to loopback by default, and refuses to bind a non-loopback address unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND` is set to one of `1`, `true`, `yes`, `on` (case-insensitive, whitespace-trimmed; any other value fails startup). The shipped Docker image sets it in its own environment (not in the compose file below), since the container binds `0.0.0.0` on purpose and exposure is controlled at the port-publish layer. To reach it from the LAN, put a reverse proxy with authentication in front of it before exposing it beyond your machine. See [.github/SECURITY.md](.github/SECURITY.md) for the full threat model and how to report a vulnerability.
+> The server has no authentication. It binds to loopback by default, and refuses to bind a non-loopback address unless `MISSING_EBOOKS_ALLOW_PUBLIC_BIND` is set to `1`, `true`, `yes`, or `on`. The shipped Docker image sets it in its own environment (not in the compose file below), since the container binds `0.0.0.0` on purpose and exposure is controlled at the port-publish layer. To reach it from the LAN, put a reverse proxy with authentication in front of it before exposing it beyond your machine. See [.github/SECURITY.md](.github/SECURITY.md) for the full threat model and how to report a vulnerability.
 
 ## How it works
 
@@ -77,11 +81,17 @@ Two fixed marker files mark a folder as covered without actual ebook files:
 
 A marker covers the folder it sits in and everything below it, the same as an ebook. Writing one into a container (an author or series folder) covers every folder under it.
 
+## Network shares
+
+SMB and NFS mounts work, but local disk is faster and more predictable. If your library lives on a share, raise `scan_cache_ttl_seconds` and treat the `Rescan` UI button as the deliberate refresh. On filesystems with coarse mtime (some NFS and FAT mounts), a change made inside the same mtime tick can be missed until the next cold rescan.
+
+See [`docs/network-shares.md`](docs/network-shares.md) for more details.
+
 ## FAQ
 
 ### How long does the first scan take on a large library?
 
-Scan time is dominated by per-directory latency, not file count. On a local SSD a few thousand folders finish in a second or two. On SMB or NFS, every folder is a round trip, so a library with tens of thousands of folders can take minutes on a cold start. Raise `scan_concurrency` to overlap the waits; see [Network shares](#network-shares) and [ADR-0019](docs/adr/0019-scan-walk-parallel-sized-by-concurrency.md).
+Scan time is dominated by per-directory latency, not file count. On a local SSD a few thousand folders finish in a second or two. On SMB or NFS, every folder is a round trip, so a library with tens of thousands of folders can take minutes on a cold start. Raise `scan_concurrency` to overlap the waits. See [Network shares](#network-shares) and [ADR-0019](docs/adr/0019-scan-walk-parallel-sized-by-concurrency.md).
 
 ### How do I tell an errored root apart from an unmounted volume?
 
@@ -101,39 +111,16 @@ Docker fails at `up` time with a bind error and the container never starts. Chan
 
 ### What state persists across restarts?
 
-Only the marker files (`.no_ebook`, `.ebook_elsewhere`) inside your library. The scan cache is in-memory and rebuilds on the first request after start; nothing else is written outside the mounted library roots. See [ADR-0037](docs/adr/0037-request-cap-and-rescan-cooldown.md) for the rescan cooldown behavior on top of that cache.
-
-## Stability
-
-At v1.0.0 and after, semver covers the operator-visible surface below. This is a binary and a Docker image, not a library crate, so the contract is about what an operator sees, not Rust API.
-
-Covered by semver:
-
-- Environment variables: `MISSING_EBOOKS_LIBRARY_ROOTS`, `MISSING_EBOOKS_CONFIG`, `MISSING_EBOOKS_BIND`, `MISSING_EBOOKS_PORT`, `MISSING_EBOOKS_LOG`, `MISSING_EBOOKS_POLL_INTERVAL_SECONDS`, `MISSING_EBOOKS_SCAN_CACHE_TTL_SECONDS`, `MISSING_EBOOKS_SCAN_CONCURRENCY`, `MISSING_EBOOKS_ALLOW_PUBLIC_BIND`. Names and semantics.
-- `config.toml` keys and their types, as shipped in the `CONFIG_TEMPLATE` block above.
-- Marker filenames on disk: `.no_ebook` and `.ebook_elsewhere`.
-- HTTP routes the shipped UI depends on: `/`, `/healthz`, `/mark`, `/unmark`, `/rescan`, `/refresh`, `/static/htmx.min.js`, `/static/app.css`, `/static/app.js`.
-- Docker image tag scheme, as described under [Advanced configuration](#advanced-configuration).
-
-> The marker filenames are the highest-stakes item. Renaming either would silently orphan every marker a user has already written to disk.
-
-Not covered (may change in any release):
-
-- Rust API. No library target ships.
-- Log field shapes and log line wording (see [`docs/logging.md`](docs/logging.md)).
-- Rendered HTML structure and CSS class names.
-- ADR numbering and internal ADR wording.
-- `--print-config` output format.
-- Bench harness environment variables (`CONCURRENCY` and friends) under `docs/benchmarks/`.
-- The demo binary (`missing-ebooks-demo`): its router, session cookie, and 303 posture.
-
-MSRV bumps ship in a minor release, never a patch. The current MSRV lives in `Cargo.toml`.
+Only the marker files (`.no_ebook`, `.ebook_elsewhere`) inside your library. The scan cache is in-memory and rebuilds on the first request after start. Nothing else is written outside the mounted library roots. See [ADR-0037](docs/adr/0037-request-cap-and-rescan-cooldown.md) for the rescan cooldown behavior on top of that cache.
 
 ## Advanced configuration
 
-The defaults handle a working install. Reach for `config.toml` only to override search links, add exclusion patterns, or change extension lists. Everything else is an environment variable.
+Most settings can be set with environment variables. Use `config.toml` when you want to customize search links, exclusion patterns, or extension lists.
 
-A fuller compose sample lives at [`docker-compose.advanced.yml`](docker-compose.advanced.yml). It carries a `user:` override, multiple library roots, log verbosity, and a mounted `config.toml`:
+A fuller compose sample lives at [`docker-compose.advanced.yml`](docker-compose.advanced.yml). It carries a `user:` override, multiple library roots, log verbosity, and a mounted `config.toml`.
+
+<details>
+<summary>Advanced Docker Compose sample</summary>
 
 ```yaml
 services:
@@ -159,15 +146,20 @@ services:
       - /tmp
 ```
 
-- `user:` sets the user the container runs as. The image defaults to `1000:1000`; match it to whoever owns the library on the host (run `id` to find yours). This is Docker's own directive, not an app setting, so it is not in `config.toml`.
-- `MISSING_EBOOKS_LIBRARY_ROOTS` takes an OS-path-separated list (`:` on Unix, `;` on Windows), so multiple roots need one mount per root and one entry per container path.
-- Mount `config.toml` at `/config/config.toml`; the image auto-detects that path.
+</details>
+
+- `user:` sets the user the container runs as. The image defaults to `1000:1000`. Match it to whoever owns the library on the host (run `id` to find yours). This is Docker's own directive, not an app setting, so it is not in `config.toml`.
+- `MISSING_EBOOKS_LIBRARY_ROOTS` takes an OS-path-separated list (colon on Unix, semicolon on Windows), so multiple roots need one mount per root and one entry per container path.
+- Mount `config.toml` at `/config/config.toml`. The image auto-detects that path.
 
 Pin the image tag for reproducible deploys. Every stable release publishes `:MAJOR.MINOR.PATCH` (e.g. `:1.0.0`), `:MAJOR.MINOR` (`:1.0`), and `:MAJOR` (`:1`), plus `:latest` for the newest stable. Pick the narrowest tag you're willing to auto-upgrade past.
 
 ### The `config.toml` file
 
-Optional. The Docker image auto-detects `/config/config.toml` and the CLI accepts `--config <path>`. Every field, its default, the environment variable that overrides it, and its rationale live in the annotated template below. Env vars win over the file, and the file wins over the built-in defaults.
+This is optional. The Docker image auto-detects `/config/config.toml` and the CLI accepts `--config <path>`. Env vars overrule the config file, and the config file wins over the built-in defaults.
+
+<details>
+<summary>Annotated config template</summary>
 
 <!-- A local build regenerates the same content with `cargo run -- --print-config`. -->
 
@@ -187,7 +179,7 @@ library_roots = []
 # RUST_LOG, if set, overrides it with full tracing filter syntax.
 
 # Address the HTTP server binds. Loopback by default (see ADR-0003). Set
-# "0.0.0.0" to listen on all interfaces; the server then refuses to start
+# "0.0.0.0" to listen on all interfaces. The server then refuses to start
 # unless MISSING_EBOOKS_ALLOW_PUBLIC_BIND is also set to one of
 # 1, true, yes, on (case-insensitive). Also settable as
 # MISSING_EBOOKS_BIND.
@@ -254,21 +246,17 @@ url = "https://www.google.com/search?q={folder}"
 
 <!-- CONFIG_TEMPLATE:END -->
 
-Both `scan_cache_ttl_seconds = 0` and `poll_interval_seconds = 0` are supported off-states, not misconfigurations. `scan_cache_ttl_seconds = 0` disables the scan cache and rescans on every request, which is expensive on a network mount but useful when debugging staleness. `poll_interval_seconds = 0` disables client polling; users refresh with the `Rescan` UI button. Pairing both zeros is the recommended setup on slow SMB or NFS mounts (see [`docs/network-shares.md`](docs/network-shares.md)).
+</details>
+
+Both `scan_cache_ttl_seconds = 0` and `poll_interval_seconds = 0` are supported off-states, not misconfigurations. `scan_cache_ttl_seconds = 0` disables the scan cache and rescans on every request, which is expensive on a network mount but useful when debugging staleness. `poll_interval_seconds = 0` disables client polling. Users refresh with the `Rescan` UI button. Pairing both zeros is the recommended setup on slow SMB or NFS mounts (see [`docs/network-shares.md`](docs/network-shares.md)).
 
 ### Logging
 
 `MISSING_EBOOKS_LOG` sets verbosity to one of `error`, `warn`, `info` (the default), `debug`, or `trace`. See [`docs/logging.md`](docs/logging.md) for per-operation timing detail and the `RUST_LOG` override.
 
-## Network shares
-
-Pointing a library root at an SMB or NFS mount is not encouraged but I understand that many users don't have a choice. The scan is slower than on local disk and scales with the number of folders. Raise `scan_cache_ttl_seconds` and treat the `Rescan` UI button as the deliberate refresh. On filesystems with coarse mtime (some NFS and FAT mounts), a change made inside the same mtime tick can be missed until the next cold rescan.
-
-See [`docs/network-shares.md`](docs/network-shares.md) for more details.
-
 ## Migration
 
-If you want to clean up from this application, you can simply remove any marker files that may have been written:
+If you stop using missing-ebooks, remove the marker files it wrote:
 
 ```shell
 find /path/to/audiobooks \( -name '.no_ebook' -o -name '.ebook_elsewhere' \) -delete
@@ -277,6 +265,32 @@ find /path/to/audiobooks \( -name '.no_ebook' -o -name '.ebook_elsewhere' \) -de
 ## Releases
 
 Release notes and published versions: [github.com/noahbaculi/missing-ebooks/releases](https://github.com/noahbaculi/missing-ebooks/releases).
+
+## Stability
+
+At v1.0.0 and after, semver covers the operator-visible surface below. This is a binary and a Docker image, not a library crate, so the contract is about what an operator sees, not Rust API.
+
+Covered by semver:
+
+- Environment variables: `MISSING_EBOOKS_LIBRARY_ROOTS`, `MISSING_EBOOKS_CONFIG`, `MISSING_EBOOKS_BIND`, `MISSING_EBOOKS_PORT`, `MISSING_EBOOKS_LOG`, `MISSING_EBOOKS_POLL_INTERVAL_SECONDS`, `MISSING_EBOOKS_SCAN_CACHE_TTL_SECONDS`, `MISSING_EBOOKS_SCAN_CONCURRENCY`, `MISSING_EBOOKS_ALLOW_PUBLIC_BIND`. Names and semantics.
+- `config.toml` keys and their types, as shipped in the `CONFIG_TEMPLATE` block above.
+- Marker filenames on disk: `.no_ebook` and `.ebook_elsewhere`.
+- HTTP routes the shipped UI depends on: `/`, `/healthz`, `/mark`, `/unmark`, `/rescan`, `/refresh`, `/static/htmx.min.js`, `/static/app.css`, `/static/app.js`.
+- Docker image tag scheme, as described under [Advanced configuration](#advanced-configuration).
+
+> The marker filenames are the highest-stakes item. Renaming either would silently orphan every marker a user has already written to disk.
+
+Not covered (may change in any release):
+
+- Rust API. No library target ships.
+- Log field shapes and log line wording (see [`docs/logging.md`](docs/logging.md)).
+- Rendered HTML structure and CSS class names.
+- ADR numbering and internal ADR wording.
+- `--print-config` output format.
+- Bench harness environment variables (`CONCURRENCY` and friends) under `docs/benchmarks/`.
+- The demo binary (`missing-ebooks-demo`): its router, session cookie, and 303 posture.
+
+MSRV bumps ship in a minor release, never a patch. The current MSRV lives in `Cargo.toml`.
 
 ## License
 

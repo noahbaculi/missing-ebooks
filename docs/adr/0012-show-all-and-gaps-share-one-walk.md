@@ -8,7 +8,7 @@ This began as two walks. Gaps-only ran a coverage-pruning walk that stopped desc
 
 ## Decision
 
-Show-all renders the full library tree, covered folders included; gaps-only renders only the folders with audio and no ebook coverage. Both views are reductions over a single scan: `scanner` runs one walk and the two views derive from its output, gaps-only through `reduce_to_flagged` and show-all through `tree::build`. Gaps-only stays the default landing view.
+Show-all renders the full library tree, covered folders included. Gaps-only renders only the folders with audio and no ebook coverage. Both views are reductions over a single scan: `scanner` runs one walk and the two views derive from its output, gaps-only through `reduce_to_flagged` and show-all through `tree::build`. Gaps-only stays the default landing view.
 
 Folding gaps-only into a reduction over the full walk costs nothing there, drops a second walk shape to maintain, and lets the dir index (ADR-0020) serve both views from one set of cached directories.
 
@@ -18,4 +18,4 @@ The model change that enables this: `tree::Node` carried one `flagged: bool`, wh
 
 The scanner does not track why a folder is covered, so there is no "ebook here" versus "covered above" annotation on covered rows. ADR-0013 refines the "ebook here" half: cover files are now listed where they physically sit.
 
-The original decision paired this with one cache slot per view mode behind a shared mutex. That mechanism is superseded by ADR-0022: the cache now holds the raw scan output and renders per request, so there are no per-mode slots and no per-mode edit paths on a marker write. The single-walk principle this ADR records still holds; the cache-layer extension lives in ADR-0022, with the change in commit `81909d1`.
+The original decision paired this with one cache slot per view mode behind a shared mutex. That mechanism is superseded by ADR-0022: the cache now holds the raw scan output and renders per request, so there are no per-mode slots and no per-mode edit paths on a marker write. The single-walk principle this ADR records still holds. The cache-layer extension lives in ADR-0022, with the change in commit `81909d1`.

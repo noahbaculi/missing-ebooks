@@ -1,6 +1,6 @@
 # Logging
 
-`MISSING_EBOOKS_LOG` sets verbosity to one of `error`, `warn`, `info` (the default), `debug`, or `trace`. Raising it to `debug` or `trace` is scoped to this app, so the dependencies stay quiet; lowering it to `warn` or `error` quiets everything to that level. An unknown value falls back to `info` and logs a warning. Resolution order is `RUST_LOG`, then `MISSING_EBOOKS_LOG`, then a default of `info`; env-first is deliberate because the subscriber initializes before `Config::load` runs so config errors can be logged (see ADR-0004).
+`MISSING_EBOOKS_LOG` sets verbosity to one of `error`, `warn`, `info` (the default), `debug`, or `trace`. Raising it to `debug` or `trace` is scoped to this app, so the dependencies stay quiet. Lowering it to `warn` or `error` quiets everything to that level. An unknown value falls back to `info` and logs a warning. Resolution order is `RUST_LOG`, then `MISSING_EBOOKS_LOG`, then a default of `info`. Env-first is deliberate because the subscriber initializes before `Config::load` runs so config errors can be logged (see ADR-0004).
 
 ## Per-operation timings at `debug`
 

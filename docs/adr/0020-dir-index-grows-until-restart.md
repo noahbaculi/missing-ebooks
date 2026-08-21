@@ -4,11 +4,11 @@ Date: 2026-06-15.
 
 ## Context
 
-The scanner keeps a per-directory index (`scanner::DirIndex`, a `HashMap` from a directory's path to its cached mtime, subdirs, and filenames), held in `AppState` as `Arc<Mutex<DirIndex>>`. Every scan path reads and writes it; only a `/rescan` click discards it before the walk.
+The scanner keeps a per-directory index (`scanner::DirIndex`, a `HashMap` from a directory's path to its cached mtime, subdirs, and filenames), held in `AppState` as `Arc<Mutex<DirIndex>>`. Every scan path reads and writes it. Only a `/rescan` click discards it before the walk.
 
 ## Decision
 
-It only ever inserts an entry when a directory is listed and removes one when this process writes or deletes a marker (`invalidate_index`); it never bulk-prunes. So when a folder is deleted or renamed on disk, its parent re-lists on the next walk because its mtime moved, drops the folder from the cached `subdirs`, and the walk never visits it again, but the folder's own entry lingers in the map. The index is in-memory only and rebuilt empty on restart, so that restart is its effective bound.
+It only ever inserts an entry when a directory is listed and removes one when this process writes or deletes a marker (`invalidate_index`). It never bulk-prunes. So when a folder is deleted or renamed on disk, its parent re-lists on the next walk because its mtime moved, drops the folder from the cached `subdirs`, and the walk never visits it again, but the folder's own entry lingers in the map. The index is in-memory only and rebuilt empty on restart, so that restart is its effective bound.
 
 ## Consequences
 

@@ -24,16 +24,16 @@ A folder is covered when an ebook file or a marker file sits in it or in any anc
 _Avoid_: satisfied, resolved, has-ebook.
 
 **Directly holds audio / Missing ebook**:
-The two independent facts a node carries. _Directly holds audio_ is true when the folder itself contains an audio file. _Missing ebook_ is the inverse of _covered_: true when no ebook or marker sits in the folder or any ancestor. A flagged folder is the pair (directly holds audio, missing ebook); a covered audiobook is (holds audio, not missing); a covered container is (no audio, not missing); a plain container is (no audio, missing) and needs nothing itself.
+The two independent facts a node carries. _Directly holds audio_ is true when the folder itself contains an audio file. _Missing ebook_ is the inverse of _covered_: true when no ebook or marker sits in the folder or any ancestor. A flagged folder is the pair (directly holds audio, missing ebook). A covered audiobook is (holds audio, not missing). A covered container is (no audio, not missing). A plain container is (no audio, missing) and needs nothing itself.
 _Avoid_: has-audio flag, uncovered flag.
 
 **Show-all view**:
-An opt-in view that renders the full directory tree, covered folders included, down to the individual book folders. A covered folder shows as a dimmed name with a check, no buttons and no links. The default view stays gaps-only; a toggle switches per view and is not persisted. Marking a folder in show-all turns it from a gap into a covered row in place rather than removing it.
+An opt-in view that renders the full directory tree, covered folders included, down to the individual book folders. A covered folder shows as a dimmed name with a check, no buttons and no links. The default view stays gaps-only. A toggle switches per view and is not persisted. Marking a folder in show-all turns it from a gap into a covered row in place rather than removing it.
 _Avoid_: full view, everything view.
 
 **Marker**:
-A file whose presence makes a folder covered on purpose. `.no_ebook` means no ebook exists or could be sourced; `.ebook_elsewhere` means the ebook lives in another folder. Each node row has one button per marker that writes the file into that folder, so marking a container covers every folder beneath it through ancestor coverage.
-A just-written marker can be reversed from the undo toast that appears after a mark; undoing deletes that one marker file and rescans its root. Up to three toasts stack at once, so a mark made before the latest one can still be undone; the oldest drops off when a fourth arrives.
+A file whose presence makes a folder covered on purpose. `.no_ebook` means no ebook exists or could be sourced. `.ebook_elsewhere` means the ebook lives in another folder. Each node row has one button per marker that writes the file into that folder, so marking a container covers every folder beneath it through ancestor coverage.
+A just-written marker can be reversed from the undo toast that appears after a mark. Undoing deletes that one marker file and rescans its root. Up to three toasts stack at once, so a mark made before the latest one can still be undone. The oldest drops off when a fourth arrives.
 _Avoid_: flag file, exception file, sentinel.
 
 **Search link**:
@@ -41,15 +41,15 @@ A configured template whose `{folder}` placeholder is filled with the folder nam
 _Avoid_: lookup, external link.
 
 **Exclude name**:
-An exact directory name (case-insensitive) that drops any matching folder and its descendants from results, anywhere in the tree. It is hand-edited in config and applied at load, like an exclude glob; the two differ only in match criterion (exact name vs glob on the relative path). A UI button to append names at runtime is deferred.
+An exact directory name (case-insensitive) that drops any matching folder and its descendants from results, anywhere in the tree. It is hand-edited in config and applied at load, like an exclude glob. The two differ only in match criterion (exact name vs glob on the relative path). A UI button to append names at runtime is deferred.
 _Avoid_: ignore, blocklist entry.
 
 **Exclude glob**:
-A glob pattern matched against a folder's path relative to its library root, case-insensitively. A match drops that folder and its descendants, the same way an exclude name does; the two differ only in match criterion. Glob syntax is standard; the subtree-dropping follows the gitignore convention for applying globs to a tree.
+A glob pattern matched against a folder's path relative to its library root, case-insensitively. A match drops that folder and its descendants, the same way an exclude name does. The two differ only in match criterion. Glob syntax is standard. The subtree-dropping follows the gitignore convention for applying globs to a tree.
 _Avoid_: filter, ignore pattern.
 
 **Raw view store**:
-The substrate that produces and memoizes raw scan output (`RawViewStore` in `src/state.rs`). Owns the scan settings, the dir index, the TTL-bounded cache slot, and the marker file IO. One slot per process, TTL-bounded by `scan_cache_ttl_seconds`; both view modes render from the same raw data at request time, and marker writes edit the slot in place (see ADR-0022).
+The substrate that produces and memoizes raw scan output (`RawViewStore` in `src/state.rs`). Owns the scan settings, the dir index, the TTL-bounded cache slot, and the marker file IO. One slot per process, TTL-bounded by `scan_cache_ttl_seconds`. Both view modes render from the same raw data at request time, and marker writes edit the slot in place (see ADR-0022).
 _Avoid_: render cache, scan cache (ambiguous with the dir index), the cache.
 
 **Dir index**:
@@ -61,15 +61,15 @@ A scan that reuses entries from a populated dir index, checking each directory's
 _Avoid_: incremental scan (the implementation detail), cached scan.
 
 **Cold scan**:
-A scan that does not reuse any dir index entries, either because the index is empty (process just started) or because the path explicitly clears it (`/rescan` click). Walks every directory. A cold scan is a `scan_warm` call against a fresh `DirIndex`; there is no separate `scan_cold` function.
+A scan that does not reuse any dir index entries, either because the index is empty (process just started) or because the path explicitly clears it (`/rescan` click). Walks every directory. A cold scan is a `scan_warm` call against a fresh `DirIndex`. There is no separate `scan_cold` function.
 _Avoid_: full scan, rescan (the verb for the user action, not the scan type).
 
 **Refresh poll**:
-The client-driven refresh path: every open tab hits `GET /refresh` on `poll_interval_seconds` while `document.visibilityState` is `visible`, and swaps the response into `#roots`. The server serves each poll from the cached raw view when it is younger than `scan_cache_ttl_seconds`, so scan rate is capped by TTL regardless of how many tabs are polling. Rescan is the user's explicit "walk from scratch" action; refresh polls are the background pull that keeps a live tab current. See ADR-0034.
+The client-driven refresh path: every open tab hits `GET /refresh` on `poll_interval_seconds` while `document.visibilityState` is `visible`, and swaps the response into `#roots`. The server serves each poll from the cached raw view when it is younger than `scan_cache_ttl_seconds`, so scan rate is capped by TTL regardless of how many tabs are polling. Rescan is the user's explicit "walk from scratch" action. Refresh polls are the background pull that keeps a live tab current. See ADR-0034.
 _Avoid_: autosync, autorefresh, live update.
 
 **Library coverage**:
-The fraction of audiobooks across all successfully-scanned library roots that are covered by an ebook or marker. Numerator and denominator are folder counts: folders that directly hold audio. Errored roots contribute to neither; their failure is already surfaced on the per-root section banner. The reported percentage is `Math.floor(covered / total * 100)`, floored so a single remaining gap never reads as 100%.
+The fraction of audiobooks across all successfully-scanned library roots that are covered by an ebook or marker. Numerator and denominator are folder counts: folders that directly hold audio. Errored roots contribute to neither. Their failure is already surfaced on the per-root section banner. The reported percentage is `Math.floor(covered / total * 100)`, floored so a single remaining gap never reads as 100%.
 _Avoid_: completion, progress, done.
 **Relative path**:
 A folder's path relative to its library root, as a `/`-joined string. The library root itself is the sentinel `.`. The scanner emits a `PathBuf`, the tree builder joins its components with `/`, and the request carries the string through to the marker write. Not a newtype: the only cross-module use is the `.`-is-root check, and the marker-write target is independently guarded (see ADR-0008).

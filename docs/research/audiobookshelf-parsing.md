@@ -2,7 +2,7 @@
 
 How Audiobookshelf (ABS, [advplyr/audiobookshelf](https://github.com/advplyr/audiobookshelf)) classifies audio and ebook files by extension. We mirror these lists in `src/config.rs`.
 
-Snapshot as of 2026-06-05, not a maintained reference; audiobookshelf's parsing may have changed since.
+Snapshot as of 2026-06-05, not a maintained reference. Audiobookshelf's parsing may have changed since.
 
 > [!NOTE]
 > Sourced from the `master` branch as of 2026-06-05. The lists below have been stable, but a tagged release a user runs could differ. Treat `server/utils/globals.js` in source as the authoritative list rather than the docs site, which doesn't publish a complete extension table.
@@ -71,24 +71,20 @@ A `.opf` is metadata, not an ebook. A folder whose only book-like file is a `.op
 
 Classification by extension is the second stage. Before it, ABS drops some entries from the scan entirely, so they're never classified at all. The rule lives in `shouldIgnoreFile` in `server/utils/fileUtils.js`, verified on `master` (2026-06-05):
 
-```javascript
-if (Path.basename(path).startsWith(".")) {
-  return "dotfile";
-}
-if (path.split("/").find((p) => p.startsWith("."))) {
-  return "dotpath";
-}
+```text
+if basename starts with ".", ignore as "dotfile"
+if any path segment starts with ".", ignore as "dotpath"
 ```
 
-The first check drops any file whose own name starts with a dot. The second drops any file sitting under a directory whose name starts with a dot. So a macOS AppleDouble shadow such as `._The Martian.epub` is skipped by the dotfile rule: it carries an `.epub` extension but never reaches classification. Everything inside a `.git`, `.@__thumb`, or `.stfolder` directory is skipped by the dotpath rule. ABS has no separate AppleDouble handling; the leading dot is what catches those files.
+The first check drops any file whose own name starts with a dot. The second drops any file sitting under a directory whose name starts with a dot. So a macOS AppleDouble shadow such as `._The Martian.epub` is skipped by the dotfile rule: it carries an `.epub` extension but never reaches classification. Everything inside a `.git`, `.@__thumb`, or `.stfolder` directory is skipped by the dotpath rule. ABS has no separate AppleDouble handling. The leading dot is what catches those files.
 
 One vendor name is hard-coded alongside the dot rules:
 
-```javascript
-const includeAnywhereIgnore = ["@eaDir"];
+```text
+includeAnywhereIgnore = ["@eaDir"]
 ```
 
-`@eaDir` is a Synology thumbnail directory. It doesn't start with a dot, so the dotpath rule misses it, and ABS names it explicitly. No other vendor name (`#recycle`, `Thumbs.db`) is hard-coded; anything starting with a dot is already covered.
+`@eaDir` is a Synology thumbnail directory. It doesn't start with a dot, so the dotpath rule misses it, and ABS names it explicitly. No other vendor name (`#recycle`, `Thumbs.db`) is hard-coded. Anything starting with a dot is already covered.
 
 ## Source of truth and version notes
 
