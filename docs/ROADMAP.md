@@ -18,6 +18,10 @@ Build the search-link query from embedded audio tags (author, title) read at sca
 
 Identify and group audiobooks by their embedded metadata, the way Audiobookshelf does, rather than inferring everything from folder layout. Today the tool is folder-granular (ADR-0007) and reads no tags: a folder is an audiobook if it directly holds audio. Reading author, title, series, and narrator from the audio files would let coverage and grouping follow the actual books even when the folders are inconsistent or flat. This is the larger sibling of the tag-based search query above and shares its scan-time tag read, but it touches how the scanner decides what a book is, so it is a bigger change than swapping the query source.
 
+## Show active config in the web UI
+
+Surface the loaded config (library roots, `excluded_dirs`, `exclude_globs`, extensions) somewhere in the UI so a user can tell why a folder is absent from the tree without shelling into the container to read TOML. Read-only display, not an edit surface: ADR-0022 keeps config immutable at runtime, and this entry does not reopen that. Motivating case: a subtree pruned by an exclude glob (`(Dramatized Adaptation)` under a series folder) is silently missing today, with no in-UI signal that a rule removed it.
+
 ## Scaling, if libraries get large
 
 These only earn their complexity once a library is big enough to feel the cost. None of them changes behavior today.
