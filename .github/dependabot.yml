@@ -7,7 +7,7 @@ updates:
   - package-ecosystem: cargo
     directory: "/"
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       cargo-minor-patch:
         update-types:
@@ -23,7 +23,7 @@ updates:
   - package-ecosystem: docker
     directory: "/"
     schedule:
-      interval: weekly
+      interval: monthly
     ignore:
       - dependency-name: "rust"
 
@@ -33,7 +33,7 @@ updates:
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       actions-minor-patch:
         update-types:
