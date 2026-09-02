@@ -14,13 +14,18 @@ updates:
           - minor
           - patch
 
-  # Dockerfile base image pins (tag@sha256:<digest> form). Dependabot proposes
-  # digest bumps here. When the rust image bumps, also bump
-  # rust-toolchain.toml in the same PR; see the comment in Dockerfile.
+  # Dockerfile base image pins (tag@sha256:<digest> form). Alpine digest bumps
+  # flow through so security updates land unattended. The rust image is
+  # ignored: bumping it needs coordinated edits to rust-toolchain.toml and
+  # Cargo.toml rust-version (enforced by the toolchain-drift CI gate), which
+  # Dependabot cannot do on its own. Bump Rust by hand when raising MSRV is
+  # intentional.
   - package-ecosystem: docker
     directory: "/"
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "rust"
 
   # GitHub Actions `uses:` pins across .github/workflows/. Group minor + patch
   # bumps into one PR; let majors come through individually so release notes
