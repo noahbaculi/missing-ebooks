@@ -179,7 +179,7 @@ library_roots = []
 # RUST_LOG, if set, overrides it with full tracing filter syntax.
 
 # Address the HTTP server binds. Loopback by default (see ADR-0003). Set
-# "0.0.0.0" to listen on all interfaces. The server then refuses to start
+# "0.0.0.0" to listen on all interfaces; the server then refuses to start
 # unless MISSING_EBOOKS_ALLOW_PUBLIC_BIND is also set to one of
 # 1, true, yes, on (case-insensitive). Also settable as
 # MISSING_EBOOKS_BIND.
