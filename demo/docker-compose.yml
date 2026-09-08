@@ -4,6 +4,8 @@
 # the tunnel. See demo/README.md for the one-time tunnel setup.
 services:
   demo:
+    container_name: missing-ebooks-demo
+    restart: unless-stopped
     build:
       # Build context is the repo root so the image can compile the crate. The
       # demo shares the root Dockerfile's builder stage; `target: demo` picks
@@ -30,14 +32,14 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    restart: unless-stopped
 
   cloudflared:
     image: cloudflare/cloudflared:latest
+    container_name: missing-ebooks-demo-tunnel
+    restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
     depends_on:
       demo:
         condition: service_healthy
-    restart: unless-stopped
