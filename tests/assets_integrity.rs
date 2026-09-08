@@ -36,3 +36,19 @@ fn readme_uses_theme_responsive_screenshot_sources() {
     assert!(README.contains("docs/screenshots/readme-preview-light.png"));
     assert!(!README.contains("assets/screenshot.png"));
 }
+
+// The card previews are consumed by an external site, not by anything in this
+// repo, so nothing here would break if they went missing. This is the tripwire.
+#[test]
+fn card_preview_assets_exist() {
+    for name in ["card-preview-light.png", "card-preview-dark.png"] {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("docs/screenshots")
+            .join(name);
+        assert!(
+            path.is_file(),
+            "missing card preview asset: {}",
+            path.display()
+        );
+    }
+}
