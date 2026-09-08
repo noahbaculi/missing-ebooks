@@ -298,21 +298,18 @@ pub(super) fn intro_card() -> Markup {
 }
 
 /// The page footer, present in every deployment. Carries the brand mark, the
-/// product name, the crate version, and a link to the source. Because it ships
-/// in the core shell, it gives a demo visitor a second path home alongside the
-/// banner CTA, and a self-hoster a way back to the source. The version is the
-/// compile-time `CARGO_PKG_VERSION`, so the shell stays free of domain types
-/// and runtime state.
+/// product name, and the crate version, all linking to the source. Because it
+/// ships in the core shell, it gives a demo visitor a second path home
+/// alongside the banner CTA, and a self-hoster a way back to the source. The
+/// version is the compile-time `CARGO_PKG_VERSION`, so the shell stays free
+/// of domain types and runtime state.
 pub(super) fn footer() -> Markup {
     html! {
         footer.site-footer {
-            span.footer-brand {
+            a.footer-brand href="https://github.com/noahbaculi/missing-ebooks" {
                 (PreEscaped(include_str!("../../assets/svg/brand.svg")))
                 span.footer-name { "Missing Ebooks" }
                 span.footer-version { "v" (env!("CARGO_PKG_VERSION")) }
-            }
-            nav.footer-links aria-label="About" {
-                a href="https://github.com/noahbaculi/missing-ebooks" { "GitHub" }
             }
         }
     }
@@ -784,15 +781,16 @@ mod tests {
     }
 
     #[test]
-    fn page_renders_a_footer_with_version_and_links() {
+    fn page_renders_a_footer_linking_to_the_source() {
         let html = page(ViewMode::GapsOnly, 0, &stub_body()).into_string();
         // The footer ships in the core shell, so every deployment gets it.
         assert!(html.contains(r#"<footer class="site-footer">"#));
-        // It names the product and stamps the crate version.
+        // The whole brand, name, and version is one link to the source.
+        assert!(html.contains(
+            r#"<a class="footer-brand" href="https://github.com/noahbaculi/missing-ebooks">"#
+        ));
         assert!(html.contains("Missing Ebooks"));
         assert!(html.contains(concat!("v", env!("CARGO_PKG_VERSION"))));
-        // A path home to the source.
-        assert!(html.contains(r#"href="https://github.com/noahbaculi/missing-ebooks""#));
     }
 
     #[test]

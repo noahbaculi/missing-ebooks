@@ -2156,14 +2156,14 @@ li.entering {
 
 /* footer */
 /* The page footer, in every deployment. Matches the centered 52rem column the
-   navbar and summary use, sits muted below the content, and reads as one quiet
-   row: brand on the left, links on the right, wrapping to stacked on a phone. */
+   navbar and summary use, sits muted below the content, and reads as one
+   centered brand link to the source. */
 .site-footer {
   margin: 2rem auto 0.5rem;
   padding: 1rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 0.75rem;
   flex-wrap: wrap;
   border-top: var(--border) solid var(--color-border);
@@ -2174,6 +2174,8 @@ li.entering {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  color: var(--color-muted);
+  text-decoration: none;
 }
 .footer-brand .brand-mark {
   width: 1.1rem;
@@ -2183,20 +2185,11 @@ li.entering {
   font-weight: 600;
   color: var(--color-base-content);
 }
-.footer-links {
-  display: inline-flex;
-  align-items: center;
-  gap: 1rem;
-}
-.site-footer a {
-  color: var(--color-muted);
-  text-decoration: none;
-}
-.site-footer a:hover {
+.footer-brand:hover {
   color: var(--color-base-content);
   text-decoration: underline;
 }
-.site-footer a:focus-visible {
+.footer-brand:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
   border-radius: var(--radius-field);
