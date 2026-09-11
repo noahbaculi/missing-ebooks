@@ -70,14 +70,25 @@ fn load_config(cli: &Cli) -> Result<DemoConfig, Box<dyn std::error::Error>> {
     })
 }
 
-/// Sweep idle sessions on a fixed tick.
+/// Sweep idle sessions on a fixed tick, logging session stats whenever they change.
 async fn run_reaper(state: Arc<DemoState>) {
     let mut tick = tokio::time::interval(Duration::from_secs(60));
+    let mut last = None;
     loop {
         tick.tick().await;
         let reaped = state.reap_idle(Instant::now());
         if reaped > 0 {
             tracing::info!(reaped, "dropped idle demo sessions");
+        }
+        let stats = state.session_stats();
+        if last != Some(stats) {
+            tracing::info!(
+                live = stats.live,
+                max_sessions = stats.max_sessions,
+                rejected_total = stats.rejected_total,
+                "demo session stats"
+            );
+            last = Some(stats);
         }
     }
 }

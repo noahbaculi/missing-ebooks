@@ -11,7 +11,7 @@ use crate::config::{Config, SearchLink};
 use crate::raw_view::{RawView, build_view};
 use crate::scanner::{DirIndex, ScanSettings};
 
-use super::session::SessionStore;
+use super::session::{SessionStats, SessionStore};
 
 /// Runtime knobs for the demo server, read from the environment by the binary.
 pub struct DemoConfig {
@@ -63,6 +63,11 @@ impl DemoState {
     /// number reaped. Called on a timer by the binary's reaper task.
     pub fn reap_idle(&self, now: Instant) -> usize {
         self.lock_sessions().reap_idle(now, self.config.idle)
+    }
+
+    /// Current session load: live count, cap, and cumulative rejections.
+    pub fn session_stats(&self) -> SessionStats {
+        self.lock_sessions().stats()
     }
 }
 

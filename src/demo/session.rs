@@ -44,6 +44,19 @@ pub(crate) struct AtCapacity;
 pub(crate) struct SessionStore {
     sessions: HashMap<SessionId, Session>,
     max_sessions: usize,
+    /// Count of `create` calls that hit the cap, since process start.
+    rejected: usize,
+}
+
+/// A point-in-time snapshot of session load, logged by the reaper on change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionStats {
+    /// Currently live sessions.
+    pub live: usize,
+    /// The store's cap.
+    pub max_sessions: usize,
+    /// Cumulative `create` calls rejected at capacity, since process start.
+    pub rejected_total: usize,
 }
 
 impl SessionStore {
@@ -52,13 +65,22 @@ impl SessionStore {
         SessionStore {
             sessions: HashMap::new(),
             max_sessions,
+            rejected: 0,
         }
     }
 
     /// How many sessions are live.
-    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.sessions.len()
+    }
+
+    /// Current load: live sessions, the cap, and cumulative rejections.
+    pub fn stats(&self) -> SessionStats {
+        SessionStats {
+            live: self.len(),
+            max_sessions: self.max_sessions,
+            rejected_total: self.rejected,
+        }
     }
 
     /// Bump an existing session's last-seen to `now`. Returns whether the session
@@ -77,6 +99,7 @@ impl SessionStore {
     /// the store is full, which the caller turns into the 503 page.
     pub fn create(&mut self, sid: SessionId, now: Instant) -> Result<(), AtCapacity> {
         if self.sessions.len() >= self.max_sessions {
+            self.rejected += 1;
             return Err(AtCapacity);
         }
         self.sessions.insert(
