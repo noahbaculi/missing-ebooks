@@ -292,6 +292,10 @@ Not covered (may change in any release):
 
 MSRV bumps ship in a minor release, never a patch. The current MSRV lives in `Cargo.toml`.
 
+## AI declaration
+
+Built with AI assistance. Every line that shipped was reviewed by a human before merge. See [`ai-declaration.md`](ai-declaration.md) for which parts and how much.
+
 ## License
 
 Released under AGPL-3.0-or-later. See `LICENSE`.

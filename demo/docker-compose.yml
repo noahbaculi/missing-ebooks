@@ -17,11 +17,13 @@ services:
         BIN: missing-ebooks-demo
     expose:
       - "8080"
+    mem_limit: 512m
+    cpus: 2
     environment:
       DEMO_BIND: 0.0.0.0:8080
       DEMO_SCENARIO: mixed-forest
-      DEMO_MAX_SESSIONS: "300"
-      DEMO_IDLE_SECS: "1200"
+      DEMO_MAX_SESSIONS: "1000"
+      DEMO_IDLE_SECS: "600"
       # Name of the cookie that pins a visitor to their in-memory session.
       DEMO_COOKIE_NAME: me_demo_sid
     # /healthz answers without touching the session table, so an unattended host
