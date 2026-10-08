@@ -40,7 +40,7 @@ skip = [
   { name = "r-efi", version = "=6.0.0" },
   # syn 3.x is the new common version; some transitives still pull syn 2.x.
   { name = "syn", version = "=2.0.119" },
-  { name = "syn", version = "=3.0.3" },
+  { name = "syn", version = "=3.0.6" },
 ]
 
 [sources]
