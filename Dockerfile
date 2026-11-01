@@ -24,7 +24,7 @@ RUN cargo build --release --locked --bin "${BIN}"
 # Demo runtime: the single demo binary, run as an ordinary uid. /tmp is writable
 # for the seeded scenario directory. Built only with `--target demo` and
 # BIN=missing-ebooks-demo. A plain `docker build .` never reaches this stage.
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS demo
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS demo
 COPY --from=builder /build/target/release/missing-ebooks-demo /usr/local/bin/missing-ebooks-demo
 USER 1000:1000
 
@@ -35,7 +35,7 @@ ENTRYPOINT ["/usr/local/bin/missing-ebooks-demo"]
 # Production runtime, deliberately the last stage so an untargeted build (CI
 # publish, `docker build .`) produces it: a small Alpine image with just the
 # binary. busybox wget (already in the base) backs the healthcheck.
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS runtime
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS runtime
 
 COPY --from=builder /build/target/release/missing-ebooks /usr/local/bin/missing-ebooks
 
